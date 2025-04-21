@@ -157,14 +157,14 @@ class PDFViewer(QWidget):
             if self.show_boxes and self.bounding_boxes and self.doc:
                 # Define colors for different categories with alpha values
                 category_colors = {
-                    'page header': QColor(0, 0, 139, 128),  # darkBlue with alpha
-                    'title': QColor(0, 100, 0, 128),        # darkGreen with alpha
-                    'section header': QColor(0, 128, 0, 128),  # green with alpha
-                    'text': QColor(0, 0, 255, 128),         # blue with alpha
-                    'picture': QColor(255, 255, 0, 128),    # yellow with alpha
-                    'caption': QColor(139, 139, 0, 128),    # darkYellow with alpha
-                    'page footer': QColor(0, 139, 139, 128),  # darkCyan with alpha
-                    'list item': QColor(139, 0, 139, 128)   # magenta with alpha
+                    'page header': QColor(0, 0, 139, 64),  # darkBlue with alpha
+                    'title': QColor(0, 100, 0, 64),        # darkGreen with alpha
+                    'section header': QColor(0, 128, 0, 64),  # green with alpha
+                    'text': QColor(0, 0, 255, 64),         # blue with alpha
+                    'picture': QColor(255, 255, 0, 64),    # yellow with alpha
+                    'caption': QColor(139, 139, 0, 64),    # darkYellow with alpha
+                    'page footer': QColor(0, 139, 139, 64),  # darkCyan with alpha
+                    'list item': QColor(139, 0, 139, 64)   # magenta with alpha
                 }
                 
                 # Get current page dimensions from MediaBox
@@ -198,17 +198,18 @@ class PDFViewer(QWidget):
                         
                         # Get category and corresponding color
                         category = box.get('category', 'text').lower()
-                        color = category_colors.get(category, QColor(255, 0, 0, 128))  # red with alpha as default
+                        color = category_colors.get(category, QColor(255, 0, 0, 64))  # red with alpha as default
                         
                         # Draw the rectangle with 2-pixel width and semi-transparent fill
                         pen = QPen(color, 2)
                         painter.setPen(pen)
+                        color.setAlpha(64)
                         painter.setBrush(color)
                         painter.drawRect(x1, y1, x2 - x1, y2 - y1)
                         
                         # Draw category label with semi-transparent background
                         label_color = color
-                        label_color.setAlpha(192)  # Slightly more opaque for better text readability
+                        label_color.setAlpha(128)  # Slightly more opaque for better text readability
                         painter.setPen(Qt.GlobalColor.black)
                         painter.setBrush(label_color)
                         # Draw a small rectangle for the label background
