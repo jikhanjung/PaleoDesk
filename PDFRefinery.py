@@ -16,7 +16,7 @@ import json
 import sqlite3
 import shutil
 from peewee import DoesNotExist
-from PDFModels import (db, PDFDocument, PageAnalysis, init_database,
+from PDFModels import (db, PDFDocument, PageAnalysis, SessionData, init_database,
                       calculate_file_hash, DEFAULT_LOG_DIRECTORY, COMPANY_NAME,
                       PROGRAM_NAME, DEFAULT_DB_DIRECTORY, DB_PATH)
 import hashlib
@@ -507,18 +507,14 @@ class MainWindow(QMainWindow):
             self.update_page_display()
             self.status_label.showMessage(f"Loaded analysis for {os.path.basename(file_path)}", 3000)
         else:
-            # Check for session file
-            session_file = os.path.splitext(file_path)[0] + '.json'
-            if os.path.exists(session_file):
-                try:
-                    self.load_session(session_file)
-                    logger.info(f"Automatically loaded session file: {session_file}")
-                    self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
-                except Exception as e:
-                    logger.error(f"Error loading session file {session_file}: {str(e)}")
-                    QMessageBox.warning(self, "Session Load Error", 
-                                      f"Could not load session file:\n{str(e)}")
-                    
+            # Try to load session from database
+            try:
+                self.load_session(file_path)
+                logger.info(f"Loaded session data for {file_path}")
+                self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
+            except Exception as e:
+                logger.error(f"Error loading session data: {str(e)}")
+
     def load_directory_structure(self, dir_path, parent_item=None):
         """Load directory structure into the tree widget"""
         try:
@@ -662,6 +658,14 @@ class MainWindow(QMainWindow):
         analyze_action.triggered.connect(lambda: self.analyze_pdf(self.current_file) if self.current_file else None)
         toolbar.addAction(analyze_action)
 
+        # Add separator
+        toolbar.addSeparator()
+
+        # Batch analyze action
+        batch_analyze_action = QAction("Batch Analyze", self)
+        batch_analyze_action.triggered.connect(self.batch_analyze)
+        toolbar.addAction(batch_analyze_action)
+
     def load_recent_files(self):
         """Load recent files from settings"""
         #settings = QSettings()
@@ -747,18 +751,19 @@ class MainWindow(QMainWindow):
             self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
             logger.info(f"Opened PDF file: {self.current_file}")
             
-            # Check for session file
-            session_file = os.path.splitext(file_path)[0] + '.json'
-            if os.path.exists(session_file):
+            # Try to load analysis from database
+            if self.load_analysis_from_database(file_path):
+                self.update_page_display()
+                self.status_label.showMessage(f"Loaded analysis for {os.path.basename(file_path)}", 3000)
+            else:
+                # Try to load session from database
                 try:
-                    self.load_session(session_file)
-                    logger.info(f"Automatically loaded session file: {session_file}")
+                    self.load_session(file_path)
+                    logger.info(f"Loaded session data for {file_path}")
                     self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
                 except Exception as e:
-                    logger.error(f"Error loading session file {session_file}: {str(e)}")
-                    QMessageBox.warning(self, "Session Load Error", 
-                                      f"Could not load session file:\n{str(e)}")
-                    
+                    logger.error(f"Error loading session data: {str(e)}")
+
     def ensure_normal_cursor(self):
         """Make sure the cursor is restored to normal"""
         # Restore cursor state if it's been overridden
@@ -956,36 +961,29 @@ class MainWindow(QMainWindow):
                             # Show completion message
                             analyzed_pages = len(page_elements)
                             msg = f"Document analysis completed - {analyzed_pages} pages analyzed"
-                            if need_ocr:
-                                msg += " (with OCR)"
-                                # Ask if user wants to open the OCR'd PDF
-                                reply = QMessageBox.question(
-                                    self,
-                                    "OCR Complete",
-                                    f"OCR processing completed. The OCR'd PDF has been saved as:\n{ocr_pdf_path}\n\nWould you like to open it?",
-                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                    QMessageBox.StandardButton.Yes
-                                )
-                                if reply == QMessageBox.StandardButton.Yes:
-                                    self.open_pdf(ocr_pdf_path)
+
                             
                             self.status_label.showMessage(msg, 3000)
                             logger.info(msg)
+                            return True
                             
                         else:
                             error_msg = f"Layout analysis service returned status code: {response.status_code}"
                             logger.error(error_msg)
                             QMessageBox.warning(self, "Analysis Error", error_msg)
+                            return False
                             
                     except requests.exceptions.ConnectionError:
                         error_msg = f"Could not connect to the layout analysis service at {base_url}. Please check the service URL in preferences."
                         logger.error(error_msg)
                         QMessageBox.warning(self, "Connection Error", error_msg)
+                        return False
                     except Exception as e:
                         error_msg = f"Error during layout analysis: {str(e)}"
                         logger.error(error_msg)
                         logger.error("Full error details:", exc_info=True)
                         QMessageBox.warning(self, "Analysis Error", error_msg)
+                        return False
                         
             finally:
                 # Restore cursor
@@ -997,72 +995,159 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error processing PDF: {str(e)}")
             return False
 
-    def load_analysis_from_database(self, analyses):
-        """Load analysis results from database into the UI."""
+    def load_analysis_from_database(self, file_path):
+        """Load analysis results from database for a given file"""
         try:
-            # Clear existing results
-            self.clear_results()
-            
-            # Load each analysis into the UI
-            for analysis in analyses:
-                # Add analysis result to the appropriate UI components
-                # This will depend on how you want to display the results
-                self.display_analysis_result(analysis.page_number, analysis.analysis_result)
-                
-            logger.debug(f"Loaded {len(analyses)} analysis results")
-            
+            with db:
+                doc = PDFDocument.get(PDFDocument.file_path == file_path)
+                if doc.last_analyzed:
+                    pages = (PageAnalysis
+                           .select()
+                           .where(PageAnalysis.document == doc)
+                           .order_by(PageAnalysis.page_number))
+                    
+                    for page in pages:
+                        page_num = str(page.page_number)
+                        self.document_data['page_structures'][page_num] = json.loads(page.analysis_data)
+                    
+                    logger.info(f"Loaded analysis from database for {file_path}")
+                    return True
+        except DoesNotExist:
+            logger.debug(f"No analysis found in database for {file_path}")
         except Exception as e:
             logger.error(f"Error loading analysis from database: {str(e)}")
-            QMessageBox.warning(self, "Warning", "Failed to load analysis results")
-            
-    def display_analysis_result(self, page_number, result):
-        """Display a single page's analysis result in the UI."""
-        # TODO: Implement the display logic based on your UI requirements
-        pass
-
-    def clear_results(self):
-        """Clear all analysis results from the UI."""
-        # TODO: Implement the clearing logic based on your UI requirements
-        pass
+        
+        return False
 
     def save_session(self):
-        """Save current session data to a file"""
+        """Save current session data to database"""
         try:
             if not hasattr(self, 'current_file') or not self.current_file:
                 logger.debug("No current file to save session for")
                 return
                 
-            # Get base filename without extension
-            base_name = os.path.splitext(os.path.basename(self.current_file))[0]
-            session_file = os.path.join(self.pdf_directory, f'{base_name}.json')
-            
-            # Prepare session data
-            session_data = {
-                'filename': self.current_file,
-                'current_page': self.current_page,
-                'document_data': {
-                    'page_structures': self.document_data['page_structures'],
-                    'metadata': self.document_data['metadata'],
-                    'page_dimensions': self.document_data.get('page_dimensions', {})
-                },
-                'timestamp': datetime.datetime.now().isoformat(),
-                'total_pages': len(self.doc) if self.doc else 0,
-                'session_info': {
-                    'analyzed_pages': len(set(self.document_data['page_structures'].keys())),
-                    'app_version': '0.0.1'
+            with db:
+                # Get or create PDFDocument
+                file_hash = calculate_file_hash(self.current_file)
+                try:
+                    document = PDFDocument.get(PDFDocument.file_hash == file_hash)
+                except DoesNotExist:
+                    document = PDFDocument.create(
+                        file_path=self.current_file,
+                        file_hash=file_hash,
+                        title=os.path.basename(self.current_file),
+                        page_count=len(self.doc) if self.doc else 0
+                    )
+                
+                # Prepare session data
+                session_data = {
+                    'document_data': {
+                        'page_structures': self.document_data['page_structures'],
+                        'metadata': self.document_data['metadata'],
+                        'page_dimensions': self.document_data.get('page_dimensions', {})
+                    },
+                    'session_info': {
+                        'analyzed_pages': len(set(self.document_data['page_structures'].keys())),
+                        'app_version': PROGRAM_VERSION
+                    }
                 }
-            }
-            
-            # Save session data as JSON
-            with open(session_file, 'w', encoding='utf-8') as f:
-                json.dump(session_data, f, ensure_ascii=False, indent=2)
-            
-            logger.info(f"Session saved to {session_file}")
-            logger.debug(f"Saved {len(self.document_data['page_structures'])} page structures")
-            
+                
+                # Create new session entry
+                SessionData.create(
+                    document=document,
+                    current_page=self.current_page,
+                    session_data=json.dumps(session_data, ensure_ascii=False),
+                    last_accessed=datetime.datetime.now()
+                )
+                
+                logger.info(f"Session saved to database for {self.current_file}")
+                logger.debug(f"Saved {len(self.document_data['page_structures'])} page structures")
+                
         except Exception as e:
             logger.error(f"Error saving session: {str(e)}")
             logger.error("Full error details:", exc_info=True)
+
+    def load_session(self, file_path=None):
+        """Load a previously saved session from database"""
+        try:
+            if not file_path:
+                file_path, _ = QFileDialog.getOpenFileName(
+                    self, "Load Session", "", "PDF Files (*.pdf)"
+                )
+                if not file_path:
+                    return
+
+            logger.info(f"Loading session for {file_path}")
+            
+            with db:
+                # Get document from database
+                file_hash = calculate_file_hash(file_path)
+                try:
+                    document = PDFDocument.get(PDFDocument.file_hash == file_hash)
+                except DoesNotExist:
+                    logger.error(f"No session found for {file_path}")
+                    #QMessageBox.warning(self, "Error", "No session data found for this file")
+                    return
+                
+                # Get most recent session
+                session = (SessionData
+                         .select()
+                         .where(SessionData.document == document)
+                         .order_by(SessionData.created_at.desc())
+                         .first())
+                
+                if not session:
+                    logger.error(f"No session data found for {file_path}")
+                    #QMessageBox.warning(self, "Error", "No session data found for this file")
+                    return
+                
+                # Load session data
+                session_data = json.loads(session.session_data)
+                self.document_data = session_data.get('document_data', {})
+                logger.debug(f"Loaded document data: {self.document_data.keys()}")
+                
+                # Load page structures
+                page_structures = dict(self.document_data.get('page_structures', {}))
+                logger.debug(f"Loaded page structures: {page_structures}")
+                
+                # Open the PDF file
+                try:
+                    self.current_file = file_path
+                    self.pdf_directory = os.path.dirname(file_path)
+                    self.doc = fitz.open(file_path)
+                    self.current_page = session.current_page
+                    self.pdf_viewer.current_page = self.current_page
+                    self.pdf_viewer.open_pdf(file_path)
+                    
+                    # Update UI
+                    self.update_navigation()
+                    
+                    # Load page structures and show bounding boxes
+                    for page_num, structure in page_structures.items():
+                        page_num = int(page_num)  # Convert string key to int
+                        self.document_data['page_structures'][str(page_num)] = structure
+                        logger.debug(f"Set structure for page {page_num}")
+                    
+                    # Enable bounding boxes if any page has structure
+                    if page_structures:
+                        self.pdf_viewer.toggle_bounding_boxes(True)
+                        # Set bounding boxes for current page
+                        current_page_boxes = page_structures.get(str(self.current_page), [])
+                        if current_page_boxes:
+                            self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
+                    
+                    logger.info(f"Successfully loaded session with {len(self.doc)} pages")
+                    self.status_label.showMessage("Session loaded successfully", 3000)
+                    
+                except Exception as e:
+                    logger.error(f"Error opening PDF file: {str(e)}")
+                    QMessageBox.warning(self, "Error", f"Failed to open PDF file: {str(e)}")
+                    return
+                
+        except Exception as e:
+            logger.error(f"Error loading session: {str(e)}")
+            logger.error("Full error details:", exc_info=True)
+            QMessageBox.warning(self, "Error", f"Failed to load session: {str(e)}")
 
     def update_page_display(self):
         """Update the PDF display and text areas with the current page content"""
@@ -1126,11 +1211,20 @@ class MainWindow(QMainWindow):
             logger.debug(f"Navigated to next page: {self.current_page + 1}")
             
     def update_navigation(self):
+        """Update navigation controls and page display"""
         if self.doc:
             self.current_page_input.setText(str(self.current_page + 1))
             self.total_pages_label.setText(f"/ {len(self.doc)}")
             self.prev_button.setEnabled(self.current_page > 0)
             self.next_button.setEnabled(self.current_page < len(self.doc) - 1)
+            
+            # Update bounding boxes for current page
+            if self.pdf_viewer.show_boxes:
+                current_page_boxes = self.document_data['page_structures'].get(str(self.current_page), {})
+                if current_page_boxes:
+                    self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
+                else:
+                    self.pdf_viewer.set_bounding_boxes([])
 
     def go_to_page(self):
         if not self.doc:
@@ -1151,116 +1245,6 @@ class MainWindow(QMainWindow):
         except ValueError:
             QMessageBox.warning(self, "Invalid Input", "Please enter a valid page number")
             self.current_page_input.setText(str(self.current_page + 1))
-
-    def load_session(self, session_file=None):
-        """Load a previously saved session"""
-        try:
-            if not session_file:
-                session_file, _ = QFileDialog.getOpenFileName(
-                    self, "Load Session", "", "Session Files (*.json)"
-                )
-                if not session_file:
-                    return
-
-            logger.info(f"Loading session from {session_file}")
-            
-            with open(session_file, 'r', encoding='utf-8') as f:
-                session_data = json.load(f)
-                
-            # Load document data
-            self.document_data = session_data.get('document_data', {})
-            logger.debug(f"Loaded document data: {self.document_data.keys()}")
-            
-            # Load page structures
-            page_structures = dict(self.document_data.get('page_structures', {}))
-            logger.debug(f"Loaded page structures: {page_structures}")
-            
-            # Load PDF file with fallback options
-            pdf_path = session_data.get('filename')
-            if not pdf_path:
-                logger.error("No PDF filename found in session file")
-                QMessageBox.warning(self, "Error", "No PDF filename found in session file")
-                return
-                
-            # Try to find the PDF file
-            if not os.path.exists(pdf_path):
-                logger.warning(f"PDF file not found at original path: {pdf_path}")
-                
-                # Try to find PDF in the same directory as the session file
-                session_dir = os.path.dirname(session_file)
-                pdf_filename = os.path.basename(pdf_path)
-                local_pdf_path = os.path.join(session_dir, pdf_filename)
-                
-                if os.path.exists(local_pdf_path):
-                    pdf_path = local_pdf_path
-                    logger.info(f"Found PDF file in session directory: {pdf_path}")
-                else:
-                    # Ask user to locate the PDF file
-                    pdf_path, _ = QFileDialog.getOpenFileName(
-                        self,
-                        "Locate PDF File", 
-                        session_dir, 
-                        "PDF Files (*.pdf)"
-                    )
-                    if not pdf_path:
-                        logger.error("User cancelled PDF file selection")
-                        QMessageBox.warning(self, "Error", "PDF file is required to load the session")
-                        return
-                    logger.info(f"User selected PDF file: {pdf_path}")
-            
-            # Open the PDF file
-            try:
-                self.current_file = pdf_path
-                self.pdf_directory = os.path.dirname(pdf_path)
-                self.doc = fitz.open(pdf_path)
-                self.current_page = session_data.get('current_page', 0)
-                self.pdf_viewer.current_page = self.current_page
-                self.pdf_viewer.open_pdf(pdf_path)
-                
-                # Update UI
-                self.update_navigation()
-                
-                # Load page structures and show bounding boxes
-                for page_num, structure in page_structures.items():
-                    page_num = int(page_num)  # Convert string key to int
-                    self.document_data['page_structures'][str(page_num)] = structure
-                    logger.debug(f"Set structure for page {page_num}")
-                
-                # Enable bounding boxes if any page has structure
-                if page_structures:
-                    self.pdf_viewer.toggle_bounding_boxes(True)
-                    # Set bounding boxes for current page
-                    current_page_boxes = page_structures.get(str(self.current_page), [])
-                    if current_page_boxes:
-                        self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
-                
-                logger.info(f"Successfully loaded session with {len(self.doc)} pages")
-                self.status_label.showMessage("Session loaded successfully", 3000)
-                
-            except Exception as e:
-                logger.error(f"Error opening PDF file: {str(e)}")
-                QMessageBox.warning(self, "Error", f"Failed to open PDF file: {str(e)}")
-                return
-                
-        except Exception as e:
-            logger.error(f"Error loading session: {str(e)}")
-            logger.error("Full error details:", exc_info=True)
-            QMessageBox.warning(self, "Error", f"Failed to load session: {str(e)}")
-            
-    def update_navigation(self):
-        if self.doc:
-            self.current_page_input.setText(str(self.current_page + 1))
-            self.total_pages_label.setText(f"/ {len(self.doc)}")
-            self.prev_button.setEnabled(self.current_page > 0)
-            self.next_button.setEnabled(self.current_page < len(self.doc) - 1)
-            
-            # Update bounding boxes for current page
-            if self.pdf_viewer.show_boxes:
-                current_page_boxes = self.document_data['page_structures'].get(str(self.current_page), {})
-                if current_page_boxes:
-                    self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
-                else:
-                    self.pdf_viewer.set_bounding_boxes([])
 
     def load_zotero_library(self):
         """Load PDFs from Zotero library using collection structure"""
@@ -1548,29 +1532,122 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
             self.ensure_normal_cursor()
 
-    def load_analysis_from_database(self, file_path):
-        """Load analysis results from database for a given file"""
+    def batch_analyze(self):
+        """Analyze all PDF files in the collections"""
         try:
-            with db:
-                doc = PDFDocument.get(PDFDocument.file_path == file_path)
-                if doc.last_analyzed:
-                    pages = (PageAnalysis
-                           .select()
-                           .where(PageAnalysis.document == doc)
-                           .order_by(PageAnalysis.page_number))
-                    
-                    for page in pages:
-                        page_num = str(page.page_number)
-                        self.document_data['page_structures'][page_num] = json.loads(page.analysis_data)
-                    
-                    logger.info(f"Loaded analysis from database for {file_path}")
-                    return True
-        except DoesNotExist:
-            logger.debug(f"No analysis found in database for {file_path}")
+            # Set wait cursor
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+            self.status_label.showMessage("Starting batch analysis...", 0)
+            QApplication.processEvents()
+
+            # Get all collections
+            collections = []
+            for i in range(self.collections_tree.topLevelItemCount()):
+                collections.append(self.collections_tree.topLevelItem(i))
+
+            total_files = 0
+            analyzed_files = 0
+            failed_files = 0
+
+            # Store current file to restore later
+            previous_file = self.current_file if hasattr(self, 'current_file') else None
+            previous_doc = self.doc if hasattr(self, 'doc') else None
+
+            # Iterate through collections
+            for collection in collections:
+                # Select and scroll to the collection in the tree
+                self.collections_tree.setCurrentItem(collection)
+                self.collections_tree.scrollToItem(collection)
+                QApplication.processEvents()  # Update UI
+                
+                # Get all items in this collection and show them in the items tree
+                items = self.collection_items.get(collection.collection_id, [])
+                self.items_tree.clear()
+                for item in items:
+                    self.items_tree.addTopLevelItem(item)
+                QApplication.processEvents()  # Update UI
+                
+                # Iterate through items
+                for item in items:
+                    # Check if item has PDF attachments
+                    for i in range(item.childCount()):
+                        pdf_item = item.child(i)
+                        if hasattr(pdf_item, 'file_path') and pdf_item.file_path:
+                            total_files += 1
+                            
+                            # Select the PDF item in the tree
+                            item.setExpanded(True)  # Expand parent to show PDF
+                            self.items_tree.setCurrentItem(pdf_item)
+                            self.items_tree.scrollToItem(pdf_item)
+                            QApplication.processEvents()  # Update UI
+                            
+                            # Update status
+                            self.status_label.showMessage(
+                                f"Analyzing {os.path.basename(pdf_item.file_path)} "
+                                f"({analyzed_files + 1}/{total_files})...", 0)
+                            QApplication.processEvents()
+                            
+                            try:
+                                # Open the PDF file and show first page
+                                self.current_file = pdf_item.file_path
+                                self.pdf_directory = os.path.dirname(pdf_item.file_path)
+                                self.doc = fitz.open(pdf_item.file_path)
+                                self.current_page = 0
+                                self.pdf_viewer.current_page = 0
+                                self.pdf_viewer.open_pdf(pdf_item.file_path)
+                                self.update_navigation()
+                                QApplication.processEvents()  # Update UI
+                                
+                                # Analyze the PDF
+                                if self.analyze_pdf(pdf_item.file_path):
+                                    analyzed_files += 1
+                                    # Update item text to show it's analyzed
+                                    pdf_item.setText(1, "PDF (Analyzed)")
+                                else:
+                                    failed_files += 1
+                                    pdf_item.setText(1, "PDF (Failed)")
+                                    pdf_item.setForeground(1, Qt.GlobalColor.red)
+                                
+                                # Close the document
+                                self.doc.close()
+                                
+                            except Exception as e:
+                                logger.error(f"Error analyzing {pdf_item.file_path}: {str(e)}")
+                                failed_files += 1
+                                pdf_item.setText(1, "PDF (Error)")
+                                pdf_item.setForeground(1, Qt.GlobalColor.red)
+                                
+                                # Make sure to close the document if it's open
+                                if hasattr(self, 'doc') and self.doc:
+                                    try:
+                                        self.doc.close()
+                                    except:
+                                        pass
+
+            # Restore previous file if there was one
+            if previous_file and os.path.exists(previous_file):
+                try:
+                    self.current_file = previous_file
+                    self.pdf_directory = os.path.dirname(previous_file)
+                    self.doc = fitz.open(previous_file)
+                    self.pdf_viewer.open_pdf(previous_file)
+                    self.update_page_display()
+                except Exception as e:
+                    logger.error(f"Error restoring previous file: {str(e)}")
+
+            # Show completion message
+            msg = f"Batch analysis completed. Analyzed: {analyzed_files}, Failed: {failed_files}, Total: {total_files}"
+            self.status_label.showMessage(msg, 5000)
+            QMessageBox.information(self, "Batch Analysis Complete", msg)
+            
         except Exception as e:
-            logger.error(f"Error loading analysis from database: {str(e)}")
-        
-        return False
+            logger.error(f"Error in batch analysis: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Error during batch analysis: {str(e)}")
+            
+        finally:
+            # Restore cursor
+            QApplication.restoreOverrideCursor()
+            self.ensure_normal_cursor()
 
 def main():
     try:

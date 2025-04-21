@@ -92,8 +92,15 @@ def init_database(db_path):
 
 def calculate_file_hash(file_path):
     """Calculate SHA-256 hash of a file"""
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest() 
+    try:
+        sha256_hash = hashlib.sha256()
+        # Convert file path to absolute path and normalize
+        abs_path = os.path.abspath(file_path)
+        with open(abs_path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        logger = logging.getLogger(PROGRAM_NAME)
+        logger.error(f"Error calculating file hash for {file_path}: {str(e)}")
+        raise 

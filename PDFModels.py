@@ -51,6 +51,18 @@ class PageAnalysis(BaseModel):
             (('document', 'page_number'), True),  # Unique together
         )
 
+class SessionData(BaseModel):
+    document = ForeignKeyField(PDFDocument, backref='sessions')
+    current_page = IntegerField()
+    session_data = TextField()  # JSON string of session data
+    created_at = DateTimeField(default=datetime.datetime.now)
+    last_accessed = DateTimeField(default=datetime.datetime.now)
+    
+    class Meta:
+        indexes = (
+            (('document', 'created_at'), False),  # Index for faster lookups
+        )
+
 def init_database(db_path):
     """Initialize the database with proper backup handling"""
     try:
@@ -78,7 +90,7 @@ def init_database(db_path):
         # Initialize database
         db.init(db_path)
         db.connect()
-        db.create_tables([PDFDocument, PageAnalysis])
+        db.create_tables([PDFDocument, PageAnalysis, SessionData])
         logger = logging.getLogger(PROGRAM_NAME)
         logger.info("Database initialized successfully")
         
