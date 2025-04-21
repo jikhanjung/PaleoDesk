@@ -3,7 +3,9 @@ import logging
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                            QHBoxLayout, QPushButton, QFileDialog, QToolBar,
                            QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-                           QDialogButtonBox, QMenuBar, QMenu, QMessageBox)
+                           QDialogButtonBox, QMenuBar, QMenu, QMessageBox,
+                           QTreeWidget, QTreeWidgetItem, QDockWidget, QSplitter,
+                           QComboBox)
 from PyQt6.QtCore import Qt, QPoint, QSettings
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor
 import fitz  # PyMuPDF
@@ -11,27 +13,56 @@ import datetime
 import os
 import requests
 import json
+import sqlite3
+import shutil
+from peewee import DoesNotExist
+from PDFModels import (db, PDFDocument, PageAnalysis, init_database,
+                      calculate_file_hash, DEFAULT_LOG_DIRECTORY, COMPANY_NAME,
+                      PROGRAM_NAME, DEFAULT_DB_DIRECTORY, DB_PATH)
+import hashlib
 
-COMPANY_NAME = "PaleoBytes"
-PROGRAM_NAME = "PDFRefinery"
 PROGRAM_VERSION = "0.0.1"
 PROGRAM_AUTHOR = "Jikhan Jung"
 PROGRAM_COPYRIGHT = "©2025 Jikhan Jung"
 
+# Get user profile directory
+USER_PROFILE_DIRECTORY = os.path.expanduser('~')
+
+# Define directory structure
+DEFAULT_STORAGE_DIRECTORY = os.path.join(DEFAULT_DB_DIRECTORY, "data/")
+DB_BACKUP_DIRECTORY = os.path.join(DEFAULT_DB_DIRECTORY, "backups/")
+
+# Create necessary directories
+for directory in [DEFAULT_STORAGE_DIRECTORY, DB_BACKUP_DIRECTORY]:
+    os.makedirs(directory, exist_ok=True)
+
+# Get the path to the resource file
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 # Configure logging
 def setup_logging():
     # Create logs directory if it doesn't exist
-    logs_dir = "logs"
-    if not os.path.exists(logs_dir):
-        os.makedirs(logs_dir)
+    if not os.path.exists(DEFAULT_LOG_DIRECTORY):
+        os.makedirs(DEFAULT_LOG_DIRECTORY)
         
     # Create log filename with date
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    log_file = os.path.join(logs_dir, f"{PROGRAM_NAME}_{today}.log")
+    log_file = os.path.join(DEFAULT_LOG_DIRECTORY, f"{PROGRAM_NAME}_{today}.log")
+    
+    # Get logging level from settings
+    settings = QSettings(COMPANY_NAME, PROGRAM_NAME)
+    level_name = settings.value("logging/level", "INFO")
+    level = getattr(logging, level_name, logging.INFO)
     
     # Configure logging
     logging.basicConfig(
-        level=logging.INFO,
+        level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_file),
@@ -39,7 +70,7 @@ def setup_logging():
         ]
     )
     logger = logging.getLogger(PROGRAM_NAME)
-    logger.info(f"Logging initialized. Log file: {log_file}")
+    logger.info(f"Logging initialized at {level_name} level. Log file: {log_file}")
     return logger
 
 # Initialize logger
@@ -80,6 +111,18 @@ class PreferencesDialog(QDialog):
         url_layout.addWidget(self.url_edit)
         layout.addLayout(url_layout)
         
+        # Logging Level
+        log_layout = QHBoxLayout()
+        log_label = QLabel("Logging Level:")
+        self.log_level_combo = QComboBox()
+        self.log_level_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+        log_layout.addWidget(log_label)
+        log_layout.addWidget(self.log_level_combo)
+        layout.addLayout(log_layout)
+        
+        # Add some spacing
+        layout.addSpacing(10)
+        
         # Buttons
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | 
@@ -93,11 +136,27 @@ class PreferencesDialog(QDialog):
         
     def load_settings(self):
         self.url_edit.setText(self.settings.value("service/url", ""))
+        level = self.settings.value("logging/level", "INFO")
+        index = self.log_level_combo.findText(level)
+        if index >= 0:
+            self.log_level_combo.setCurrentIndex(index)
         logger.debug("Loaded settings from QSettings")
         
     def save_settings(self):
         self.settings.setValue("service/url", self.url_edit.text())
-        logger.info(f"Saved service URL: {self.url_edit.text()}")
+        new_level = self.log_level_combo.currentText()
+        old_level = self.settings.value("logging/level", "INFO")
+        self.settings.setValue("logging/level", new_level)
+        
+        # Update logging level if changed
+        if new_level != old_level:
+            level = getattr(logging, new_level)
+            logger.setLevel(level)
+            for handler in logger.handlers:
+                handler.setLevel(level)
+            logger.info(f"Logging level changed from {old_level} to {new_level}")
+        else:
+            logger.info(f"Saved service URL: {self.url_edit.text()}")
         
     def accept(self):
         self.save_settings()
@@ -288,6 +347,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(f"{PROGRAM_NAME} v{PROGRAM_VERSION}")
         
+        # Initialize database
+        self.init_database()
+        
         # Load window geometry from settings
         self.settings = QSettings(COMPANY_NAME, PROGRAM_NAME)
         geometry = self.settings.value("window_geometry")
@@ -313,6 +375,9 @@ class MainWindow(QMainWindow):
         self.status_label = self.statusBar()
         self.status_label.showMessage("Ready")
         
+        # Create directory tree widget
+        self.create_directory_tree()
+        
         self.pdf_viewer = PDFViewer()
         self.setCentralWidget(self.pdf_viewer)
         
@@ -322,6 +387,209 @@ class MainWindow(QMainWindow):
 
         # Add recent files list
         self.load_recent_files()
+
+    def init_database(self):
+        """Initialize the database"""
+        try:
+            # Initialize database with migrations
+            init_database(DB_PATH)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", 
+                f"Error initializing database: {str(e)}")
+            logger.error(f"Database initialization error: {str(e)}")
+            self.close()
+
+    def create_directory_tree(self):
+        """Create and setup the directory tree widgets"""
+        # Create main dock widget
+        self.library_dock = QDockWidget("Zotero Library", self)
+        self.library_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | 
+                                        Qt.DockWidgetArea.RightDockWidgetArea)
+        
+        # Create a widget to hold the splitter
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Create splitter
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Create collections tree widget
+        self.collections_tree = QTreeWidget()
+        self.collections_tree.setHeaderLabels(["Collections", "Type"])
+        self.collections_tree.setColumnWidth(0, 200)
+        self.collections_tree.itemClicked.connect(self.collection_clicked)
+        
+        # Create items tree widget
+        self.items_tree = QTreeWidget()
+        self.items_tree.setHeaderLabels(["Items", "Type"])
+        self.items_tree.setColumnWidth(0, 300)
+        self.items_tree.itemClicked.connect(self.item_clicked)
+        
+        # Add widgets to splitter
+        splitter.addWidget(self.collections_tree)
+        splitter.addWidget(self.items_tree)
+        
+        # Set initial sizes (40% for collections, 60% for items)
+        splitter.setSizes([400, 600])
+        
+        # Add splitter to layout
+        layout.addWidget(splitter)
+        
+        # Set the container as the dock widget's widget
+        self.library_dock.setWidget(container)
+        
+        # Add the dock widget to the main window
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.library_dock)
+        
+        logger.info("Directory tree widgets created with splitter")
+
+    def collection_clicked(self, item, column):
+        """Handle click on collection item"""
+        if hasattr(item, 'collection_id'):
+            # Clear the items tree
+            self.items_tree.clear()
+            
+            # Get all items for this collection
+            if hasattr(self, 'collection_items') and item.collection_id in self.collection_items:
+                for parent_item in self.collection_items[item.collection_id]:
+                    self.items_tree.addTopLevelItem(parent_item)
+            
+            logger.debug(f"Showing items for collection: {item.text(0)}")
+
+    def item_clicked(self, item, column):
+        """Handle click on item in items tree"""
+        if hasattr(item, 'file_path') and item.file_path:
+            # Direct click on a PDF item
+            if item.file_path.lower().endswith('.pdf'):
+                self.load_pdf_file(item.file_path)
+                logger.debug(f"Loading PDF file: {item.file_path}")
+        else:
+            # Click on a parent item - check for PDF attachments
+            pdf_items = []
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if (hasattr(child, 'file_path') and 
+                    child.file_path and 
+                    child.file_path.lower().endswith('.pdf')):
+                    pdf_items.append(child)
+            
+            if len(pdf_items) == 1:
+                # If there's exactly one PDF, load it
+                pdf_item = pdf_items[0]
+                self.load_pdf_file(pdf_item.file_path)
+                logger.debug(f"Loading single PDF attachment: {pdf_item.file_path}")
+            elif len(pdf_items) > 1:
+                # If there are multiple PDFs, load the first one and log a message
+                pdf_item = pdf_items[0]
+                self.load_pdf_file(pdf_item.file_path)
+                logger.info(f"Loading first of {len(pdf_items)} PDF attachments: {pdf_item.file_path}")
+
+    def load_pdf_file(self, file_path):
+        """Load a PDF file and try to load its analysis from database"""
+        self.current_file = file_path
+        self.pdf_directory = os.path.dirname(file_path)
+        self.document_data = {
+            'page_structures': {},
+            'metadata': {}
+        }
+        self.doc = fitz.open(file_path)
+        self.current_page = 0
+        self.pdf_viewer.current_page = 0
+        self.pdf_viewer.open_pdf(file_path)
+        self.update_navigation()
+        self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
+        logger.info(f"Opened PDF file: {self.current_file}")
+        
+        # Try to load analysis from database
+        if self.load_analysis_from_database(file_path):
+            self.update_page_display()
+            self.status_label.showMessage(f"Loaded analysis for {os.path.basename(file_path)}", 3000)
+        else:
+            # Check for session file
+            session_file = os.path.splitext(file_path)[0] + '.json'
+            if os.path.exists(session_file):
+                try:
+                    self.load_session(session_file)
+                    logger.info(f"Automatically loaded session file: {session_file}")
+                    self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
+                except Exception as e:
+                    logger.error(f"Error loading session file {session_file}: {str(e)}")
+                    QMessageBox.warning(self, "Session Load Error", 
+                                      f"Could not load session file:\n{str(e)}")
+                    
+    def load_directory_structure(self, dir_path, parent_item=None):
+        """Load directory structure into the tree widget"""
+        try:
+            if parent_item is None:
+                # Clear existing items if this is the root
+                self.tree_widget.clear()
+                parent_item = self.tree_widget
+            
+            # Get all items in the directory
+            items = os.listdir(dir_path)
+            items.sort()  # Sort alphabetically
+            
+            for item in items:
+                full_path = os.path.join(dir_path, item)
+                
+                # Skip if not a directory or PDF file
+                if not os.path.isdir(full_path) and not item.lower().endswith('.pdf'):
+                    continue
+                
+                # Create tree item
+                tree_item = QTreeWidgetItem(parent_item)
+                tree_item.setText(0, item)
+                tree_item.file_path = full_path  # Store full path as item attribute
+                
+                if os.path.isdir(full_path):
+                    tree_item.setText(1, "Directory")
+                    # Add a dummy child to make it expandable
+                    QTreeWidgetItem(tree_item)
+                else:  # Must be a PDF file
+                    tree_item.setText(1, "PDF File")
+            
+            logger.info(f"Loaded directory structure: {dir_path}")
+            
+        except Exception as e:
+            logger.error(f"Error loading directory structure: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Could not load directory structure:\n{str(e)}")
+
+    def load_directory(self):
+        """Load all PDF files from a selected directory"""
+        dir_path = QFileDialog.getExistingDirectory(
+            self, "Select Directory", "",
+            QFileDialog.Option.ShowDirsOnly
+        )
+        
+        if not dir_path:
+            return
+            
+        # Load directory structure into tree widget
+        self.load_directory_structure(dir_path)
+        
+        # Get all PDF files in the directory
+        pdf_files = []
+        for file in os.listdir(dir_path):
+            if file.lower().endswith('.pdf'):
+                pdf_files.append(os.path.join(dir_path, file))
+                
+        if not pdf_files:
+            QMessageBox.information(self, "No PDF Files", 
+                                  "No PDF files found in the selected directory.")
+            return
+            
+        # Sort files by name
+        pdf_files.sort()
+        
+        # Load the first PDF file
+        if pdf_files:
+            self.load_pdf_file(pdf_files[0])
+            
+            # Store the list of PDF files
+            self.pdf_files = pdf_files
+            self.current_file_index = 0
 
     def create_menu(self):
         menubar = self.menuBar()
@@ -348,6 +616,16 @@ class MainWindow(QMainWindow):
         open_action = QAction("Open PDF", self)
         open_action.triggered.connect(self.open_pdf)
         toolbar.addAction(open_action)
+        
+        # Load directory action
+        load_dir_action = QAction("Load Directory", self)
+        load_dir_action.triggered.connect(self.load_directory)
+        toolbar.addAction(load_dir_action)
+        
+        # Load Zotero library action
+        load_zotero_action = QAction("Load Zotero Library", self)
+        load_zotero_action.triggered.connect(self.load_zotero_library)
+        toolbar.addAction(load_zotero_action)
         
         # Add separator
         toolbar.addSeparator()
@@ -381,7 +659,7 @@ class MainWindow(QMainWindow):
         
         # Analyze action
         analyze_action = QAction("Analyze", self)
-        analyze_action.triggered.connect(lambda: self.analyze_pdf(True))
+        analyze_action.triggered.connect(lambda: self.analyze_pdf(self.current_file) if self.current_file else None)
         toolbar.addAction(analyze_action)
 
     def load_recent_files(self):
@@ -487,226 +765,265 @@ class MainWindow(QMainWindow):
         while QApplication.overrideCursor() is not None:
             QApplication.restoreOverrideCursor()
 
-    def analyze_pdf(self, force_new_analysis=True):
-        """Analyze all pages using Docker-hosted service with smart OCR decision"""
+    def analyze_pdf(self, file_path):
+        """Analyze the PDF file and store results in the database."""
         try:
-            logger.info("Analyzing all pages using Docker service")
+            # Calculate file hash
+            file_hash = calculate_file_hash(file_path)
+            
+            # Check if analysis exists in database
+            try:
+                document = PDFDocument.get(PDFDocument.file_hash == file_hash)
+                logger.info(f"Found existing analysis for {file_path}")
+                
+                # Load existing analysis
+                analyses = (PageAnalysis
+                          .select()
+                          .where(PageAnalysis.document == document)
+                          .order_by(PageAnalysis.page_number))
+                
+                if analyses.count() > 0:
+                    self.load_analysis_from_database(analyses)
+                    return True
+                    
+            except DoesNotExist:
+                logger.info(f"No existing analysis found for {file_path}")
+                document = None
+            
+            # Perform new analysis
+            logger.info(f"Analyzing PDF: {file_path}")
+            self.status_label.showMessage("Analyzing PDF...", 0)  # 0 means show until changed
             QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             
-            if not hasattr(self, 'doc') or not self.doc:
-                logger.warning("No PDF file loaded")
-                QMessageBox.warning(self, "Error", "Please open a PDF file first.")
-                return
-            
-            # Get service URL from settings
-            base_url = self.settings.value('service/url', 'http://192.168.55.253:8501').rstrip('/')
-            logger.info(f"Using analysis service at: {base_url}")
-            
-            # First try PyMuPDF text extraction
-            sample_size = max(1, len(self.doc) // 10)  # 10% of pages or at least 1 page
-            logger.info(f"Checking first {sample_size} pages for text content using PyMuPDF")
-            
-            # Check text content in sample pages using PyMuPDF
-            page_char_counts = {}
-            for page_num in range(sample_size):
-                try:
-                    page = self.doc[page_num]
-                    text = page.get_text()
-                    char_count = len(text.strip())
-                    page_char_counts[page_num] = char_count
-                    logger.debug(f"Page {page_num + 1}: {char_count} characters")
-                except Exception as e:
-                    logger.error(f"Error extracting text from page {page_num + 1}: {str(e)}")
-                    page_char_counts[page_num] = 0
-            
-            # Calculate average characters per page
-            total_chars = sum(page_char_counts.values())
-            avg_chars_per_page = total_chars / len(page_char_counts) if page_char_counts else 0
-            
-            logger.info(f"PyMuPDF found average of {avg_chars_per_page:.1f} characters per page in sample")
-            logger.info(f"Character counts by page: {page_char_counts}")
-            
-            # Decide if OCR is needed:
-            # - If average characters per page is less than 100
-            # - Or if more than half of sample pages have less than 50 characters
-            low_text_pages = sum(1 for count in page_char_counts.values() if count < 50)
-            need_ocr = (avg_chars_per_page < 100 or 
-                       (low_text_pages / len(page_char_counts) > 0.5))
-            
-            if need_ocr:
-                logger.info(f"Low text content detected in PyMuPDF extraction (avg {avg_chars_per_page:.1f} chars/page), proceeding with OCR")
-                # Get current input language
-                input_lang = self.get_input_language()
+            try:
+                # Get service URL from settings
+                settings = QSettings(COMPANY_NAME, PROGRAM_NAME)
+                base_url = settings.value("service/url", "").rstrip('/')
+                if not base_url:
+                    raise ValueError("Service URL not configured")
                 
-                # Perform OCR
-                url_ocr = f"{base_url}/ocr"
-                with open(self.current_file, 'rb') as pdf_file:
+                logger.info(f"Using analysis service at: {base_url}")
+                
+                # First try PyMuPDF text extraction
+                sample_size = max(1, len(self.doc) // 10)  # 10% of pages or at least 1 page
+                logger.info(f"Checking first {sample_size} pages for text content using PyMuPDF")
+                
+                # Check text content in sample pages using PyMuPDF
+                page_char_counts = {}
+                for page_num in range(sample_size):
+                    try:
+                        page = self.doc[page_num]
+                        text = page.get_text()
+                        char_count = len(text.strip())
+                        page_char_counts[page_num] = char_count
+                        logger.debug(f"Page {page_num + 1}: {char_count} characters")
+                    except Exception as e:
+                        logger.error(f"Error extracting text from page {page_num + 1}: {str(e)}")
+                        page_char_counts[page_num] = 0
+                
+                # Calculate average characters per page
+                total_chars = sum(page_char_counts.values())
+                avg_chars_per_page = total_chars / len(page_char_counts) if page_char_counts else 0
+                
+                logger.info(f"PyMuPDF found average of {avg_chars_per_page:.1f} characters per page in sample")
+                logger.info(f"Character counts by page: {page_char_counts}")
+                
+                # Decide if OCR is needed:
+                # - If average characters per page is less than 100
+                # - Or if more than half of sample pages have less than 50 characters
+                low_text_pages = sum(1 for count in page_char_counts.values() if count < 50)
+                need_ocr = (avg_chars_per_page < 100 or 
+                           (low_text_pages / len(page_char_counts) > 0.5))
+                
+                if need_ocr:
+                    logger.info(f"Low text content detected in PyMuPDF extraction (avg {avg_chars_per_page:.1f} chars/page), proceeding with OCR")
+                    
+                    # Perform OCR
+                    url_ocr = f"{base_url}/ocr"
+                    with open(file_path, 'rb') as pdf_file:
+                        files = {
+                            'file': (os.path.basename(file_path), pdf_file, 'application/pdf')
+                        }
+                        
+                        self.status_label.showMessage("Performing OCR on document...", 0)
+                        QApplication.processEvents()
+                        
+                        try:
+                            response = requests.post(url_ocr, files=files)
+                            
+                            if response.status_code == 200:
+                                ocr_pdf_path = os.path.join(os.path.dirname(file_path), 
+                                                          'ocr_' + os.path.basename(file_path))
+                                
+                                with open(ocr_pdf_path, 'wb') as f:
+                                    f.write(response.content)
+                                
+                                logger.info(f"OCR PDF saved to: {ocr_pdf_path}")
+                                
+                                # Use the OCR'd PDF for layout analysis
+                                analysis_file = ocr_pdf_path
+                            else:
+                                raise ValueError(f"OCR service returned status code: {response.status_code}")
+                        except requests.exceptions.ConnectionError:
+                            error_msg = f"Could not connect to the OCR service at {url_ocr}. Please check the service URL in preferences."
+                            logger.error(error_msg)
+                            QMessageBox.warning(self, "Connection Error", error_msg)
+                            return False
+                        except Exception as e:
+                            error_msg = f"Error during OCR: {str(e)}"
+                            logger.error(error_msg)
+                            QMessageBox.warning(self, "OCR Error", error_msg)
+                            return False
+                else:
+                    logger.info("Sufficient text content found in PDF, proceeding with layout analysis")
+                    analysis_file = file_path
+                
+                # Perform layout analysis
+                with open(analysis_file, 'rb') as pdf_file:
                     files = {
-                        'file': (os.path.basename(self.current_file), pdf_file, 'application/pdf')
-                    }
-                    data = {
-                        'language': input_lang
+                        'file': (os.path.basename(analysis_file), pdf_file, 'application/pdf')
                     }
                     
-                    self.status_label.showMessage("Performing OCR on document...", 0)
+                    self.status_label.showMessage("Analyzing document structure...", 0)
                     QApplication.processEvents()
                     
                     try:
-                        response = requests.post(url_ocr, files=files, data=data)
+                        response = requests.post(base_url, files=files)
                         
                         if response.status_code == 200:
-                            ocr_pdf_path = os.path.join(os.path.dirname(self.current_file), 
-                                                      'ocr_' + os.path.basename(self.current_file))
+                            results = response.json()
                             
-                            with open(ocr_pdf_path, 'wb') as f:
-                                f.write(response.content)
+                            if not isinstance(results, list):
+                                raise ValueError("Expected JSON array response")
                             
-                            logger.info(f"OCR PDF saved to: {ocr_pdf_path}")
+                            # Process analysis results
+                            page_elements = {}
+                            for element in results:
+                                page_num = str(element['page_number'] - 1)  # Convert to 0-based index
+                                if page_num not in page_elements:
+                                    page_elements[page_num] = []
+                                
+                                # Convert the element to our structure format
+                                structured_element = {
+                                    'category': element['type'].lower(),
+                                    'content': {
+                                        'text': element['text'],
+                                        'html': element['text']
+                                    },
+                                    'coordinates': [
+                                        {'x': element['left'] / element['page_width'], 
+                                         'y': element['top'] / element['page_height']},
+                                        {'x': (element['left'] + element['width']) / element['page_width'],
+                                         'y': element['top'] / element['page_height']},
+                                        {'x': (element['left'] + element['width']) / element['page_width'],
+                                         'y': (element['top'] + element['height']) / element['page_height']},
+                                        {'x': element['left'] / element['page_width'],
+                                         'y': (element['top'] + element['height']) / element['page_height']}
+                                    ],
+                                    'relative_size': {
+                                        'width_mm': element['width'] * 0.352778,
+                                        'height_mm': element['height'] * 0.352778,
+                                        'point_size': element['height'] * 0.75
+                                    },
+                                    'attributes': {
+                                        'page_width': element['page_width'],
+                                        'page_height': element['page_height']
+                                    },
+                                    'id': len(page_elements[page_num])  # ID starts from 0 for each page
+                                }
+                                page_elements[page_num].append(structured_element)
                             
-                            # Use the OCR'd PDF for layout analysis
-                            analysis_file = ocr_pdf_path
-                        else:
-                            raise ValueError(f"OCR service returned status code: {response.status_code}")
-                    except requests.exceptions.ConnectionError:
-                        error_msg = f"Could not connect to the OCR service at {url_ocr}. Please check the service URL in preferences."
-                        logger.error(error_msg)
-                        QMessageBox.warning(self, "Connection Error", error_msg)
-                        return
-                    except Exception as e:
-                        error_msg = f"Error during OCR: {str(e)}"
-                        logger.error(error_msg)
-                        QMessageBox.warning(self, "OCR Error", error_msg)
-                        return
-            else:
-                logger.info("Sufficient text content found in PDF, proceeding with layout analysis")
-                analysis_file = self.current_file
-            
-            # Perform layout analysis
-            with open(analysis_file, 'rb') as pdf_file:
-                files = {
-                    'file': (os.path.basename(analysis_file), pdf_file, 'application/pdf')
-                }
-                
-                self.status_label.showMessage("Analyzing document structure...", 0)
-                logger.info("Analyzing document structure...")
-                QApplication.processEvents()
-                
-                try:
-                    response = requests.post(base_url, files=files)
-                    logger.info(f"Layout analysis response: {response.status_code}")
-                    
-                    if response.status_code == 200:
-                        results = response.json()
-                        logger.info(f"Layout analysis results: {results}")
-                        
-                        if not isinstance(results, list):
-                            raise ValueError("Expected JSON array response")
-                        
-                        # Process analysis results
-                        page_elements = {}
-                        for element in results:
-                            page_num = str(element['page_number'] - 1)  # Convert to 0-based index
-                            if page_num not in page_elements:
-                                page_elements[page_num] = []
-                            
-                            # Convert the element to our structure format
-                            structured_element = {
-                                'category': element['type'].lower(),
-                                'content': {
-                                    'text': element['text'],
-                                    'html': element['text']
-                                },
-                                'coordinates': [
-                                    {'x': element['left'] / element['page_width'], 
-                                     'y': element['top'] / element['page_height']},
-                                    {'x': (element['left'] + element['width']) / element['page_width'],
-                                     'y': element['top'] / element['page_height']},
-                                    {'x': (element['left'] + element['width']) / element['page_width'],
-                                     'y': (element['top'] + element['height']) / element['page_height']},
-                                    {'x': element['left'] / element['page_width'],
-                                     'y': (element['top'] + element['height']) / element['page_height']}
-                                ],
-                                'relative_size': {
-                                    'width_mm': element['width'] * 0.352778,
-                                    'height_mm': element['height'] * 0.352778,
-                                    'point_size': element['height'] * 0.75
-                                },
-                                'attributes': {
-                                    'page_width': element['page_width'],
-                                    'page_height': element['page_height']
-                                },
-                                'id': len(page_elements[page_num])  # ID starts from 0 for each page
-                            }
-                            page_elements[page_num].append(structured_element)
-                        
-                        # Store the analysis results
-                        for page_num, elements in page_elements.items():
-                            self.document_data['page_structures'][page_num] = {
-                                'timestamp': datetime.datetime.now().isoformat(),
-                                'structure': {
-                                    'elements': elements,
-                                    'metadata': {
-                                        'page_number': int(page_num),
-                                        'page_width': elements[0]['attributes']['page_width'],
-                                        'page_height': elements[0]['attributes']['page_height']
+                            # Store the analysis results
+                            for page_num, elements in page_elements.items():
+                                self.document_data['page_structures'][page_num] = {
+                                    'timestamp': datetime.datetime.now().isoformat(),
+                                    'structure': {
+                                        'elements': elements,
+                                        'metadata': {
+                                            'page_number': int(page_num),
+                                            'page_width': elements[0]['attributes']['page_width'],
+                                            'page_height': elements[0]['attributes']['page_height']
+                                        }
                                     }
                                 }
-                            }
-                        
-                        logger.info(f"Page elements: {page_elements}")
-                        # Update the display
-                        self.update_page_display()
-                        
-                        logger.info("Saving session after analysis")
-                        # Auto-save session after analysis
-                        self.save_session()
-                        session_file = os.path.splitext(self.current_file)[0] + '.json'
-                        if os.path.exists(session_file):
-                            try:
-                                self.load_session(session_file)
-                            except Exception as e:
-                                logger.error(f"Error loading session file {session_file}: {str(e)}")
-                                QMessageBox.warning(self, "Session Load Error", 
-                                                  f"Could not load session file:\n{str(e)}")
-                        
-                        # Show completion message
-                        analyzed_pages = len(page_elements)
-                        msg = f"Document analysis completed - {analyzed_pages} pages analyzed"
-                        if need_ocr:
-                            msg += " (with OCR)"
-                            # Ask if user wants to open the OCR'd PDF
-                            reply = QMessageBox.question(
-                                self,
-                                "OCR Complete",
-                                f"OCR processing completed. The OCR'd PDF has been saved as:\n{ocr_pdf_path}\n\nWould you like to open it?",
-                                QMessageBox.Yes | QMessageBox.No,
-                                QMessageBox.Yes
-                            )
-                            if reply == QMessageBox.Yes:
-                                self.open_exported_file(ocr_pdf_path, True)
-                        
-                        self.status_label.showMessage(msg, 3000)
-                        logger.info(msg)
-                        
-                    else:
-                        error_msg = f"Layout analysis service returned status code: {response.status_code}"
+                            
+                            # Update the display
+                            self.update_page_display()
+                            
+                            # Auto-save session after analysis
+                            self.save_session()
+                            
+                            # Show completion message
+                            analyzed_pages = len(page_elements)
+                            msg = f"Document analysis completed - {analyzed_pages} pages analyzed"
+                            if need_ocr:
+                                msg += " (with OCR)"
+                                # Ask if user wants to open the OCR'd PDF
+                                reply = QMessageBox.question(
+                                    self,
+                                    "OCR Complete",
+                                    f"OCR processing completed. The OCR'd PDF has been saved as:\n{ocr_pdf_path}\n\nWould you like to open it?",
+                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                    QMessageBox.StandardButton.Yes
+                                )
+                                if reply == QMessageBox.StandardButton.Yes:
+                                    self.open_pdf(ocr_pdf_path)
+                            
+                            self.status_label.showMessage(msg, 3000)
+                            logger.info(msg)
+                            
+                        else:
+                            error_msg = f"Layout analysis service returned status code: {response.status_code}"
+                            logger.error(error_msg)
+                            QMessageBox.warning(self, "Analysis Error", error_msg)
+                            
+                    except requests.exceptions.ConnectionError:
+                        error_msg = f"Could not connect to the layout analysis service at {base_url}. Please check the service URL in preferences."
                         logger.error(error_msg)
+                        QMessageBox.warning(self, "Connection Error", error_msg)
+                    except Exception as e:
+                        error_msg = f"Error during layout analysis: {str(e)}"
+                        logger.error(error_msg)
+                        logger.error("Full error details:", exc_info=True)
                         QMessageBox.warning(self, "Analysis Error", error_msg)
                         
-                except requests.exceptions.ConnectionError:
-                    error_msg = f"Could not connect to the layout analysis service at {base_url}. Please check the service URL in preferences."
-                    logger.error(error_msg)
-                    QMessageBox.warning(self, "Connection Error", error_msg)
-                except Exception as e:
-                    error_msg = f"Error during layout analysis: {str(e)}"
-                    logger.error(error_msg)
-                    logger.error("Full error details:", exc_info=True)
-                    QMessageBox.warning(self, "Analysis Error", error_msg)
-                    
-        finally:
-            # Restore cursor
-            QApplication.restoreOverrideCursor()
-            self.ensure_normal_cursor()
+            finally:
+                # Restore cursor
+                QApplication.restoreOverrideCursor()
+                self.ensure_normal_cursor()
+                
+        except Exception as e:
+            logger.error(f"Error in analyze_pdf: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Error processing PDF: {str(e)}")
+            return False
+
+    def load_analysis_from_database(self, analyses):
+        """Load analysis results from database into the UI."""
+        try:
+            # Clear existing results
+            self.clear_results()
+            
+            # Load each analysis into the UI
+            for analysis in analyses:
+                # Add analysis result to the appropriate UI components
+                # This will depend on how you want to display the results
+                self.display_analysis_result(analysis.page_number, analysis.analysis_result)
+                
+            logger.debug(f"Loaded {len(analyses)} analysis results")
+            
+        except Exception as e:
+            logger.error(f"Error loading analysis from database: {str(e)}")
+            QMessageBox.warning(self, "Warning", "Failed to load analysis results")
+            
+    def display_analysis_result(self, page_number, result):
+        """Display a single page's analysis result in the UI."""
+        # TODO: Implement the display logic based on your UI requirements
+        pass
+
+    def clear_results(self):
+        """Clear all analysis results from the UI."""
+        # TODO: Implement the clearing logic based on your UI requirements
+        pass
 
     def save_session(self):
         """Save current session data to a file"""
@@ -755,27 +1072,23 @@ class MainWindow(QMainWindow):
                 return
             
             # Update PDF display
-            page = self.doc.load_page(self.current_page)
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(4, 4))  # 2x zoom for better quality
-            image = QImage(pixmap.samples, pixmap.width, pixmap.height, pixmap.stride, QImage.Format.Format_RGB888)
-            self.pdf_viewer.set_page(self.current_page, QPixmap.fromImage(image))
+            self.pdf_viewer.current_page = self.current_page
+            self.pdf_viewer.display_page()
 
             # Get the page structure if it exists
             if str(self.current_page) in self.document_data['page_structures']:
                 structure = self.document_data['page_structures'][str(self.current_page)]
-                self.pdf_viewer.set_page_structure(self.current_page, structure)
-                logger.debug(f"Setting page structure for page {self.current_page}: {structure}")
+                # Extract bounding boxes from structure
+                boxes = structure.get('structure', {}).get('elements', [])
+                self.pdf_viewer.set_bounding_boxes(boxes)
+                logger.debug(f"Setting bounding boxes for page {self.current_page}: {len(boxes)} boxes")
             else:
-                self.pdf_viewer.set_page_structure(self.current_page, None)
-                logger.debug(f"No structure found for page {self.current_page}, {self.document_data['page_structures']}")
+                self.pdf_viewer.set_bounding_boxes([])
+                logger.debug(f"No structure found for page {self.current_page}")
             
             # Update page number display
             self.current_page_input.setText(str(self.current_page + 1))
             self.total_pages_label.setText(f"/ {len(self.doc)}")
-            
-            # Extract and display text
-            self.extract_text()
-            
             
             # Update structure text if available
             structure = self.get_page_structure(self.current_page)
@@ -948,6 +1261,316 @@ class MainWindow(QMainWindow):
                     self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
                 else:
                     self.pdf_viewer.set_bounding_boxes([])
+
+    def load_zotero_library(self):
+        """Load PDFs from Zotero library using collection structure"""
+        try:
+            # Set wait cursor
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+            self.status_label.showMessage("Loading Zotero library...", 0)
+            QApplication.processEvents()
+            
+            # Try default Zotero locations
+            zotero_locations = [
+                os.path.join(os.getenv('APPDATA', ''), 'Zotero'),  # Default Windows AppData
+                os.path.join(os.path.expanduser('~'), 'Zotero'),   # User's home directory
+            ]
+            
+            zotero_dir = None
+            for location in zotero_locations:
+                db_path = os.path.join(location, 'zotero.sqlite')   
+                if os.path.exists(db_path):
+                    logger.info(f"Found Zotero database at: {db_path}")
+                    zotero_dir = location
+                    break
+            
+            # If not found in default locations, ask user
+            if not zotero_dir:
+                QApplication.restoreOverrideCursor()  # Temporarily restore cursor for dialog
+                zotero_dir = QFileDialog.getExistingDirectory(
+                    self,
+                    "Select Zotero Directory",
+                    os.path.expanduser("~"),
+                    QFileDialog.Option.ShowDirsOnly
+                )
+                if not zotero_dir:
+                    return
+                QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))  # Set cursor back
+            
+            # Find the Zotero database
+            db_path = os.path.join(zotero_dir, 'zotero.sqlite')
+            if not os.path.exists(db_path):
+                # Try looking in the profile directory if exists
+                profiles_dir = os.path.join(zotero_dir, 'profiles')
+                if os.path.exists(profiles_dir):
+                    # Look for the first profile directory
+                    for profile in os.listdir(profiles_dir):
+                        profile_db = os.path.join(profiles_dir, profile, 'zotero.sqlite')
+                        if os.path.exists(profile_db):
+                            db_path = profile_db
+                            break
+            
+            if not os.path.exists(db_path):
+                QMessageBox.warning(self, "Database Not Found", 
+                                  f"Could not find Zotero database in {zotero_dir}.\nPlease make sure you selected the correct Zotero directory.")
+                return
+            
+            logger.info(f"Found Zotero database at: {db_path}")
+            
+            # Connect to the database in read-only mode
+            uri = f"file:{db_path}?mode=ro"
+            conn = sqlite3.connect(uri, uri=True)
+            cursor = conn.cursor()
+            
+            # Get collection structure
+            cursor.execute("""
+                WITH RECURSIVE collection_tree AS (
+                    SELECT 
+                        collections.collectionID,
+                        collections.collectionName,
+                        collections.parentCollectionID,
+                        0 as level
+                    FROM collections
+                    WHERE collections.parentCollectionID IS NULL
+                    
+                    UNION ALL
+                    
+                    SELECT 
+                        c.collectionID,
+                        c.collectionName,
+                        c.parentCollectionID,
+                        ct.level + 1
+                    FROM collections c
+                    JOIN collection_tree ct ON c.parentCollectionID = ct.collectionID
+                )
+                SELECT 
+                    collectionID,
+                    collectionName,
+                    parentCollectionID,
+                    level
+                FROM collection_tree
+                ORDER BY level, collectionName
+            """)
+            
+            collections = cursor.fetchall()
+            
+            # Get parent items and their collections
+            cursor.execute("""
+                SELECT DISTINCT
+                    i.itemID,
+                    i.key,
+                    idv.value as title,
+                    ci.collectionID,
+                    it.typeName as itemType,
+                    (SELECT value 
+                     FROM itemData id2 
+                     JOIN itemDataValues idv2 ON id2.valueID = idv2.valueID 
+                     WHERE id2.itemID = i.itemID 
+                     AND id2.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'date')
+                     LIMIT 1) as date,
+                    (SELECT GROUP_CONCAT(idv2.value, '; ')
+                     FROM itemCreators ic
+                     JOIN creators c ON ic.creatorID = c.creatorID
+                     JOIN itemDataValues idv2 ON c.lastName = idv2.value
+                     WHERE ic.itemID = i.itemID
+                     GROUP BY ic.itemID) as authors
+                FROM items i
+                JOIN itemTypes it ON i.itemTypeID = it.itemTypeID
+                LEFT JOIN itemData id ON i.itemID = id.itemID
+                LEFT JOIN itemDataValues idv ON id.valueID = idv.valueID
+                LEFT JOIN collectionItems ci ON i.itemID = ci.itemID
+                WHERE i.itemID NOT IN (SELECT itemID FROM itemAttachments)
+                AND it.typeName NOT IN ('attachment', 'note')
+                AND (id.fieldID IS NULL OR id.fieldID = (
+                    SELECT fieldID FROM fields WHERE fieldName = 'title'
+                ))
+                ORDER BY idv.value
+            """)
+            
+            parent_items = cursor.fetchall()
+            logger.debug(f"Found {len(parent_items)} parent items")
+            
+            # Get PDF attachments with their parent items
+            cursor.execute("""
+                SELECT 
+                    a.itemID,
+                    a.parentItemID,
+                    a.path,
+                    COALESCE(
+                        (SELECT value 
+                         FROM itemData id 
+                         JOIN itemDataValues idv ON id.valueID = idv.valueID 
+                         WHERE id.itemID = a.itemID 
+                         AND id.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'title')
+                         LIMIT 1),
+                        a.path
+                    ) as title,
+                    i.key as zotero_key
+                FROM itemAttachments a
+                JOIN items i ON a.itemID = i.itemID
+                WHERE a.contentType = 'application/pdf'
+                AND a.parentItemID IS NOT NULL
+            """)
+            
+            attachments = cursor.fetchall()
+            logger.info(f"Found {len(attachments)} PDF attachments")
+            
+            # Create a dictionary of attachments by parent ID for faster lookup
+            attachments_by_parent = {}
+            for attachment in attachments:
+                parent_id = attachment[1]  # parentItemID
+                if parent_id not in attachments_by_parent:
+                    attachments_by_parent[parent_id] = []
+                attachments_by_parent[parent_id].append(attachment)
+                logger.debug(f"Attachment {attachment[3]} -> Parent {parent_id} (Key: {attachment[4]})")
+            
+            # Create collection hierarchy
+            collection_map = {}
+            root_collections = []
+            self.collection_items = {}  # Store items by collection ID
+            
+            for collection_id, name, parent_id, level in collections:
+                item = QTreeWidgetItem()
+                item.setText(0, name)
+                item.setText(1, "Collection")
+                item.collection_id = collection_id
+                collection_map[collection_id] = item
+                self.collection_items[collection_id] = []  # Initialize empty list for items
+                
+                if parent_id is None:
+                    root_collections.append(item)
+                else:
+                    parent = collection_map.get(parent_id)
+                    if parent:
+                        parent.addChild(item)
+            
+            # Configure logging to handle Unicode
+            for handler in logger.handlers:
+                if isinstance(handler, logging.StreamHandler):
+                    handler.setStream(sys.stdout)
+
+            # Process items and attachments
+            storage_base = os.path.join(zotero_dir, 'storage')
+            logger.info(f"Using storage base directory: {storage_base}")
+            
+            for item_id, key, title, collection_id, item_type, date, authors in parent_items:
+                # Create display text with metadata
+                display_text = title if title else "Untitled"
+                if authors:
+                    display_text = f"{authors} - {display_text}"
+                if date:
+                    display_text += f" ({date})"
+                
+                parent_item = QTreeWidgetItem()
+                parent_item.setText(0, display_text)
+                parent_item.setText(1, item_type)
+                parent_item.item_id = item_id
+                
+                # Add PDF attachments as children
+                if item_id in attachments_by_parent:
+                    for attachment in attachments_by_parent[item_id]:
+                        try:
+                            zotero_key = attachment[4]  # Zotero key
+                            storage_dir = os.path.join(storage_base, zotero_key)
+                            
+                            if os.path.exists(storage_dir):
+                                # Look for PDF files in the key's directory
+                                files = os.listdir(storage_dir)
+                                pdf_files = [f for f in files if f.lower().endswith('.pdf')]
+                                
+                                if pdf_files:
+                                    # Use the first PDF file found
+                                    pdf_path = os.path.join(storage_dir, pdf_files[0])
+                                    pdf_item = QTreeWidgetItem(parent_item)
+                                    
+                                    # Use a readable name for display
+                                    display_name = attachment[3]
+                                    if display_name.startswith('storage:'):
+                                        display_name = pdf_files[0]
+                                    
+                                    pdf_item.setText(0, display_name)
+                                    pdf_item.setText(1, "PDF")
+                                    pdf_item.file_path = pdf_path
+                                    logger.debug(f"Added PDF: {display_name} from {pdf_path}")
+                                else:
+                                    logger.warning(f"No PDF files found in directory: {storage_dir}")
+                                    pdf_item = QTreeWidgetItem(parent_item)
+                                    pdf_item.setText(0, f"{os.path.basename(attachment[3])} (Not Found)")
+                                    pdf_item.setText(1, "Missing PDF")
+                                    pdf_item.setForeground(0, Qt.GlobalColor.red)
+                            else:
+                                logger.warning(f"Storage directory not found: {storage_dir}")
+                                pdf_item = QTreeWidgetItem(parent_item)
+                                pdf_item.setText(0, f"{os.path.basename(attachment[3])} (Directory Not Found)")
+                                pdf_item.setText(1, "Missing PDF")
+                                pdf_item.setForeground(0, Qt.GlobalColor.red)
+                                
+                        except Exception as e:
+                            logger.error(f"Error processing attachment {zotero_key}: {str(e)}")
+                
+                # Add to appropriate collection's items list
+                if collection_id and collection_id in self.collection_items:
+                    self.collection_items[collection_id].append(parent_item)
+                else:
+                    # If no collection or collection not found, add to "Unfiled Items"
+                    unfiled_id = -1  # Special ID for unfiled items
+                    if unfiled_id not in self.collection_items:
+                        self.collection_items[unfiled_id] = []
+                        unfiled = QTreeWidgetItem()
+                        unfiled.setText(0, "Unfiled Items")
+                        unfiled.setText(1, "Collection")
+                        unfiled.collection_id = unfiled_id
+                        root_collections.append(unfiled)
+                        collection_map[unfiled_id] = unfiled
+                    self.collection_items[unfiled_id].append(parent_item)
+            
+            # Clear existing items and add new structure
+            self.collections_tree.clear()
+            self.items_tree.clear()
+            
+            # Add collections to the collections tree
+            for collection in root_collections:
+                self.collections_tree.addTopLevelItem(collection)
+            
+            # Expand the first level of collections
+            for i in range(self.collections_tree.topLevelItemCount()):
+                self.collections_tree.topLevelItem(i).setExpanded(True)
+            
+            self.status_label.showMessage("Loaded Zotero library structure", 3000)
+            logger.info("Loaded Zotero library structure")
+            
+        except Exception as e:
+            logger.error(f"Error loading Zotero library: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Could not load Zotero library:\n{str(e)}")
+            
+        finally:
+            # Restore cursor
+            QApplication.restoreOverrideCursor()
+            self.ensure_normal_cursor()
+
+    def load_analysis_from_database(self, file_path):
+        """Load analysis results from database for a given file"""
+        try:
+            with db:
+                doc = PDFDocument.get(PDFDocument.file_path == file_path)
+                if doc.last_analyzed:
+                    pages = (PageAnalysis
+                           .select()
+                           .where(PageAnalysis.document == doc)
+                           .order_by(PageAnalysis.page_number))
+                    
+                    for page in pages:
+                        page_num = str(page.page_number)
+                        self.document_data['page_structures'][page_num] = json.loads(page.analysis_data)
+                    
+                    logger.info(f"Loaded analysis from database for {file_path}")
+                    return True
+        except DoesNotExist:
+            logger.debug(f"No analysis found in database for {file_path}")
+        except Exception as e:
+            logger.error(f"Error loading analysis from database: {str(e)}")
+        
+        return False
 
 def main():
     try:
