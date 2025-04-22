@@ -1965,10 +1965,21 @@ class MainWindow(QMainWindow):
                 
                 # Find the selected collection in the tree
                 selected_collection = None
+                
+                def find_collection(item, target_id):
+                    if hasattr(item, 'collection_id') and item.collection_id == target_id:
+                        return item
+                    for i in range(item.childCount()):
+                        result = find_collection(item.child(i), target_id)
+                        if result:
+                            return result
+                    return None
+                
+                # Search through all collections recursively
                 for i in range(self.collections_tree.topLevelItemCount()):
                     item = self.collections_tree.topLevelItem(i)
-                    if hasattr(item, 'collection_id') and item.collection_id == selected_collection_id:
-                        selected_collection = item
+                    selected_collection = find_collection(item, selected_collection_id)
+                    if selected_collection:
                         break
                 
                 if selected_collection:
