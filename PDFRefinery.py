@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                            QDialogButtonBox, QMenuBar, QMenu, QMessageBox,
                            QTreeWidget, QTreeWidgetItem, QDockWidget, QSplitter,
-                           QComboBox)
+                           QComboBox, QRadioButton, QButtonGroup)
 from PyQt6.QtCore import Qt, QPoint, QSettings
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor
 import fitz  # PyMuPDF
@@ -1836,10 +1836,62 @@ class MainWindow(QMainWindow):
     def batch_analyze(self):
         """Analyze all PDF files in the items tree"""
         try:
+            # Create dialog for analysis options
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Batch Analysis Options")
+            layout = QVBoxLayout()
+
+            # Add radio buttons for analysis scope
+            scope_group = QButtonGroup(dialog)
+            all_pdfs_radio = QRadioButton("Analyze all PDFs in library")
+            selected_collection_radio = QRadioButton("Analyze PDFs in selected collection")
+            all_pdfs_radio.setChecked(True)
+            scope_group.addButton(all_pdfs_radio)
+            scope_group.addButton(selected_collection_radio)
+            layout.addWidget(all_pdfs_radio)
+            layout.addWidget(selected_collection_radio)
+
+            # Add collection selection combo box (initially disabled)
+            collection_combo = QComboBox()
+            collection_combo.setEnabled(False)
+            layout.addWidget(collection_combo)
+
+            # Populate collection combo box
+            for i in range(self.collections_tree.topLevelItemCount()):
+                collection = self.collections_tree.topLevelItem(i)
+                collection_combo.addItem(collection.text(0), collection.collection_id)
+
+            # Connect radio buttons to enable/disable collection combo
+            def update_collection_combo():
+                collection_combo.setEnabled(selected_collection_radio.isChecked())
+            all_pdfs_radio.toggled.connect(update_collection_combo)
+            selected_collection_radio.toggled.connect(update_collection_combo)
+
+            # Add buttons
+            button_box = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok | 
+                QDialogButtonBox.StandardButton.Cancel
+            )
+            button_box.accepted.connect(dialog.accept)
+            button_box.rejected.connect(dialog.reject)
+            layout.addWidget(button_box)
+
+            dialog.setLayout(layout)
+
+            # Show dialog and get user choice
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+
             # Set wait cursor
             QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             self.status_label.showMessage("Starting batch analysis...", 0)
             QApplication.processEvents()
+
+            # Get selected collection ID if applicable
+            selected_collection_id = None
+            if selected_collection_radio.isChecked():
+                selected_collection_id = collection_combo.currentData()
+                logger.info(f"Selected collection for analysis: {collection_combo.currentText()}")
 
             total_files = 0
             analyzed_files = 0
@@ -1849,14 +1901,42 @@ class MainWindow(QMainWindow):
             previous_file = self.current_file if hasattr(self, 'current_file') else None
             previous_doc = self.doc if hasattr(self, 'doc') else None
 
-            # Get all PDF files from items tree
+            # Get PDF files based on selection
             pdf_items = []
-            for i in range(self.items_tree.topLevelItemCount()):
-                item = self.items_tree.topLevelItem(i)
-                if (hasattr(item, 'file_path') and 
-                    item.file_path and 
-                    item.file_path.lower().endswith('.pdf')):
-                    pdf_items.append(item)
+            if selected_collection_id:
+                # Get PDFs from selected collection
+                if selected_collection_id in self.collection_data:
+                    for item_data in self.collection_data[selected_collection_id]:
+                        # Add parent item's PDFs
+                        if 'children' in item_data:
+                            for child in item_data['children']:
+                                if 'file_path' in child and child['file_path'].lower().endswith('.pdf'):
+                                    # Find the corresponding tree item
+                                    for i in range(self.items_tree.topLevelItemCount()):
+                                        parent = self.items_tree.topLevelItem(i)
+                                        for j in range(parent.childCount()):
+                                            child_item = parent.child(j)
+                                            if (hasattr(child_item, 'file_path') and 
+                                                child_item.file_path == child['file_path']):
+                                                pdf_items.append(child_item)
+                                                break
+                        # Add standalone PDFs
+                        elif 'file_path' in item_data and item_data['file_path'].lower().endswith('.pdf'):
+                            # Find the corresponding tree item
+                            for i in range(self.items_tree.topLevelItemCount()):
+                                item = self.items_tree.topLevelItem(i)
+                                if (hasattr(item, 'file_path') and 
+                                    item.file_path == item_data['file_path']):
+                                    pdf_items.append(item)
+                                    break
+            else:
+                # Get all PDF files from items tree
+                for i in range(self.items_tree.topLevelItemCount()):
+                    item = self.items_tree.topLevelItem(i)
+                    if (hasattr(item, 'file_path') and 
+                        item.file_path and 
+                        item.file_path.lower().endswith('.pdf')):
+                        pdf_items.append(item)
 
             total_files = len(pdf_items)
             if total_files == 0:
