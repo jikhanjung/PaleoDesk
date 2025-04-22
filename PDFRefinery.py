@@ -515,77 +515,108 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logger.error(f"Error loading session data: {str(e)}")
 
-    def load_directory_structure(self, dir_path, parent_item=None):
-        """Load directory structure into the tree widget"""
+    def load_directory(self):
+        """Load all PDF files from a selected directory and its subdirectories"""
         try:
-            if parent_item is None:
-                # Clear existing items if this is the root
-                self.tree_widget.clear()
-                parent_item = self.tree_widget
+            # Set wait cursor
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+            self.status_label.showMessage("Loading directory...", 0)
+            QApplication.processEvents()
             
-            # Get all items in the directory
-            items = os.listdir(dir_path)
-            items.sort()  # Sort alphabetically
+            dir_path = QFileDialog.getExistingDirectory(
+                self, "Select Directory", "",
+                QFileDialog.Option.ShowDirsOnly
+            )
             
-            for item in items:
-                full_path = os.path.join(dir_path, item)
+            if not dir_path:
+                return
                 
-                # Skip if not a directory or PDF file
-                if not os.path.isdir(full_path) and not item.lower().endswith('.pdf'):
-                    continue
-                
-                # Create tree item
-                tree_item = QTreeWidgetItem(parent_item)
-                tree_item.setText(0, item)
-                tree_item.file_path = full_path  # Store full path as item attribute
-                
-                if os.path.isdir(full_path):
-                    tree_item.setText(1, "Directory")
-                    # Add a dummy child to make it expandable
-                    QTreeWidgetItem(tree_item)
-                else:  # Must be a PDF file
-                    tree_item.setText(1, "PDF File")
+            # Clear existing items
+            self.collections_tree.clear()
+            self.items_tree.clear()
             
-            logger.info(f"Loaded directory structure: {dir_path}")
+            # Create root collection item
+            root_item = QTreeWidgetItem()
+            root_item.setText(0, os.path.basename(dir_path))
+            root_item.setText(1, "Directory")
+            root_item.dir_path = dir_path
+            self.collections_tree.addTopLevelItem(root_item)
+            
+            # Dictionary to store directory items by path
+            self.directory_items = {dir_path: root_item}
+            pdf_files = []
+            
+            def load_subdirectories(parent_item, current_dir):
+                try:
+                    # Get all items in the directory
+                    items = os.listdir(current_dir)
+                    items.sort()  # Sort alphabetically
+                    
+                    # First process directories
+                    for item in sorted(items):
+                        full_path = os.path.join(current_dir, item)
+                        if os.path.isdir(full_path):
+                            # Create directory item
+                            dir_item = QTreeWidgetItem(parent_item)
+                            dir_item.setText(0, item)
+                            dir_item.setText(1, "Directory")
+                            dir_item.dir_path = full_path
+                            self.directory_items[full_path] = dir_item
+                            
+                            # Recursively load subdirectories
+                            load_subdirectories(dir_item, full_path)
+                    
+                    # Then collect PDF files
+                    for item in sorted(items):
+                        full_path = os.path.join(current_dir, item)
+                        if item.lower().endswith('.pdf'):
+                            pdf_files.append(full_path)
+                            
+                except Exception as e:
+                    logger.error(f"Error loading subdirectory {current_dir}: {str(e)}")
+            
+            # Start recursive loading
+            load_subdirectories(root_item, dir_path)
+            
+            if not pdf_files:
+                QMessageBox.information(self, "No PDF Files", 
+                                    "No PDF files found in the selected directory or its subdirectories.")
+                return
+                
+            # Sort files by name
+            pdf_files.sort()
+            
+            # Add PDF files to items tree
+            for pdf_file in pdf_files:
+                item = QTreeWidgetItem()
+                item.setText(0, os.path.basename(pdf_file))
+                item.setText(1, "PDF")
+                item.file_path = pdf_file
+                self.items_tree.addTopLevelItem(item)
+            
+            # Load the first PDF file
+            if pdf_files:
+                self.load_pdf_file(pdf_files[0])
+                
+                # Store the list of PDF files
+                self.pdf_files = pdf_files
+                self.current_file_index = 0
+                
+            # Expand the first level of directories
+            for i in range(self.collections_tree.topLevelItemCount()):
+                self.collections_tree.topLevelItem(i).setExpanded(True)
+                
+            self.status_label.showMessage(f"Loaded directory: {dir_path}", 3000)
+            logger.info(f"Loaded directory: {dir_path} with {len(pdf_files)} PDF files")
             
         except Exception as e:
-            logger.error(f"Error loading directory structure: {str(e)}")
-            QMessageBox.warning(self, "Error", f"Could not load directory structure:\n{str(e)}")
-
-    def load_directory(self):
-        """Load all PDF files from a selected directory"""
-        dir_path = QFileDialog.getExistingDirectory(
-            self, "Select Directory", "",
-            QFileDialog.Option.ShowDirsOnly
-        )
-        
-        if not dir_path:
-            return
+            logger.error(f"Error loading directory: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Could not load directory:\n{str(e)}")
             
-        # Load directory structure into tree widget
-        self.load_directory_structure(dir_path)
-        
-        # Get all PDF files in the directory
-        pdf_files = []
-        for file in os.listdir(dir_path):
-            if file.lower().endswith('.pdf'):
-                pdf_files.append(os.path.join(dir_path, file))
-                
-        if not pdf_files:
-            QMessageBox.information(self, "No PDF Files", 
-                                  "No PDF files found in the selected directory.")
-            return
-            
-        # Sort files by name
-        pdf_files.sort()
-        
-        # Load the first PDF file
-        if pdf_files:
-            self.load_pdf_file(pdf_files[0])
-            
-            # Store the list of PDF files
-            self.pdf_files = pdf_files
-            self.current_file_index = 0
+        finally:
+            # Restore cursor
+            QApplication.restoreOverrideCursor()
+            self.ensure_normal_cursor()
 
     def create_menu(self):
         menubar = self.menuBar()
@@ -788,8 +819,25 @@ class MainWindow(QMainWindow):
                           .order_by(PageAnalysis.page_number))
                 
                 if analyses.count() > 0:
-                    self.load_analysis_from_database(analyses)
-                    return True
+                    # Load session data if exists
+                    session = (SessionData
+                             .select()
+                             .where(SessionData.document == document)
+                             .order_by(SessionData.last_accessed.desc())
+                             .first())
+                    
+                    if session:
+                        # Load session data
+                        session_data = json.loads(session.session_data)
+                        self.document_data = session_data.get('document_data', {})
+                        self.current_page = session.current_page
+                        self.pdf_viewer.current_page = self.current_page
+                        
+                        # Update UI
+                        self.update_page_display()
+                        self.status_label.showMessage(f"Loaded existing analysis for {os.path.basename(file_path)}", 3000)
+                        logger.info(f"Loaded existing analysis and session data for {file_path}")
+                        return True
                     
             except DoesNotExist:
                 logger.info(f"No existing analysis found for {file_path}")
@@ -961,7 +1009,6 @@ class MainWindow(QMainWindow):
                             # Show completion message
                             analyzed_pages = len(page_elements)
                             msg = f"Document analysis completed - {analyzed_pages} pages analyzed"
-
                             
                             self.status_label.showMessage(msg, 3000)
                             logger.info(msg)
@@ -1533,17 +1580,12 @@ class MainWindow(QMainWindow):
             self.ensure_normal_cursor()
 
     def batch_analyze(self):
-        """Analyze all PDF files in the collections"""
+        """Analyze all PDF files in the items tree"""
         try:
             # Set wait cursor
             QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             self.status_label.showMessage("Starting batch analysis...", 0)
             QApplication.processEvents()
-
-            # Get all collections
-            collections = []
-            for i in range(self.collections_tree.topLevelItemCount()):
-                collections.append(self.collections_tree.topLevelItem(i))
 
             total_files = 0
             analyzed_files = 0
@@ -1553,76 +1595,70 @@ class MainWindow(QMainWindow):
             previous_file = self.current_file if hasattr(self, 'current_file') else None
             previous_doc = self.doc if hasattr(self, 'doc') else None
 
-            # Iterate through collections
-            for collection in collections:
-                # Select and scroll to the collection in the tree
-                self.collections_tree.setCurrentItem(collection)
-                self.collections_tree.scrollToItem(collection)
+            # Get all PDF files from items tree
+            pdf_items = []
+            for i in range(self.items_tree.topLevelItemCount()):
+                item = self.items_tree.topLevelItem(i)
+                if (hasattr(item, 'file_path') and 
+                    item.file_path and 
+                    item.file_path.lower().endswith('.pdf')):
+                    pdf_items.append(item)
+
+            total_files = len(pdf_items)
+            if total_files == 0:
+                QMessageBox.information(self, "No PDF Files", 
+                                      "No PDF files found to analyze.")
+                return
+
+            # Process PDF items
+            for index, pdf_item in enumerate(pdf_items, 1):
+                # Select and scroll to the item
+                self.items_tree.setCurrentItem(pdf_item)
+                self.items_tree.scrollToItem(pdf_item)
                 QApplication.processEvents()  # Update UI
-                
-                # Get all items in this collection and show them in the items tree
-                items = self.collection_items.get(collection.collection_id, [])
-                self.items_tree.clear()
-                for item in items:
-                    self.items_tree.addTopLevelItem(item)
-                QApplication.processEvents()  # Update UI
-                
-                # Iterate through items
-                for item in items:
-                    # Check if item has PDF attachments
-                    for i in range(item.childCount()):
-                        pdf_item = item.child(i)
-                        if hasattr(pdf_item, 'file_path') and pdf_item.file_path:
-                            total_files += 1
-                            
-                            # Select the PDF item in the tree
-                            item.setExpanded(True)  # Expand parent to show PDF
-                            self.items_tree.setCurrentItem(pdf_item)
-                            self.items_tree.scrollToItem(pdf_item)
-                            QApplication.processEvents()  # Update UI
-                            
-                            # Update status
-                            self.status_label.showMessage(
-                                f"Analyzing {os.path.basename(pdf_item.file_path)} "
-                                f"({analyzed_files + 1}/{total_files})...", 0)
-                            QApplication.processEvents()
-                            
-                            try:
-                                # Open the PDF file and show first page
-                                self.current_file = pdf_item.file_path
-                                self.pdf_directory = os.path.dirname(pdf_item.file_path)
-                                self.doc = fitz.open(pdf_item.file_path)
-                                self.current_page = 0
-                                self.pdf_viewer.current_page = 0
-                                self.pdf_viewer.open_pdf(pdf_item.file_path)
-                                self.update_navigation()
-                                QApplication.processEvents()  # Update UI
-                                
-                                # Analyze the PDF
-                                if self.analyze_pdf(pdf_item.file_path):
-                                    analyzed_files += 1
-                                    # Update item text to show it's analyzed
-                                    pdf_item.setText(1, "PDF (Analyzed)")
-                                else:
-                                    failed_files += 1
-                                    pdf_item.setText(1, "PDF (Failed)")
-                                    pdf_item.setForeground(1, Qt.GlobalColor.red)
-                                
-                                # Close the document
-                                self.doc.close()
-                                
-                            except Exception as e:
-                                logger.error(f"Error analyzing {pdf_item.file_path}: {str(e)}")
-                                failed_files += 1
-                                pdf_item.setText(1, "PDF (Error)")
-                                pdf_item.setForeground(1, Qt.GlobalColor.red)
-                                
-                                # Make sure to close the document if it's open
-                                if hasattr(self, 'doc') and self.doc:
-                                    try:
-                                        self.doc.close()
-                                    except:
-                                        pass
+
+                # Update status
+                self.status_label.showMessage(
+                    f"Analyzing {os.path.basename(pdf_item.file_path)} "
+                    f"({index}/{total_files})...", 0)
+                QApplication.processEvents()
+
+                try:
+                    # Open the PDF file and show first page
+                    self.current_file = pdf_item.file_path
+                    self.pdf_directory = os.path.dirname(pdf_item.file_path)
+                    self.doc = fitz.open(pdf_item.file_path)
+                    self.current_page = 0
+                    self.pdf_viewer.current_page = 0
+                    self.pdf_viewer.open_pdf(pdf_item.file_path)
+                    self.update_navigation()
+                    QApplication.processEvents()  # Update UI
+
+                    # Analyze the PDF
+                    if self.analyze_pdf(pdf_item.file_path):
+                        analyzed_files += 1
+                        # Update item text to show it's analyzed
+                        pdf_item.setText(1, "PDF (Analyzed)")
+                    else:
+                        failed_files += 1
+                        pdf_item.setText(1, "PDF (Failed)")
+                        pdf_item.setForeground(1, Qt.GlobalColor.red)
+
+                    # Close the document
+                    self.doc.close()
+
+                except Exception as e:
+                    logger.error(f"Error analyzing {pdf_item.file_path}: {str(e)}")
+                    failed_files += 1
+                    pdf_item.setText(1, "PDF (Error)")
+                    pdf_item.setForeground(1, Qt.GlobalColor.red)
+
+                    # Make sure to close the document if it's open
+                    if hasattr(self, 'doc') and self.doc:
+                        try:
+                            self.doc.close()
+                        except:
+                            pass
 
             # Restore previous file if there was one
             if previous_file and os.path.exists(previous_file):
@@ -1639,11 +1675,11 @@ class MainWindow(QMainWindow):
             msg = f"Batch analysis completed. Analyzed: {analyzed_files}, Failed: {failed_files}, Total: {total_files}"
             self.status_label.showMessage(msg, 5000)
             QMessageBox.information(self, "Batch Analysis Complete", msg)
-            
+
         except Exception as e:
             logger.error(f"Error in batch analysis: {str(e)}")
             QMessageBox.warning(self, "Error", f"Error during batch analysis: {str(e)}")
-            
+
         finally:
             # Restore cursor
             QApplication.restoreOverrideCursor()
