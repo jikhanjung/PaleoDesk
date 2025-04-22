@@ -455,9 +455,14 @@ class StructuredContentView(QWidget):
         self.grid_widget = QWidget()
         self.grid_widget.setLayout(self.content_grid)
         
+        # Create scroll area for the grid widget
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setWidget(self.grid_widget)
+        
         # Add views to stacked widget
         self.view_stack.addWidget(self.content_tree)
-        self.view_stack.addWidget(self.grid_widget)
+        self.view_stack.addWidget(self.scroll_area)  # Changed from grid_widget to scroll_area
         
         # Set initial view to icon view
         self.view_stack.setCurrentIndex(1)  # Changed to 1 for icon view
