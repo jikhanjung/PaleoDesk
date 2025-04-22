@@ -1096,31 +1096,38 @@ class MainWindow(QMainWindow):
                 zotero_key = None
                 
                 # Try to find the current item in the items tree
+                current_item = None
                 for i in range(self.items_tree.topLevelItemCount()):
                     item = self.items_tree.topLevelItem(i)
                     if hasattr(item, 'file_path') and item.file_path == self.current_file:
-                        if hasattr(item, 'zotero_key'):
-                            zotero_key = item.zotero_key
-                            break
+                        current_item = item
+                        break
                     # Check child items if no match found
                     for j in range(item.childCount()):
                         child = item.child(j)
                         if hasattr(child, 'file_path') and child.file_path == self.current_file:
-                            if hasattr(child, 'zotero_key'):
-                                zotero_key = child.zotero_key
-                                break
-                    if zotero_key:
+                            current_item = child
+                            break
+                    if current_item:
                         break
+                
+                # Get Zotero key from the item if available
+                if current_item and hasattr(current_item, 'zotero_key'):
+                    zotero_key = current_item.zotero_key
+                    logger.debug(f"Found Zotero key for current file: {zotero_key}")
                 
                 # If no Zotero key found, use file hash
                 if not zotero_key:
                     file_hash = calculate_file_hash(self.current_file)
+                    logger.debug(f"No Zotero key found, using file hash: {file_hash}")
                 
                 try:
                     if zotero_key:
                         document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                        logger.debug(f"Found existing document by Zotero key: {zotero_key}")
                     else:
                         document = PDFDocument.get(PDFDocument.file_hash == file_hash)
+                        logger.debug(f"Found existing document by file hash: {file_hash}")
                 except DoesNotExist:
                     document = PDFDocument.create(
                         file_path=self.current_file,
@@ -1129,6 +1136,7 @@ class MainWindow(QMainWindow):
                         title=os.path.basename(self.current_file),
                         page_count=len(self.doc) if self.doc else 0
                     )
+                    logger.debug(f"Created new document record with Zotero key: {zotero_key}")
                 
                 # Prepare session data
                 session_data = {
@@ -1152,7 +1160,7 @@ class MainWindow(QMainWindow):
                     last_accessed=datetime.datetime.now()
                 )
                 
-                logger.info(f"Session saved to database for {self.current_file}")
+                logger.info(f"Session saved to database for {self.current_file} (Zotero key: {zotero_key})")
                 logger.debug(f"Saved {len(self.document_data['page_structures'])} page structures")
                 
         except Exception as e:
@@ -1177,29 +1185,35 @@ class MainWindow(QMainWindow):
                 zotero_key = None
                 
                 # Try to find the file in the items tree
+                current_item = None
                 for i in range(self.items_tree.topLevelItemCount()):
                     item = self.items_tree.topLevelItem(i)
                     if hasattr(item, 'file_path') and item.file_path == file_path:
-                        if hasattr(item, 'zotero_key'):
-                            zotero_key = item.zotero_key
-                            break
+                        current_item = item
+                        break
                     # Check child items if no match found
                     for j in range(item.childCount()):
                         child = item.child(j)
                         if hasattr(child, 'file_path') and child.file_path == file_path:
-                            if hasattr(child, 'zotero_key'):
-                                zotero_key = child.zotero_key
-                                break
-                    if zotero_key:
+                            current_item = child
+                            break
+                    if current_item:
                         break
+                
+                # Get Zotero key from the item if available
+                if current_item and hasattr(current_item, 'zotero_key'):
+                    zotero_key = current_item.zotero_key
+                    logger.debug(f"Found Zotero key for file: {zotero_key}")
                 
                 try:
                     if zotero_key:
                         document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                        logger.debug(f"Found document by Zotero key: {zotero_key}")
                     else:
                         # Fall back to file hash if no Zotero key
                         file_hash = calculate_file_hash(file_path)
                         document = PDFDocument.get(PDFDocument.file_hash == file_hash)
+                        logger.debug(f"Found document by file hash: {file_hash}")
                 except DoesNotExist:
                     logger.error(f"No session found for {file_path}")
                     return
@@ -1250,7 +1264,7 @@ class MainWindow(QMainWindow):
                         if current_page_boxes:
                             self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
                     
-                    logger.info(f"Successfully loaded session with {len(self.doc)} pages")
+                    logger.info(f"Successfully loaded session with {len(self.doc)} pages (Zotero key: {zotero_key})")
                     self.status_label.showMessage("Session loaded successfully", 3000)
                     
                 except Exception as e:
