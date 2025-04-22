@@ -1954,31 +1954,54 @@ class MainWindow(QMainWindow):
             # Get PDF files based on selection
             pdf_items = []
             if selected_collection_id:
-                # Get PDFs from selected collection
-                if selected_collection_id in self.collection_data:
-                    for item_data in self.collection_data[selected_collection_id]:
-                        # Add parent item's PDFs
-                        if 'children' in item_data:
-                            for child in item_data['children']:
-                                if 'file_path' in child and child['file_path'].lower().endswith('.pdf'):
-                                    # Find the corresponding tree item
-                                    for i in range(self.items_tree.topLevelItemCount()):
-                                        parent = self.items_tree.topLevelItem(i)
-                                        for j in range(parent.childCount()):
-                                            child_item = parent.child(j)
-                                            if (hasattr(child_item, 'file_path') and 
-                                                child_item.file_path == child['file_path']):
-                                                pdf_items.append(child_item)
-                                                break
-                        # Add standalone PDFs
-                        elif 'file_path' in item_data and item_data['file_path'].lower().endswith('.pdf'):
-                            # Find the corresponding tree item
-                            for i in range(self.items_tree.topLevelItemCount()):
-                                item = self.items_tree.topLevelItem(i)
-                                if (hasattr(item, 'file_path') and 
-                                    item.file_path == item_data['file_path']):
-                                    pdf_items.append(item)
-                                    break
+                # Get all collection IDs including subcollections
+                collection_ids = set()
+                
+                def get_subcollection_ids(item):
+                    if hasattr(item, 'collection_id'):
+                        collection_ids.add(item.collection_id)
+                    for i in range(item.childCount()):
+                        get_subcollection_ids(item.child(i))
+                
+                # Find the selected collection in the tree
+                selected_collection = None
+                for i in range(self.collections_tree.topLevelItemCount()):
+                    item = self.collections_tree.topLevelItem(i)
+                    if hasattr(item, 'collection_id') and item.collection_id == selected_collection_id:
+                        selected_collection = item
+                        break
+                
+                if selected_collection:
+                    # Get all collection IDs including subcollections
+                    get_subcollection_ids(selected_collection)
+                    logger.info(f"Found {len(collection_ids)} collections to process")
+                
+                # Get PDFs from all collections
+                for collection_id in collection_ids:
+                    if collection_id in self.collection_data:
+                        for item_data in self.collection_data[collection_id]:
+                            # Add parent item's PDFs
+                            if 'children' in item_data:
+                                for child in item_data['children']:
+                                    if 'file_path' in child and child['file_path'].lower().endswith('.pdf'):
+                                        # Find the corresponding tree item
+                                        for i in range(self.items_tree.topLevelItemCount()):
+                                            parent = self.items_tree.topLevelItem(i)
+                                            for j in range(parent.childCount()):
+                                                child_item = parent.child(j)
+                                                if (hasattr(child_item, 'file_path') and 
+                                                    child_item.file_path == child['file_path']):
+                                                    pdf_items.append(child_item)
+                                                    break
+                            # Add standalone PDFs
+                            elif 'file_path' in item_data and item_data['file_path'].lower().endswith('.pdf'):
+                                # Find the corresponding tree item
+                                for i in range(self.items_tree.topLevelItemCount()):
+                                    item = self.items_tree.topLevelItem(i)
+                                    if (hasattr(item, 'file_path') and 
+                                        item.file_path == item_data['file_path']):
+                                        pdf_items.append(item)
+                                        break
             else:
                 # Get all PDF files from items tree
                 for i in range(self.items_tree.topLevelItemCount()):
