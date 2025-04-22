@@ -289,7 +289,10 @@ class PDFViewer(QWidget):
             
         try:
             page = self.doc[self.current_page]
-            matrix = fitz.Matrix(self.zoom, self.zoom)
+            # Use a higher zoom factor for better quality
+            display_zoom = self.zoom
+            render_zoom = display_zoom * 2  # Double the zoom for rendering
+            matrix = fitz.Matrix(render_zoom, render_zoom)
             pix = page.get_pixmap(matrix=matrix)
             
             # Convert to QImage
@@ -298,8 +301,15 @@ class PDFViewer(QWidget):
             
             # Create QPixmap
             self.pixmap = QPixmap.fromImage(img)
+            
+            # Scale the pixmap to the display size
+            display_size = self.size() * display_zoom
+            self.pixmap = self.pixmap.scaled(display_size, 
+                                           Qt.AspectRatioMode.KeepAspectRatio,
+                                           Qt.TransformationMode.SmoothTransformation)
+            
             self.update()
-            logger.debug(f"Displayed page {self.current_page + 1} at zoom {self.zoom:.2f}")
+            logger.debug(f"Displayed page {self.current_page + 1} at zoom {display_zoom:.2f} (render zoom: {render_zoom:.2f})")
         except Exception as e:
             logger.error(f"Error displaying page {self.current_page + 1}: {str(e)}")
             raise
@@ -453,6 +463,17 @@ class MainWindow(QMainWindow):
         if hasattr(item, 'collection_id'):
             # Clear the items tree
             self.items_tree.clear()
+            
+            # Clear the PDF viewer
+            self.pdf_viewer.set_bounding_boxes([])
+            self.pdf_viewer.pixmap = None
+            self.pdf_viewer.update()
+            
+            # Clear current document data
+            self.document_data = {
+                'page_structures': {},
+                'metadata': {}
+            }
             
             # Get all items for this collection
             if hasattr(self, 'collection_data') and item.collection_id in self.collection_data:
@@ -1515,6 +1536,9 @@ class MainWindow(QMainWindow):
             cursor = conn.cursor()
             
             # Get collection structure
+            self.status_label.showMessage("Loading collection structure...", 0)
+            QApplication.processEvents()
+            
             cursor.execute("""
                 WITH RECURSIVE collection_tree AS (
                     SELECT 
@@ -1545,8 +1569,12 @@ class MainWindow(QMainWindow):
             """)
             
             collections = cursor.fetchall()
+            logger.info(f"Found {len(collections)} collections")
             
             # Get parent items and their collections
+            self.status_label.showMessage("Loading parent items...", 0)
+            QApplication.processEvents()
+            
             cursor.execute("""
                 SELECT DISTINCT
                     i.itemID,
@@ -1590,6 +1618,9 @@ class MainWindow(QMainWindow):
             logger.debug(f"Found {len(parent_items)} parent items")
             
             # Get all PDF attachments (both standalone and child attachments)
+            self.status_label.showMessage("Loading PDF attachments...", 0)
+            QApplication.processEvents()
+            
             cursor.execute("""
                 SELECT 
                     a.itemID,
@@ -1631,6 +1662,9 @@ class MainWindow(QMainWindow):
                 logger.debug(f"Attachment {attachment[3]} -> Parent {parent_id} (Key: {attachment[4]}, Parent Key: {attachment[6]})")
             
             # Create collection hierarchy
+            self.status_label.showMessage("Creating collection hierarchy...", 0)
+            QApplication.processEvents()
+            
             collection_map = {}
             root_collections = []
             self.collection_data = {}  # Store item data by collection ID
@@ -1693,23 +1727,6 @@ class MainWindow(QMainWindow):
                                     'parent_zotero_key': parent_key  # Store parent's Zotero key if available
                                 })
                         
-                        # Create or update document in database with Zotero key
-                        try:
-                            with db:
-                                try:
-                                    document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
-                                    logger.debug(f"Found existing document by Zotero key: {zotero_key}")
-                                except DoesNotExist:
-                                    document = PDFDocument.create(
-                                        file_path=pdf_path,
-                                        zotero_key=zotero_key,
-                                        title=display_name,
-                                        page_count=0  # Will be updated when file is opened
-                                    )
-                                    logger.debug(f"Created new document record with Zotero key: {zotero_key}")
-                        except Exception as e:
-                            logger.error(f"Error creating/updating document record: {str(e)}")
-                        
                         logger.debug(f"Added PDF: {display_name} from {pdf_path} (Key: {zotero_key}, Parent Key: {parent_key})")
                         return True
                     else:
@@ -1723,10 +1740,16 @@ class MainWindow(QMainWindow):
             self.items_tree.clear()
             
             # Track processed items and their collections
-            processed_items = {}  # item_id -> (parent_item, collections)
+            processed_items = {}
             
             # Process parent items and their attachments
-            for item_id, key, title, collection_id, item_type, year, authors, author_count in parent_items:
+            total_items = len(parent_items)
+            for index, (item_id, key, title, collection_id, item_type, year, authors, author_count) in enumerate(parent_items, 1):
+                # Update status every 100 items
+                if index % 100 == 0 or index == total_items:
+                    self.status_label.showMessage(f"Processing items: {index}/{total_items}", 0)
+                    QApplication.processEvents()
+                
                 if item_id in attachments_by_parent:  # Only process items with PDF attachments
                     # Create display text with metadata
                     display_text = title if title else "Untitled"
@@ -1784,7 +1807,13 @@ class MainWindow(QMainWindow):
                             processed_items[item_id]['collections'].add(collection_id)
             
             # Process standalone PDF attachments
-            for attachment in standalone_attachments:
+            total_standalone = len(standalone_attachments)
+            for index, attachment in enumerate(standalone_attachments, 1):
+                # Update status every 100 items
+                if index % 100 == 0 or index == total_standalone:
+                    self.status_label.showMessage(f"Processing standalone PDFs: {index}/{total_standalone}", 0)
+                    QApplication.processEvents()
+                
                 try:
                     zotero_key = attachment[4]  # Zotero key
                     display_name = attachment[3]
@@ -1797,6 +1826,9 @@ class MainWindow(QMainWindow):
                     logger.error(f"Error processing standalone attachment {zotero_key}: {str(e)}")
             
             # Add items to their collections
+            self.status_label.showMessage("Organizing collections...", 0)
+            QApplication.processEvents()
+            
             for item_id, item_data in processed_items.items():
                 if item_data['has_pdfs']:
                     for collection_id in item_data['collections']:
@@ -1851,21 +1883,33 @@ class MainWindow(QMainWindow):
             layout.addWidget(all_pdfs_radio)
             layout.addWidget(selected_collection_radio)
 
-            # Add collection selection combo box (initially disabled)
-            collection_combo = QComboBox()
-            collection_combo.setEnabled(False)
-            layout.addWidget(collection_combo)
+            # Add collection tree widget (initially disabled)
+            collection_tree = QTreeWidget()
+            collection_tree.setHeaderHidden(True)
+            collection_tree.setEnabled(False)
+            layout.addWidget(collection_tree)
 
-            # Populate collection combo box
+            # Populate collection tree
+            def add_collection_to_tree(parent_item, collection):
+                item = QTreeWidgetItem(parent_item)
+                item.setText(0, collection.text(0))
+                item.collection_id = collection.collection_id
+                for i in range(collection.childCount()):
+                    add_collection_to_tree(item, collection.child(i))
+
             for i in range(self.collections_tree.topLevelItemCount()):
                 collection = self.collections_tree.topLevelItem(i)
-                collection_combo.addItem(collection.text(0), collection.collection_id)
+                add_collection_to_tree(collection_tree, collection)
 
-            # Connect radio buttons to enable/disable collection combo
-            def update_collection_combo():
-                collection_combo.setEnabled(selected_collection_radio.isChecked())
-            all_pdfs_radio.toggled.connect(update_collection_combo)
-            selected_collection_radio.toggled.connect(update_collection_combo)
+            # Expand first level of collections
+            for i in range(collection_tree.topLevelItemCount()):
+                collection_tree.topLevelItem(i).setExpanded(True)
+
+            # Connect radio buttons to enable/disable collection tree
+            def update_collection_tree():
+                collection_tree.setEnabled(selected_collection_radio.isChecked())
+            all_pdfs_radio.toggled.connect(update_collection_tree)
+            selected_collection_radio.toggled.connect(update_collection_tree)
 
             # Add buttons
             button_box = QDialogButtonBox(
@@ -1882,16 +1926,22 @@ class MainWindow(QMainWindow):
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
 
+            # Get selected collection ID if applicable
+            selected_collection_id = None
+            if selected_collection_radio.isChecked():
+                selected_item = collection_tree.currentItem()
+                if selected_item:
+                    selected_collection_id = selected_item.collection_id
+                    logger.info(f"Selected collection for analysis: {selected_item.text(0)}")
+                else:
+                    QMessageBox.warning(self, "No Collection Selected", 
+                                      "Please select a collection to analyze.")
+                    return
+
             # Set wait cursor
             QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             self.status_label.showMessage("Starting batch analysis...", 0)
             QApplication.processEvents()
-
-            # Get selected collection ID if applicable
-            selected_collection_id = None
-            if selected_collection_radio.isChecked():
-                selected_collection_id = collection_combo.currentData()
-                logger.info(f"Selected collection for analysis: {collection_combo.currentText()}")
 
             total_files = 0
             analyzed_files = 0
@@ -1971,11 +2021,19 @@ class MainWindow(QMainWindow):
                     # Analyze the PDF
                     if self.analyze_pdf(pdf_item.file_path):
                         analyzed_files += 1
-                        # Update item text to show it's analyzed
-                        pdf_item.setText(0, "PDF (Analyzed)")
+                        # Update item text to show it's analyzed without changing the filename
+                        original_text = pdf_item.text(0)
+                        if not original_text.endswith(" (Analyzed)"):
+                            pdf_item.setText(0, f"{original_text} (Analyzed)")
+                        # Set text color to green to indicate success
+                        pdf_item.setForeground(0, Qt.GlobalColor.darkGreen)
                     else:
                         failed_files += 1
-                        pdf_item.setText(0, "PDF (Failed)")
+                        # Update item text to show failure without changing the filename
+                        original_text = pdf_item.text(0)
+                        if not original_text.endswith(" (Failed)"):
+                            pdf_item.setText(0, f"{original_text} (Failed)")
+                        # Set text color to red to indicate failure
                         pdf_item.setForeground(0, Qt.GlobalColor.red)
 
                     # Close the document
@@ -1984,7 +2042,11 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     logger.error(f"Error analyzing {pdf_item.file_path}: {str(e)}")
                     failed_files += 1
-                    pdf_item.setText(0, "PDF (Error)")
+                    # Update item text to show error without changing the filename
+                    original_text = pdf_item.text(0)
+                    if not original_text.endswith(" (Error)"):
+                        pdf_item.setText(0, f"{original_text} (Error)")
+                    # Set text color to red to indicate error
                     pdf_item.setForeground(0, Qt.GlobalColor.red)
 
                     # Make sure to close the document if it's open
