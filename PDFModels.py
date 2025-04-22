@@ -22,6 +22,9 @@ DB_BACKUP_DIRECTORY = os.path.join(DEFAULT_DB_DIRECTORY, "backups/")
 for directory in [DEFAULT_DB_DIRECTORY, DEFAULT_STORAGE_DIRECTORY, DEFAULT_LOG_DIRECTORY, DB_BACKUP_DIRECTORY]:
     os.makedirs(directory, exist_ok=True)
 
+# Initialize logger
+logger = logging.getLogger(PROGRAM_NAME)
+
 # Database path
 DB_PATH = os.path.join(DEFAULT_DB_DIRECTORY, f"{PROGRAM_NAME.lower()}.db")
 
@@ -33,12 +36,22 @@ class BaseModel(Model):
         database = db
 
 class PDFDocument(BaseModel):
+    """Model for storing PDF document information"""
     file_path = CharField(unique=True)
-    file_hash = CharField()
-    title = CharField(null=True)
+    file_hash = CharField(null=True)  # Make file_hash nullable since we might use zotero_key instead
+    zotero_key = CharField(null=True)  # Add Zotero key field
+    title = CharField()
     page_count = IntegerField()
-    created_at = DateTimeField(default=datetime.datetime.now)
     last_analyzed = DateTimeField(null=True)
+    created_at = DateTimeField(default=datetime.datetime.now)
+    updated_at = DateTimeField(default=datetime.datetime.now)
+
+    class Meta:
+        indexes = (
+            # Create non-unique indexes
+            (('file_hash',), False),
+            (('zotero_key',), False),
+        )
 
 class PageAnalysis(BaseModel):
     document = ForeignKeyField(PDFDocument, backref='pages')
@@ -64,43 +77,92 @@ class SessionData(BaseModel):
         )
 
 def init_database(db_path):
-    """Initialize the database with proper backup handling"""
+    """Initialize the database with all required tables"""
     try:
-        # Check if database exists
-        if os.path.exists(db_path):
-            # Create backup directory if it doesn't exist
-            os.makedirs(DB_BACKUP_DIRECTORY, exist_ok=True)
-            
-            # Generate today's backup filename
-            today = datetime.datetime.now().strftime('%Y%m%d%H')
-            backup_filename = f"{PROGRAM_NAME.lower()}_{today}.db"
-            backup_path = os.path.join(DB_BACKUP_DIRECTORY, backup_filename)
-            
-            # Check if today's backup exists
-            if not os.path.exists(backup_path):
-                try:
-                    # Copy current database to backup
-                    shutil.copy2(db_path, backup_path)
-                    logger = logging.getLogger(PROGRAM_NAME)
-                    logger.info(f"Created database backup: {backup_filename}")
-                except Exception as e:
-                    logger = logging.getLogger(PROGRAM_NAME)
-                    logger.error(f"Failed to create database backup: {str(e)}")
-        
-        # Initialize database
         db.init(db_path)
-        db.connect()
-        db.create_tables([PDFDocument, PageAnalysis, SessionData])
-        logger = logging.getLogger(PROGRAM_NAME)
-        logger.info("Database initialized successfully")
-        
+        with db:
+            # Check if tables exist
+            tables_exist = db.get_tables()
+            
+            if not tables_exist:
+                # Create tables if they don't exist
+                db.create_tables([PDFDocument, PageAnalysis, SessionData])
+                logger.info("Created new database tables")
+            else:
+                # Handle migration for existing database
+                try:
+                    # Check existing columns
+                    cursor = db.execute_sql(
+                        "SELECT name FROM pragma_table_info('pdfdocument')"
+                    )
+                    existing_columns = [row[0] for row in cursor.fetchall()]
+                    
+                    # Create new table with all required columns
+                    db.execute_sql("""
+                        CREATE TABLE IF NOT EXISTS pdfdocument_new (
+                            id INTEGER PRIMARY KEY,
+                            file_path VARCHAR(255) NOT NULL UNIQUE,
+                            file_hash VARCHAR(255),
+                            zotero_key VARCHAR(255),
+                            title VARCHAR(255) NOT NULL,
+                            page_count INTEGER NOT NULL,
+                            last_analyzed DATETIME,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL
+                        )
+                    """)
+                    
+                    # Copy data from old table to new table
+                    if 'updated_at' in existing_columns:
+                        db.execute_sql("""
+                            INSERT INTO pdfdocument_new 
+                            SELECT id, file_path, file_hash, zotero_key, title, page_count,
+                                   last_analyzed, created_at, updated_at
+                            FROM pdfdocument
+                        """)
+                    else:
+                        db.execute_sql("""
+                            INSERT INTO pdfdocument_new 
+                            SELECT id, file_path, file_hash, zotero_key, title, page_count,
+                                   last_analyzed, created_at, created_at
+                            FROM pdfdocument
+                        """)
+                    
+                    # Drop old table and rename new one
+                    db.execute_sql("DROP TABLE pdfdocument")
+                    db.execute_sql("ALTER TABLE pdfdocument_new RENAME TO pdfdocument")
+                    logger.info("Updated database schema with all required columns")
+                    
+                except Exception as e:
+                    logger.error(f"Error during migration: {str(e)}")
+                    raise
+            
+            try:
+                # Drop existing indexes if they exist
+                db.execute_sql("DROP INDEX IF EXISTS idx_pdfdocument_file_hash")
+                db.execute_sql("DROP INDEX IF EXISTS idx_pdfdocument_zotero_key")
+                
+                # Create conditional unique indexes
+                db.execute_sql("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_pdfdocument_file_hash 
+                    ON pdfdocument(file_hash) 
+                    WHERE file_hash IS NOT NULL
+                """)
+                db.execute_sql("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_pdfdocument_zotero_key 
+                    ON pdfdocument(zotero_key) 
+                    WHERE zotero_key IS NOT NULL
+                """)
+                logger.info("Created/updated database indexes")
+            except Exception as e:
+                logger.error(f"Error creating indexes: {str(e)}")
+                # Continue even if index creation fails
+                
+        logger.info(f"Database initialized at {db_path}")
+        return True
     except Exception as e:
-        logger = logging.getLogger(PROGRAM_NAME)
         logger.error(f"Error initializing database: {str(e)}")
         raise
-    finally:
-        if not db.is_closed():
-            db.close()
 
 def calculate_file_hash(file_path):
     """Calculate SHA-256 hash of a file"""
@@ -113,6 +175,5 @@ def calculate_file_hash(file_path):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
     except Exception as e:
-        logger = logging.getLogger(PROGRAM_NAME)
         logger.error(f"Error calculating file hash for {file_path}: {str(e)}")
         raise 

@@ -403,7 +403,7 @@ class MainWindow(QMainWindow):
     def create_directory_tree(self):
         """Create and setup the directory tree widgets"""
         # Create main dock widget
-        self.library_dock = QDockWidget("Zotero Library", self)
+        self.library_dock = QDockWidget("PDF Library", self)
         self.library_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | 
                                         Qt.DockWidgetArea.RightDockWidgetArea)
         
@@ -417,14 +417,16 @@ class MainWindow(QMainWindow):
         
         # Create collections tree widget
         self.collections_tree = QTreeWidget()
-        self.collections_tree.setHeaderLabels(["Collections", "Type"])
+        self.collections_tree.setHeaderLabels(["Collections"])
         self.collections_tree.setColumnWidth(0, 200)
+        self.collections_tree.setHeaderHidden(True)  # Hide header
         self.collections_tree.itemClicked.connect(self.collection_clicked)
         
         # Create items tree widget
         self.items_tree = QTreeWidget()
-        self.items_tree.setHeaderLabels(["Items", "Type"])
+        self.items_tree.setHeaderLabels(["Items"])
         self.items_tree.setColumnWidth(0, 300)
+        self.items_tree.setHeaderHidden(True)  # Hide header
         self.items_tree.itemClicked.connect(self.item_clicked)
         
         # Add widgets to splitter
@@ -452,9 +454,27 @@ class MainWindow(QMainWindow):
             self.items_tree.clear()
             
             # Get all items for this collection
-            if hasattr(self, 'collection_items') and item.collection_id in self.collection_items:
-                for parent_item in self.collection_items[item.collection_id]:
-                    self.items_tree.addTopLevelItem(parent_item)
+            if hasattr(self, 'collection_data') and item.collection_id in self.collection_data:
+                for item_data in self.collection_data[item.collection_id]:
+                    # Create a new tree item
+                    new_item = QTreeWidgetItem()
+                    new_item.setText(0, item_data['text'])
+                    
+                    # Copy relevant attributes
+                    if 'item_id' in item_data:
+                        new_item.item_id = item_data['item_id']
+                    if 'file_path' in item_data:
+                        new_item.file_path = item_data['file_path']
+                    
+                    # If item data has children (PDF attachments), copy them
+                    for child_data in item_data.get('children', []):
+                        child_item = QTreeWidgetItem()
+                        child_item.setText(0, child_data['text'])
+                        if 'file_path' in child_data:
+                            child_item.file_path = child_data['file_path']
+                        new_item.addChild(child_item)
+                    
+                    self.items_tree.addTopLevelItem(new_item)
             
             logger.debug(f"Showing items for collection: {item.text(0)}")
 
@@ -538,7 +558,6 @@ class MainWindow(QMainWindow):
             # Create root collection item
             root_item = QTreeWidgetItem()
             root_item.setText(0, os.path.basename(dir_path))
-            root_item.setText(1, "Directory")
             root_item.dir_path = dir_path
             self.collections_tree.addTopLevelItem(root_item)
             
@@ -559,7 +578,6 @@ class MainWindow(QMainWindow):
                             # Create directory item
                             dir_item = QTreeWidgetItem(parent_item)
                             dir_item.setText(0, item)
-                            dir_item.setText(1, "Directory")
                             dir_item.dir_path = full_path
                             self.directory_items[full_path] = dir_item
                             
@@ -590,7 +608,6 @@ class MainWindow(QMainWindow):
             for pdf_file in pdf_files:
                 item = QTreeWidgetItem()
                 item.setText(0, os.path.basename(pdf_file))
-                item.setText(1, "PDF")
                 item.file_path = pdf_file
                 self.items_tree.addTopLevelItem(item)
             
@@ -1074,14 +1091,41 @@ class MainWindow(QMainWindow):
                 return
                 
             with db:
-                # Get or create PDFDocument
-                file_hash = calculate_file_hash(self.current_file)
+                # Get or create PDFDocument using Zotero key if available
+                file_hash = None
+                zotero_key = None
+                
+                # Try to find the current item in the items tree
+                for i in range(self.items_tree.topLevelItemCount()):
+                    item = self.items_tree.topLevelItem(i)
+                    if hasattr(item, 'file_path') and item.file_path == self.current_file:
+                        if hasattr(item, 'zotero_key'):
+                            zotero_key = item.zotero_key
+                            break
+                    # Check child items if no match found
+                    for j in range(item.childCount()):
+                        child = item.child(j)
+                        if hasattr(child, 'file_path') and child.file_path == self.current_file:
+                            if hasattr(child, 'zotero_key'):
+                                zotero_key = child.zotero_key
+                                break
+                    if zotero_key:
+                        break
+                
+                # If no Zotero key found, use file hash
+                if not zotero_key:
+                    file_hash = calculate_file_hash(self.current_file)
+                
                 try:
-                    document = PDFDocument.get(PDFDocument.file_hash == file_hash)
+                    if zotero_key:
+                        document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                    else:
+                        document = PDFDocument.get(PDFDocument.file_hash == file_hash)
                 except DoesNotExist:
                     document = PDFDocument.create(
                         file_path=self.current_file,
                         file_hash=file_hash,
+                        zotero_key=zotero_key,
                         title=os.path.basename(self.current_file),
                         page_count=len(self.doc) if self.doc else 0
                     )
@@ -1095,7 +1139,8 @@ class MainWindow(QMainWindow):
                     },
                     'session_info': {
                         'analyzed_pages': len(set(self.document_data['page_structures'].keys())),
-                        'app_version': PROGRAM_VERSION
+                        'app_version': PROGRAM_VERSION,
+                        'zotero_key': zotero_key
                     }
                 }
                 
@@ -1127,13 +1172,36 @@ class MainWindow(QMainWindow):
             logger.info(f"Loading session for {file_path}")
             
             with db:
-                # Get document from database
-                file_hash = calculate_file_hash(file_path)
+                # Try to find document by Zotero key first
+                document = None
+                zotero_key = None
+                
+                # Try to find the file in the items tree
+                for i in range(self.items_tree.topLevelItemCount()):
+                    item = self.items_tree.topLevelItem(i)
+                    if hasattr(item, 'file_path') and item.file_path == file_path:
+                        if hasattr(item, 'zotero_key'):
+                            zotero_key = item.zotero_key
+                            break
+                    # Check child items if no match found
+                    for j in range(item.childCount()):
+                        child = item.child(j)
+                        if hasattr(child, 'file_path') and child.file_path == file_path:
+                            if hasattr(child, 'zotero_key'):
+                                zotero_key = child.zotero_key
+                                break
+                    if zotero_key:
+                        break
+                
                 try:
-                    document = PDFDocument.get(PDFDocument.file_hash == file_hash)
+                    if zotero_key:
+                        document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                    else:
+                        # Fall back to file hash if no Zotero key
+                        file_hash = calculate_file_hash(file_path)
+                        document = PDFDocument.get(PDFDocument.file_hash == file_hash)
                 except DoesNotExist:
                     logger.error(f"No session found for {file_path}")
-                    #QMessageBox.warning(self, "Error", "No session data found for this file")
                     return
                 
                 # Get most recent session
@@ -1145,7 +1213,6 @@ class MainWindow(QMainWindow):
                 
                 if not session:
                     logger.error(f"No session data found for {file_path}")
-                    #QMessageBox.warning(self, "Error", "No session data found for this file")
                     return
                 
                 # Load session data
@@ -1221,15 +1288,6 @@ class MainWindow(QMainWindow):
             # Update page number display
             self.current_page_input.setText(str(self.current_page + 1))
             self.total_pages_label.setText(f"/ {len(self.doc)}")
-            
-            # Update structure text if available
-            structure = self.get_page_structure(self.current_page)
-            if structure:
-                # Display structure in the structure text area
-                self.show_page_structure(structure)
-            
-            # Update button states
-            self.update_buttons()
             
         except Exception as e:
             logger.error(f"Error updating page display: {str(e)}")
@@ -1393,18 +1451,25 @@ class MainWindow(QMainWindow):
                     idv.value as title,
                     ci.collectionID,
                     it.typeName as itemType,
-                    (SELECT value 
-                     FROM itemData id2 
-                     JOIN itemDataValues idv2 ON id2.valueID = idv2.valueID 
-                     WHERE id2.itemID = i.itemID 
-                     AND id2.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'date')
-                     LIMIT 1) as date,
-                    (SELECT GROUP_CONCAT(idv2.value, '; ')
+                    CAST(SUBSTR(
+                        (SELECT value 
+                         FROM itemData id2 
+                         JOIN itemDataValues idv2 ON id2.valueID = idv2.valueID 
+                         WHERE id2.itemID = i.itemID 
+                         AND id2.fieldID = (SELECT fieldID FROM fields WHERE fieldName = 'date')
+                         LIMIT 1), 1, 4) AS INTEGER) as year,
+                    (SELECT GROUP_CONCAT(c.lastName, '|')
+                     FROM (
+                         SELECT DISTINCT c.lastName, ic.orderIndex
+                         FROM itemCreators ic
+                         JOIN creators c ON ic.creatorID = c.creatorID
+                         WHERE ic.itemID = i.itemID
+                         ORDER BY ic.orderIndex
+                     ) as c
+                    ) as authors,
+                    (SELECT COUNT(*)
                      FROM itemCreators ic
-                     JOIN creators c ON ic.creatorID = c.creatorID
-                     JOIN itemDataValues idv2 ON c.lastName = idv2.value
-                     WHERE ic.itemID = i.itemID
-                     GROUP BY ic.itemID) as authors
+                     WHERE ic.itemID = i.itemID) as author_count
                 FROM items i
                 JOIN itemTypes it ON i.itemTypeID = it.itemTypeID
                 LEFT JOIN itemData id ON i.itemID = id.itemID
@@ -1421,7 +1486,7 @@ class MainWindow(QMainWindow):
             parent_items = cursor.fetchall()
             logger.debug(f"Found {len(parent_items)} parent items")
             
-            # Get PDF attachments with their parent items
+            # Get all PDF attachments (both standalone and child attachments)
             cursor.execute("""
                 SELECT 
                     a.itemID,
@@ -1436,11 +1501,12 @@ class MainWindow(QMainWindow):
                          LIMIT 1),
                         a.path
                     ) as title,
-                    i.key as zotero_key
+                    i.key as zotero_key,
+                    ci.collectionID
                 FROM itemAttachments a
                 JOIN items i ON a.itemID = i.itemID
+                LEFT JOIN collectionItems ci ON i.itemID = ci.itemID
                 WHERE a.contentType = 'application/pdf'
-                AND a.parentItemID IS NOT NULL
             """)
             
             attachments = cursor.fetchall()
@@ -1448,25 +1514,28 @@ class MainWindow(QMainWindow):
             
             # Create a dictionary of attachments by parent ID for faster lookup
             attachments_by_parent = {}
+            standalone_attachments = []
             for attachment in attachments:
                 parent_id = attachment[1]  # parentItemID
-                if parent_id not in attachments_by_parent:
-                    attachments_by_parent[parent_id] = []
-                attachments_by_parent[parent_id].append(attachment)
+                if parent_id is not None:
+                    if parent_id not in attachments_by_parent:
+                        attachments_by_parent[parent_id] = []
+                    attachments_by_parent[parent_id].append(attachment)
+                else:
+                    standalone_attachments.append(attachment)
                 logger.debug(f"Attachment {attachment[3]} -> Parent {parent_id} (Key: {attachment[4]})")
             
             # Create collection hierarchy
             collection_map = {}
             root_collections = []
-            self.collection_items = {}  # Store items by collection ID
+            self.collection_data = {}  # Store item data by collection ID
             
             for collection_id, name, parent_id, level in collections:
                 item = QTreeWidgetItem()
                 item.setText(0, name)
-                item.setText(1, "Collection")
                 item.collection_id = collection_id
                 collection_map[collection_id] = item
-                self.collection_items[collection_id] = []  # Initialize empty list for items
+                self.collection_data[collection_id] = []  # Initialize empty list for items
                 
                 if parent_id is None:
                     root_collections.append(item)
@@ -1484,80 +1553,134 @@ class MainWindow(QMainWindow):
             storage_base = os.path.join(zotero_dir, 'storage')
             logger.info(f"Using storage base directory: {storage_base}")
             
-            for item_id, key, title, collection_id, item_type, date, authors in parent_items:
-                # Create display text with metadata
-                display_text = title if title else "Untitled"
-                if authors:
-                    display_text = f"{authors} - {display_text}"
-                if date:
-                    display_text += f" ({date})"
-                
-                parent_item = QTreeWidgetItem()
-                parent_item.setText(0, display_text)
-                parent_item.setText(1, item_type)
-                parent_item.item_id = item_id
-                
-                # Add PDF attachments as children
-                if item_id in attachments_by_parent:
-                    for attachment in attachments_by_parent[item_id]:
-                        try:
-                            zotero_key = attachment[4]  # Zotero key
-                            storage_dir = os.path.join(storage_base, zotero_key)
-                            
-                            if os.path.exists(storage_dir):
-                                # Look for PDF files in the key's directory
-                                files = os.listdir(storage_dir)
-                                pdf_files = [f for f in files if f.lower().endswith('.pdf')]
-                                
-                                if pdf_files:
-                                    # Use the first PDF file found
-                                    pdf_path = os.path.join(storage_dir, pdf_files[0])
-                                    pdf_item = QTreeWidgetItem(parent_item)
-                                    
-                                    # Use a readable name for display
-                                    display_name = attachment[3]
-                                    if display_name.startswith('storage:'):
-                                        display_name = pdf_files[0]
-                                    
-                                    pdf_item.setText(0, display_name)
-                                    pdf_item.setText(1, "PDF")
-                                    pdf_item.file_path = pdf_path
-                                    logger.debug(f"Added PDF: {display_name} from {pdf_path}")
-                                else:
-                                    logger.warning(f"No PDF files found in directory: {storage_dir}")
-                                    pdf_item = QTreeWidgetItem(parent_item)
-                                    pdf_item.setText(0, f"{os.path.basename(attachment[3])} (Not Found)")
-                                    pdf_item.setText(1, "Missing PDF")
-                                    pdf_item.setForeground(0, Qt.GlobalColor.red)
-                            else:
-                                logger.warning(f"Storage directory not found: {storage_dir}")
-                                pdf_item = QTreeWidgetItem(parent_item)
-                                pdf_item.setText(0, f"{os.path.basename(attachment[3])} (Directory Not Found)")
-                                pdf_item.setText(1, "Missing PDF")
-                                pdf_item.setForeground(0, Qt.GlobalColor.red)
-                                
-                        except Exception as e:
-                            logger.error(f"Error processing attachment {zotero_key}: {str(e)}")
-                
-                # Add to appropriate collection's items list
-                if collection_id and collection_id in self.collection_items:
-                    self.collection_items[collection_id].append(parent_item)
+            # Function to add PDF item to items tree
+            def add_pdf_to_items_tree(zotero_key, display_name, parent_item=None, collection_id=None):
+                storage_dir = os.path.join(storage_base, zotero_key)
+                if os.path.exists(storage_dir):
+                    # Look for PDF files in the key's directory
+                    files = os.listdir(storage_dir)
+                    pdf_files = [f for f in files if f.lower().endswith('.pdf')]
+                    
+                    if pdf_files:
+                        # Use the first PDF file found
+                        pdf_path = os.path.join(storage_dir, pdf_files[0])
+                        
+                        # Create PDF item under parent or as top-level item
+                        if parent_item is not None:
+                            pdf_item = QTreeWidgetItem(parent_item)
+                        else:
+                            pdf_item = QTreeWidgetItem()
+                            self.items_tree.addTopLevelItem(pdf_item)
+                        
+                        pdf_item.setText(0, display_name)
+                        pdf_item.file_path = pdf_path
+                        pdf_item.zotero_key = zotero_key  # Store Zotero key
+                        
+                        # Add to collection if specified
+                        if collection_id and collection_id in self.collection_data:
+                            if parent_item is None:  # Only add standalone PDFs to collection items
+                                self.collection_data[collection_id].append({
+                                    'text': display_name,
+                                    'file_path': pdf_path,
+                                    'zotero_key': zotero_key  # Store Zotero key
+                                })
+                        
+                        logger.debug(f"Added PDF: {display_name} from {pdf_path}")
+                        return True
+                    else:
+                        logger.warning(f"No PDF files found in directory: {storage_dir}")
                 else:
-                    # If no collection or collection not found, add to "Unfiled Items"
-                    unfiled_id = -1  # Special ID for unfiled items
-                    if unfiled_id not in self.collection_items:
-                        self.collection_items[unfiled_id] = []
-                        unfiled = QTreeWidgetItem()
-                        unfiled.setText(0, "Unfiled Items")
-                        unfiled.setText(1, "Collection")
-                        unfiled.collection_id = unfiled_id
-                        root_collections.append(unfiled)
-                        collection_map[unfiled_id] = unfiled
-                    self.collection_items[unfiled_id].append(parent_item)
+                    logger.warning(f"Storage directory not found: {storage_dir}")
+                return False
             
-            # Clear existing items and add new structure
+            # Clear existing items
             self.collections_tree.clear()
             self.items_tree.clear()
+            
+            # Track processed items and their collections
+            processed_items = {}  # item_id -> (parent_item, collections)
+            
+            # Process parent items and their attachments
+            for item_id, key, title, collection_id, item_type, year, authors, author_count in parent_items:
+                if item_id in attachments_by_parent:  # Only process items with PDF attachments
+                    # Create display text with metadata
+                    display_text = title if title else "Untitled"
+                    if authors and year:
+                        # Split authors by the separator
+                        author_list = authors.split('|')
+                        author_count = len(author_list)
+                        
+                        # Format authors based on count
+                        if author_count == 1:
+                            author_text = author_list[0]
+                        elif author_count == 2:
+                            author_text = f"{author_list[0]} and {author_list[1]}"
+                        else:
+                            author_text = f"{author_list[0]} et al."
+                            
+                        display_text = f"{display_text} ({author_text}, {year})"
+                    elif year:
+                        display_text = f"{display_text} ({year})"
+                    
+                    if item_id not in processed_items:
+                        # Create new parent item
+                        parent_item = QTreeWidgetItem()
+                        parent_item.setText(0, display_text)
+                        parent_item.item_id = item_id
+                        self.items_tree.addTopLevelItem(parent_item)
+                        
+                        # Add PDF attachments as children
+                        has_pdfs = False
+                        for attachment in attachments_by_parent[item_id]:
+                            try:
+                                zotero_key = attachment[4]  # Zotero key
+                                display_name = attachment[3]
+                                if display_name.startswith('storage:'):
+                                    display_name = os.path.basename(display_name)
+                                
+                                if add_pdf_to_items_tree(zotero_key, display_name, parent_item, collection_id):
+                                    has_pdfs = True
+                                    
+                            except Exception as e:
+                                logger.error(f"Error processing attachment {zotero_key}: {str(e)}")
+                        
+                        # Store the parent item and its collections
+                        processed_items[item_id] = {
+                            'parent_item': parent_item,
+                            'collections': set([collection_id]) if collection_id else set(),
+                            'has_pdfs': has_pdfs
+                        }
+                    else:
+                        # Add collection to existing item
+                        if collection_id:
+                            processed_items[item_id]['collections'].add(collection_id)
+            
+            # Process standalone PDF attachments
+            for attachment in standalone_attachments:
+                try:
+                    zotero_key = attachment[4]  # Zotero key
+                    display_name = attachment[3]
+                    if display_name.startswith('storage:'):
+                        display_name = os.path.basename(display_name)
+                    
+                    add_pdf_to_items_tree(zotero_key, display_name, None, attachment[5])  # attachment[5] is collectionID
+                    
+                except Exception as e:
+                    logger.error(f"Error processing standalone attachment {zotero_key}: {str(e)}")
+            
+            # Add items to their collections
+            for item_id, item_data in processed_items.items():
+                if item_data['has_pdfs']:
+                    for collection_id in item_data['collections']:
+                        if collection_id in self.collection_data:
+                            self.collection_data[collection_id].append({
+                                'text': item_data['parent_item'].text(0),
+                                'item_id': item_id,
+                                'children': [{
+                                    'text': child.text(0),
+                                    'file_path': child.file_path
+                                } for child in [item_data['parent_item'].child(i) for i in range(item_data['parent_item'].childCount())]]
+                            })
             
             # Add collections to the collections tree
             for collection in root_collections:
@@ -1638,11 +1761,11 @@ class MainWindow(QMainWindow):
                     if self.analyze_pdf(pdf_item.file_path):
                         analyzed_files += 1
                         # Update item text to show it's analyzed
-                        pdf_item.setText(1, "PDF (Analyzed)")
+                        pdf_item.setText(0, "PDF (Analyzed)")
                     else:
                         failed_files += 1
-                        pdf_item.setText(1, "PDF (Failed)")
-                        pdf_item.setForeground(1, Qt.GlobalColor.red)
+                        pdf_item.setText(0, "PDF (Failed)")
+                        pdf_item.setForeground(0, Qt.GlobalColor.red)
 
                     # Close the document
                     self.doc.close()
@@ -1650,8 +1773,8 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     logger.error(f"Error analyzing {pdf_item.file_path}: {str(e)}")
                     failed_files += 1
-                    pdf_item.setText(1, "PDF (Error)")
-                    pdf_item.setForeground(1, Qt.GlobalColor.red)
+                    pdf_item.setText(0, "PDF (Error)")
+                    pdf_item.setForeground(0, Qt.GlobalColor.red)
 
                     # Make sure to close the document if it's open
                     if hasattr(self, 'doc') and self.doc:
