@@ -7,8 +7,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QTreeWidget, QTreeWidgetItem, QDockWidget, QSplitter,
                            QComboBox, QRadioButton, QButtonGroup, QTabWidget,
                            QGridLayout, QStackedWidget, QFormLayout, QTextEdit,
-                           QScrollArea, QSizePolicy, QLayout)
-from PyQt6.QtCore import Qt, QPoint, QSettings
+                           QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem)
+from PyQt6.QtCore import Qt, QPoint, QSettings, QSize
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor
 import fitz  # PyMuPDF
 import datetime
@@ -426,12 +426,12 @@ class StructuredContentView(QWidget):
         # Create view mode actions
         self.list_view_action = QAction("List View", self)
         self.list_view_action.setCheckable(True)
-        self.list_view_action.setChecked(False)  # Changed to False
+        self.list_view_action.setChecked(False)
         self.list_view_action.triggered.connect(lambda: self.switch_view_mode('list'))
         
         self.icon_view_action = QAction("Icon View", self)
         self.icon_view_action.setCheckable(True)
-        self.icon_view_action.setChecked(True)  # Changed to True
+        self.icon_view_action.setChecked(True)
         self.icon_view_action.triggered.connect(lambda: self.switch_view_mode('icon'))
         
         # Add actions to toolbar
@@ -440,34 +440,21 @@ class StructuredContentView(QWidget):
         
         layout.addWidget(toolbar)
         
-        # Create stacked widget to hold both views
-        self.view_stack = QStackedWidget()
+        # Create list widget for both views
+        self.content_list = QListWidget()
+        self.content_list.setViewMode(QListWidget.ViewMode.IconMode)
+        self.content_list.setIconSize(QSize(200, 200))
+        self.content_list.setSpacing(10)
+        self.content_list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.content_list.setWrapping(True)
+        self.content_list.itemDoubleClicked.connect(self._show_element_info)
         
-        # Create tree widget for list view
-        self.content_tree = QTreeWidget()
-        self.content_tree.setHeaderLabels(["Type", "Content", "Caption"])
-        self.content_tree.setColumnWidth(0, 100)  # Type column
-        self.content_tree.setColumnWidth(1, 300)  # Content column
-        self.content_tree.setColumnWidth(2, 300)  # Caption column
-        
-        # Create grid widget for icon view
-        self.content_grid = QGridLayout()
-        self.grid_widget = QWidget()
-        self.grid_widget.setLayout(self.content_grid)
-        
-        # Create scroll area for the grid widget
+        # Create scroll area for the list widget
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setWidget(self.grid_widget)
+        self.scroll_area.setWidget(self.content_list)
         
-        # Add views to stacked widget
-        self.view_stack.addWidget(self.content_tree)
-        self.view_stack.addWidget(self.scroll_area)  # Changed from grid_widget to scroll_area
-        
-        # Set initial view to icon view
-        self.view_stack.setCurrentIndex(1)  # Changed to 1 for icon view
-        
-        layout.addWidget(self.view_stack)
+        layout.addWidget(self.scroll_area)
         self.setLayout(layout)
         
     def set_document(self, doc):
@@ -477,11 +464,15 @@ class StructuredContentView(QWidget):
     def switch_view_mode(self, mode):
         """Switch between list and icon views"""
         if mode == 'list':
-            self.view_stack.setCurrentIndex(0)
+            self.content_list.setViewMode(QListWidget.ViewMode.ListMode)
+            self.content_list.setIconSize(QSize(32, 32))  # Smaller icons for list view
+            self.content_list.setSpacing(2)  # Less spacing for list view
             self.list_view_action.setChecked(True)
             self.icon_view_action.setChecked(False)
         else:
-            self.view_stack.setCurrentIndex(1)
+            self.content_list.setViewMode(QListWidget.ViewMode.IconMode)
+            self.content_list.setIconSize(QSize(200, 200))  # Larger icons for icon view
+            self.content_list.setSpacing(10)  # More spacing for icon view
             self.list_view_action.setChecked(False)
             self.icon_view_action.setChecked(True)
         
@@ -616,8 +607,7 @@ class StructuredContentView(QWidget):
         self._current_content = page_structures  # Store for view switching
         
         # Clear current view
-        self.content_tree.clear()
-        self._clear_grid()
+        self.content_list.clear()
         
         # Group content by type
         content_by_type = {
@@ -656,8 +646,8 @@ class StructuredContentView(QWidget):
         for content_type in content_by_type:
             content_by_type[content_type] = self._sort_elements_by_position(content_by_type[content_type])
         
-        # Update current view
-        if self.view_stack.currentIndex() == 0:
+        # Update view based on current mode
+        if self.content_list.viewMode() == QListWidget.ViewMode.ListMode:
             self._update_list_view(content_by_type)
         else:
             self._update_icon_view(content_by_type)
@@ -666,35 +656,82 @@ class StructuredContentView(QWidget):
         """Update the list view with content"""
         for content_type, items in content_by_type.items():
             if items:
-                type_item = QTreeWidgetItem(self.content_tree)
-                type_item.setText(0, content_type.capitalize())
-                type_item.setExpanded(True)
+                # Add type label as a special item
+                type_item = QListWidgetItem(content_type.capitalize())
+                type_item.setFlags(Qt.ItemFlag.NoItemFlags)  # Make it non-selectable
+                type_item.setForeground(Qt.GlobalColor.black)
+                font = type_item.font()
+                font.setBold(True)
+                type_item.setFont(font)
+                self.content_list.addItem(type_item)
                 
                 for item in items:
-                    content_item = QTreeWidgetItem(type_item)
-                    content_item.setText(0, f"Page {item['page']}")
-                    content_item.setText(1, item['content'])
-                    content_item.setText(2, item['caption'] if item['caption'] else '')
+                    # Create item widget
+                    item_widget = QWidget()
+                    item_layout = QGridLayout()  # Use grid layout for fixed columns
+                    item_layout.setContentsMargins(5, 5, 5, 5)
+                    item_layout.setSpacing(10)  # Add some spacing between columns
+                    
+                    # Add page number (column 0)
+                    page_label = QLabel(f"Page {item['page']}")
+                    page_label.setFixedWidth(80)  # Fixed width for page number
+                    item_layout.addWidget(page_label, 0, 0)
+                    
+                    # Add content (column 1)
+                    content_label = QLabel(item['content'])
+                    content_label.setWordWrap(True)
+                    content_label.setFixedWidth(300)  # Fixed width for content
+                    item_layout.addWidget(content_label, 0, 1)
+                    
+                    # Add caption if available (column 2)
+                    if item['caption']:
+                        caption_label = QLabel(item['caption'])
+                        caption_label.setWordWrap(True)
+                        caption_label.setStyleSheet("font-style: italic;")
+                        caption_label.setFixedWidth(300)  # Fixed width for caption
+                        item_layout.addWidget(caption_label, 0, 2)
+                    
+                    item_widget.setLayout(item_layout)
+                    
+                    # Store element data for double-click
+                    item_widget.element_data = {
+                        'type': content_type,
+                        'page': item['page'],
+                        'caption': item['caption'],
+                        'content': item['content'],
+                        'pixmap': None  # No pixmap for list view
+                    }
+                    
+                    # Create list item
+                    list_item = QListWidgetItem()
+                    list_item.setSizeHint(item_widget.sizeHint())
+                    self.content_list.addItem(list_item)
+                    self.content_list.setItemWidget(list_item, item_widget)
+                
+                # Add spacing after each type
+                spacer = QListWidgetItem()
+                spacer.setSizeHint(QSize(0, 10))
+                spacer.setFlags(Qt.ItemFlag.NoItemFlags)
+                self.content_list.addItem(spacer)
     
     def _update_icon_view(self, content_by_type):
         """Update the icon view with content"""
-        self._clear_grid()
+        self.content_list.clear()
         
         if not self.current_doc:
             logger.warning("No PDF document available for icon view")
             return
             
-        row = 0
-        col = 0
-        max_cols = 3  # Number of items per row
-        
         for content_type, items in content_by_type.items():
             if items:
-                # Add type label (single line)
-                type_label = QLabel(content_type.capitalize())
-                type_label.setStyleSheet("font-weight: bold;")
-                self.content_grid.addWidget(type_label, row, 0, 1, max_cols)
-                row += 1
+                # Add type label as a special item
+                type_item = QListWidgetItem(content_type.capitalize())
+                type_item.setFlags(Qt.ItemFlag.NoItemFlags)  # Make it non-selectable
+                type_item.setForeground(Qt.GlobalColor.black)
+                font = type_item.font()
+                font.setBold(True)
+                type_item.setFont(font)
+                self.content_list.addItem(type_item)
                 
                 # Add items
                 for item in items:
@@ -771,18 +808,17 @@ class StructuredContentView(QWidget):
                         'pixmap': item_pixmap
                     }
                     
-                    # Add double-click handler
-                    item_widget.mouseDoubleClickEvent = lambda event, widget=item_widget: self._show_element_info(widget)
-                    
-                    # Add to grid
-                    self.content_grid.addWidget(item_widget, row, col)
-                    col += 1
-                    if col >= max_cols:
-                        col = 0
-                        row += 1
+                    # Create list item
+                    list_item = QListWidgetItem()
+                    list_item.setSizeHint(item_widget.sizeHint())
+                    self.content_list.addItem(list_item)
+                    self.content_list.setItemWidget(list_item, item_widget)
                 
                 # Add spacing after each type
-                row += 1
+                spacer = QListWidgetItem()
+                spacer.setSizeHint(QSize(0, 20))
+                spacer.setFlags(Qt.ItemFlag.NoItemFlags)
+                self.content_list.addItem(spacer)
     
     def _clear_grid(self):
         """Clear the grid layout"""
@@ -808,9 +844,11 @@ class StructuredContentView(QWidget):
         # and within a reasonable distance (e.g., 0.1 of page height)
         return caption_y > target_y and (caption_y - target_y) < 0.1
 
-    def _show_element_info(self, widget):
+    def _show_element_info(self, item):
         """Show detailed information about an element"""
-        if hasattr(widget, 'element_data'):
+        # Get the widget associated with the list item
+        widget = self.content_list.itemWidget(item)
+        if widget and hasattr(widget, 'element_data'):
             dialog = ElementInfoDialog(widget.element_data, self)
             dialog.exec()
 
