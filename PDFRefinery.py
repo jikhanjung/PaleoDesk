@@ -1010,6 +1010,15 @@ class MainWindow(QMainWindow):
 
     def item_clicked(self, item, column):
         """Handle click on item in items tree"""
+        # Clear existing document data and session information
+        self.document_data = {
+            'page_structures': {},
+            'metadata': {}
+        }
+        self.pdf_viewer.set_bounding_boxes([])
+        self.pdf_viewer.pixmap = None
+        self.pdf_viewer.update()
+        
         if hasattr(item, 'file_path') and item.file_path:
             # Direct click on a PDF item
             if item.file_path.lower().endswith('.pdf'):
@@ -2089,6 +2098,37 @@ class MainWindow(QMainWindow):
             collections = cursor.fetchall()
             logger.info(f"Found {len(collections)} collections")
             
+            # Clear existing items
+            self.collections_tree.clear()
+            self.items_tree.clear()
+            
+            # Create collection hierarchy first
+            collection_map = {}
+            root_collections = []
+            self.collection_data = {}  # Store item data by collection ID
+            
+            for collection_id, name, parent_id, level in collections:
+                item = QTreeWidgetItem()
+                item.setText(0, name)
+                item.collection_id = collection_id
+                collection_map[collection_id] = item
+                self.collection_data[collection_id] = []  # Initialize empty list for items
+                
+                if parent_id is None:
+                    root_collections.append(item)
+                else:
+                    parent = collection_map.get(parent_id)
+                    if parent:
+                        parent.addChild(item)
+            
+            # Add collections to the collections tree immediately
+            for collection in root_collections:
+                self.collections_tree.addTopLevelItem(collection)
+            
+            # Expand the first level of collections
+            for i in range(self.collections_tree.topLevelItemCount()):
+                self.collections_tree.topLevelItem(i).setExpanded(True)
+            
             # Get parent items and their collections
             self.status_label.showMessage("Loading parent items...", 0)
             QApplication.processEvents()
@@ -2183,34 +2223,11 @@ class MainWindow(QMainWindow):
             self.status_label.showMessage("Creating collection hierarchy...", 0)
             QApplication.processEvents()
             
-            collection_map = {}
-            root_collections = []
-            self.collection_data = {}  # Store item data by collection ID
-            
-            for collection_id, name, parent_id, level in collections:
-                item = QTreeWidgetItem()
-                item.setText(0, name)
-                item.collection_id = collection_id
-                collection_map[collection_id] = item
-                self.collection_data[collection_id] = []  # Initialize empty list for items
-                
-                if parent_id is None:
-                    root_collections.append(item)
-                else:
-                    parent = collection_map.get(parent_id)
-                    if parent:
-                        parent.addChild(item)
-            
-            # Configure logging to handle Unicode
-            for handler in logger.handlers:
-                if isinstance(handler, logging.StreamHandler):
-                    handler.setStream(sys.stdout)
-
             # Process items and attachments
             storage_base = os.path.join(zotero_dir, 'storage')
             logger.info(f"Using storage base directory: {storage_base}")
             
-            # Function to add PDF item to items tree
+            # Function to add PDF item to items tree and save to database
             def add_pdf_to_items_tree(zotero_key, display_name, parent_item=None, collection_id=None, parent_key=None):
                 storage_dir = os.path.join(storage_base, zotero_key)
                 if os.path.exists(storage_dir):
@@ -2227,13 +2244,32 @@ class MainWindow(QMainWindow):
                             pdf_item = QTreeWidgetItem(parent_item)
                         else:
                             pdf_item = QTreeWidgetItem()
-                            self.items_tree.addTopLevelItem(pdf_item)
+                            #self.items_tree.addTopLevelItem(pdf_item)
                         
                         pdf_item.setText(0, display_name)
                         pdf_item.file_path = pdf_path
                         pdf_item.zotero_key = zotero_key  # Store attachment's Zotero key
                         if parent_key:
                             pdf_item.parent_zotero_key = parent_key  # Store parent's Zotero key if available
+                        
+                        # Save document to database only if it doesn't exist
+                        try:
+                            with db:
+                                # Check if document already exists
+                                try:
+                                    document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                                    logger.debug(f"Document already exists in database: {zotero_key}")
+                                except DoesNotExist:
+                                    # Create new document only if it doesn't exist
+                                    document = PDFDocument.create(
+                                        file_path=pdf_path,
+                                        zotero_key=zotero_key,
+                                        title=display_name,
+                                        page_count=0  # Will be updated when file is opened
+                                    )
+                                    logger.debug(f"Created new document record for {display_name}")
+                        except Exception as e:
+                            logger.error(f"Error checking/saving document to database: {str(e)}")
                         
                         # Add to collection if specified
                         if collection_id and collection_id in self.collection_data:
@@ -2252,10 +2288,6 @@ class MainWindow(QMainWindow):
                 else:
                     logger.warning(f"Storage directory not found: {storage_dir}")
                 return False
-            
-            # Clear existing items
-            self.collections_tree.clear()
-            self.items_tree.clear()
             
             # Track processed items and their collections
             processed_items = {}
@@ -2294,7 +2326,7 @@ class MainWindow(QMainWindow):
                         parent_item.setText(0, display_text)
                         parent_item.item_id = item_id
                         parent_item.zotero_key = key  # Store parent's Zotero key
-                        self.items_tree.addTopLevelItem(parent_item)
+                        #self.items_tree.addTopLevelItem(parent_item)
                         
                         # Add PDF attachments as children
                         has_pdfs = False
@@ -2363,10 +2395,6 @@ class MainWindow(QMainWindow):
                                 } for child in [item_data['parent_item'].child(i) for i in range(item_data['parent_item'].childCount())]]
                             })
             
-            # Add collections to the collections tree
-            for collection in root_collections:
-                self.collections_tree.addTopLevelItem(collection)
-            
             # Expand the first level of collections
             for i in range(self.collections_tree.topLevelItemCount()):
                 self.collections_tree.topLevelItem(i).setExpanded(True)
@@ -2423,6 +2451,29 @@ class MainWindow(QMainWindow):
             for i in range(collection_tree.topLevelItemCount()):
                 collection_tree.topLevelItem(i).setExpanded(True)
 
+            # Get currently selected collection from main window
+            current_collection = self.collections_tree.currentItem()
+            if current_collection and hasattr(current_collection, 'collection_id'):
+                # Find and select the same collection in the dialog's tree
+                def find_and_select_collection(item, target_id):
+                    if hasattr(item, 'collection_id') and item.collection_id == target_id:
+                        collection_tree.setCurrentItem(item)
+                        collection_tree.scrollToItem(item)
+                        return True
+                    for i in range(item.childCount()):
+                        if find_and_select_collection(item.child(i), target_id):
+                            return True
+                    return False
+
+                # Search through all collections recursively
+                for i in range(collection_tree.topLevelItemCount()):
+                    item = collection_tree.topLevelItem(i)
+                    if find_and_select_collection(item, current_collection.collection_id):
+                        # If found, select the "selected collection" radio button
+                        selected_collection_radio.setChecked(True)
+                        collection_tree.setEnabled(True)
+                        break
+
             # Connect radio buttons to enable/disable collection tree
             def update_collection_tree():
                 collection_tree.setEnabled(selected_collection_radio.isChecked())
@@ -2472,6 +2523,15 @@ class MainWindow(QMainWindow):
             def process_pdf_item(item):
                 """Process a single PDF item"""
                 nonlocal analyzed_files, failed_files
+                
+                # Clear existing document data and session information
+                self.document_data = {
+                    'page_structures': {},
+                    'metadata': {}
+                }
+                self.pdf_viewer.set_bounding_boxes([])
+                self.pdf_viewer.pixmap = None
+                self.pdf_viewer.update()
                 
                 # Select and scroll to the item
                 self.items_tree.setCurrentItem(item)
