@@ -1951,21 +1951,105 @@ class MainWindow(QMainWindow):
             previous_file = self.current_file if hasattr(self, 'current_file') else None
             previous_doc = self.doc if hasattr(self, 'doc') else None
 
-            # Get PDF files based on selection
-            pdf_items = []
+            def process_pdf_item(item):
+                """Process a single PDF item"""
+                nonlocal analyzed_files, failed_files
+                
+                # Select and scroll to the item
+                self.items_tree.setCurrentItem(item)
+                self.items_tree.scrollToItem(item)
+                QApplication.processEvents()
+
+                try:
+                    # Open the PDF file and show first page
+                    self.current_file = item.file_path
+                    self.pdf_directory = os.path.dirname(item.file_path)
+                    self.doc = fitz.open(item.file_path)
+                    self.current_page = 0
+                    self.pdf_viewer.current_page = 0
+                    self.pdf_viewer.open_pdf(item.file_path)
+                    self.update_navigation()
+                    QApplication.processEvents()
+
+                    # Analyze the PDF
+                    if self.analyze_pdf(item.file_path):
+                        analyzed_files += 1
+                        # Update item text to show it's analyzed without changing the filename
+                        original_text = item.text(0)
+                        if not original_text.endswith(" (Analyzed)"):
+                            item.setText(0, f"{original_text} (Analyzed)")
+                        # Set text color to green to indicate success
+                        item.setForeground(0, Qt.GlobalColor.darkGreen)
+                    else:
+                        failed_files += 1
+                        # Update item text to show failure without changing the filename
+                        original_text = item.text(0)
+                        if not original_text.endswith(" (Failed)"):
+                            item.setText(0, f"{original_text} (Failed)")
+                        # Set text color to red to indicate failure
+                        item.setForeground(0, Qt.GlobalColor.red)
+
+                    # Close the document
+                    self.doc.close()
+
+                except Exception as e:
+                    logger.error(f"Error analyzing {item.file_path}: {str(e)}")
+                    failed_files += 1
+                    # Update item text to show error without changing the filename
+                    original_text = item.text(0)
+                    if not original_text.endswith(" (Error)"):
+                        item.setText(0, f"{original_text} (Error)")
+                    # Set text color to red to indicate error
+                    item.setForeground(0, Qt.GlobalColor.red)
+
+                    # Make sure to close the document if it's open
+                    if hasattr(self, 'doc') and self.doc:
+                        try:
+                            self.doc.close()
+                        except:
+                            pass
+
+            def process_collection(collection):
+                """Process a collection and its items"""
+                nonlocal total_files
+                
+                # Select the collection to populate items tree
+                self.collections_tree.setCurrentItem(collection)
+                self.collection_clicked(collection, 0)
+                QApplication.processEvents()
+                
+                # Process each item in the items tree
+                for i in range(self.items_tree.topLevelItemCount()):
+                    item = self.items_tree.topLevelItem(i)
+                    
+                    # Check if item is a PDF
+                    if hasattr(item, 'file_path') and item.file_path.lower().endswith('.pdf'):
+                        total_files += 1
+                        # Update status
+                        self.status_label.showMessage(
+                            f"Analyzing {os.path.basename(item.file_path)} "
+                            f"in {collection.text(0)}...", 0)
+                        QApplication.processEvents()
+                        
+                        process_pdf_item(item)
+                    
+                    # Check children for PDFs
+                    for j in range(item.childCount()):
+                        child = item.child(j)
+                        if hasattr(child, 'file_path') and child.file_path.lower().endswith('.pdf'):
+                            total_files += 1
+                            # Update status
+                            self.status_label.showMessage(
+                                f"Analyzing {os.path.basename(child.file_path)} "
+                                f"in {collection.text(0)}...", 0)
+                            QApplication.processEvents()
+                            
+                            process_pdf_item(child)
+
+            # Process collections
             if selected_collection_id:
-                # Get all collection IDs including subcollections
-                collection_ids = set()
-                
-                def get_subcollection_ids(item):
-                    if hasattr(item, 'collection_id'):
-                        collection_ids.add(item.collection_id)
-                    for i in range(item.childCount()):
-                        get_subcollection_ids(item.child(i))
-                
-                # Find the selected collection in the tree
+                # Find and select the specific collection
                 selected_collection = None
-                
                 def find_collection(item, target_id):
                     if hasattr(item, 'collection_id') and item.collection_id == target_id:
                         return item
@@ -1974,138 +2058,28 @@ class MainWindow(QMainWindow):
                         if result:
                             return result
                     return None
-                
+
                 # Search through all collections recursively
                 for i in range(self.collections_tree.topLevelItemCount()):
                     item = self.collections_tree.topLevelItem(i)
                     selected_collection = find_collection(item, selected_collection_id)
                     if selected_collection:
                         break
-                
+
                 if selected_collection:
-                    # Get all collection IDs including subcollections
-                    get_subcollection_ids(selected_collection)
-                    logger.info(f"Found {len(collection_ids)} collections to process")
-                
-                # Get PDFs from all collections
-                for collection_id in collection_ids:
-                    if collection_id in self.collection_data:
-                        for item_data in self.collection_data[collection_id]:
-                            # Add parent item's PDFs
-                            if 'children' in item_data:
-                                for child in item_data['children']:
-                                    if 'file_path' in child and child['file_path'].lower().endswith('.pdf'):
-                                        # Find the corresponding tree item
-                                        for i in range(self.items_tree.topLevelItemCount()):
-                                            parent = self.items_tree.topLevelItem(i)
-                                            for j in range(parent.childCount()):
-                                                child_item = parent.child(j)
-                                                if (hasattr(child_item, 'file_path') and 
-                                                    child_item.file_path == child['file_path']):
-                                                    pdf_items.append(child_item)
-                                                    break
-                            # Add standalone PDFs
-                            elif 'file_path' in item_data and item_data['file_path'].lower().endswith('.pdf'):
-                                # Find the corresponding tree item
-                                for i in range(self.items_tree.topLevelItemCount()):
-                                    item = self.items_tree.topLevelItem(i)
-                                    if (hasattr(item, 'file_path') and 
-                                        item.file_path == item_data['file_path']):
-                                        pdf_items.append(item)
-                                        break
-
-                # If no PDFs found in the collections, check if there are any PDFs in the items tree
-                if not pdf_items:
-                    # Get all items from the items tree
-                    def get_all_items(item):
-                        items = []
-                        if hasattr(item, 'file_path') and item.file_path.lower().endswith('.pdf'):
-                            items.append(item)
-                        for i in range(item.childCount()):
-                            items.extend(get_all_items(item.child(i)))
-                        return items
-
-                    # Get all PDF items from the items tree
-                    for i in range(self.items_tree.topLevelItemCount()):
-                        pdf_items.extend(get_all_items(self.items_tree.topLevelItem(i)))
-
-                    logger.info(f"Found {len(pdf_items)} PDFs in items tree")
+                    process_collection(selected_collection)
+                    logger.info(f"Processed selected collection: {selected_collection.text(0)}")
             else:
-                # Get all PDF files from items tree
-                for i in range(self.items_tree.topLevelItemCount()):
-                    item = self.items_tree.topLevelItem(i)
-                    if (hasattr(item, 'file_path') and 
-                        item.file_path and 
-                        item.file_path.lower().endswith('.pdf')):
-                        pdf_items.append(item)
+                # Process all collections
+                for i in range(self.collections_tree.topLevelItemCount()):
+                    collection = self.collections_tree.topLevelItem(i)
+                    process_collection(collection)
+                    logger.info(f"Processed collection: {collection.text(0)}")
 
-            total_files = len(pdf_items)
             if total_files == 0:
                 QMessageBox.information(self, "No PDF Files", 
                                       "No PDF files found to analyze.")
                 return
-
-            # Process PDF items
-            for index, pdf_item in enumerate(pdf_items, 1):
-                # Select and scroll to the item
-                self.items_tree.setCurrentItem(pdf_item)
-                self.items_tree.scrollToItem(pdf_item)
-                QApplication.processEvents()  # Update UI
-
-                # Update status
-                self.status_label.showMessage(
-                    f"Analyzing {os.path.basename(pdf_item.file_path)} "
-                    f"({index}/{total_files})...", 0)
-                QApplication.processEvents()
-
-                try:
-                    # Open the PDF file and show first page
-                    self.current_file = pdf_item.file_path
-                    self.pdf_directory = os.path.dirname(pdf_item.file_path)
-                    self.doc = fitz.open(pdf_item.file_path)
-                    self.current_page = 0
-                    self.pdf_viewer.current_page = 0
-                    self.pdf_viewer.open_pdf(pdf_item.file_path)
-                    self.update_navigation()
-                    QApplication.processEvents()  # Update UI
-
-                    # Analyze the PDF
-                    if self.analyze_pdf(pdf_item.file_path):
-                        analyzed_files += 1
-                        # Update item text to show it's analyzed without changing the filename
-                        original_text = pdf_item.text(0)
-                        if not original_text.endswith(" (Analyzed)"):
-                            pdf_item.setText(0, f"{original_text} (Analyzed)")
-                        # Set text color to green to indicate success
-                        pdf_item.setForeground(0, Qt.GlobalColor.darkGreen)
-                    else:
-                        failed_files += 1
-                        # Update item text to show failure without changing the filename
-                        original_text = pdf_item.text(0)
-                        if not original_text.endswith(" (Failed)"):
-                            pdf_item.setText(0, f"{original_text} (Failed)")
-                        # Set text color to red to indicate failure
-                        pdf_item.setForeground(0, Qt.GlobalColor.red)
-
-                    # Close the document
-                    self.doc.close()
-
-                except Exception as e:
-                    logger.error(f"Error analyzing {pdf_item.file_path}: {str(e)}")
-                    failed_files += 1
-                    # Update item text to show error without changing the filename
-                    original_text = pdf_item.text(0)
-                    if not original_text.endswith(" (Error)"):
-                        pdf_item.setText(0, f"{original_text} (Error)")
-                    # Set text color to red to indicate error
-                    pdf_item.setForeground(0, Qt.GlobalColor.red)
-
-                    # Make sure to close the document if it's open
-                    if hasattr(self, 'doc') and self.doc:
-                        try:
-                            self.doc.close()
-                        except:
-                            pass
 
             # Restore previous file if there was one
             if previous_file and os.path.exists(previous_file):
