@@ -5,7 +5,9 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                            QDialogButtonBox, QMenuBar, QMenu, QMessageBox,
                            QTreeWidget, QTreeWidgetItem, QDockWidget, QSplitter,
-                           QComboBox, QRadioButton, QButtonGroup)
+                           QComboBox, QRadioButton, QButtonGroup, QTabWidget,
+                           QGridLayout, QStackedWidget, QFormLayout, QTextEdit,
+                           QScrollArea, QSizePolicy, QLayout)
 from PyQt6.QtCore import Qt, QPoint, QSettings
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor
 import fitz  # PyMuPDF
@@ -353,6 +355,460 @@ class PDFViewer(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             self.last_pan_pos = None
 
+class ElementInfoDialog(QDialog):
+    def __init__(self, element_data, parent=None):
+        super().__init__(parent)
+        self.element_data = element_data
+        self.init_ui()
+        
+    def init_ui(self):
+        self.setWindowTitle("Element Information")
+        layout = QVBoxLayout()
+        
+        # Create form layout for basic information
+        form_layout = QFormLayout()
+        form_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        
+        # Add type and page information
+        form_layout.addRow("Type:", QLabel(self.element_data.get('type', '').capitalize()))
+        form_layout.addRow("Page:", QLabel(str(self.element_data.get('page', ''))))
+        
+        layout.addLayout(form_layout)
+        
+        # Add caption in a read-only text area
+        caption_label = QLabel("Caption:")
+        caption_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout.addWidget(caption_label)
+        
+        caption_text = QTextEdit()
+        caption_text.setReadOnly(True)
+        caption_text.setPlainText(self.element_data.get('caption', ''))
+        caption_text.setMaximumHeight(100)  # Limit height for captions
+        caption_text.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout.addWidget(caption_text)
+        
+        # Add image if available
+        pixmap = self.element_data.get('pixmap')
+        if pixmap:
+            # Create image label that will scale with the dialog
+            image_label = QLabel()
+            image_label.setPixmap(pixmap)
+            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            image_label.setMinimumSize(200, 200)  # Set minimum size for the image
+            layout.addWidget(image_label, 1)  # Add stretch factor of 1
+        
+        # Add close button
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box.rejected.connect(self.reject)
+        button_box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout.addWidget(button_box)
+        
+        self.setLayout(layout)
+        
+        # Set minimum size for the dialog
+        self.setMinimumSize(400, 300)
+
+class StructuredContentView(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+        self.current_doc = None  # Store current PDF document
+        logger.debug("StructuredContentView initialized")
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Create toolbar for view mode switching
+        toolbar = QToolBar()
+        toolbar.setMovable(False)
+        
+        # Create view mode actions
+        self.list_view_action = QAction("List View", self)
+        self.list_view_action.setCheckable(True)
+        self.list_view_action.setChecked(False)  # Changed to False
+        self.list_view_action.triggered.connect(lambda: self.switch_view_mode('list'))
+        
+        self.icon_view_action = QAction("Icon View", self)
+        self.icon_view_action.setCheckable(True)
+        self.icon_view_action.setChecked(True)  # Changed to True
+        self.icon_view_action.triggered.connect(lambda: self.switch_view_mode('icon'))
+        
+        # Add actions to toolbar
+        toolbar.addAction(self.list_view_action)
+        toolbar.addAction(self.icon_view_action)
+        
+        layout.addWidget(toolbar)
+        
+        # Create stacked widget to hold both views
+        self.view_stack = QStackedWidget()
+        
+        # Create tree widget for list view
+        self.content_tree = QTreeWidget()
+        self.content_tree.setHeaderLabels(["Type", "Content", "Caption"])
+        self.content_tree.setColumnWidth(0, 100)  # Type column
+        self.content_tree.setColumnWidth(1, 300)  # Content column
+        self.content_tree.setColumnWidth(2, 300)  # Caption column
+        
+        # Create grid widget for icon view
+        self.content_grid = QGridLayout()
+        self.grid_widget = QWidget()
+        self.grid_widget.setLayout(self.content_grid)
+        
+        # Add views to stacked widget
+        self.view_stack.addWidget(self.content_tree)
+        self.view_stack.addWidget(self.grid_widget)
+        
+        # Set initial view to icon view
+        self.view_stack.setCurrentIndex(1)  # Changed to 1 for icon view
+        
+        layout.addWidget(self.view_stack)
+        self.setLayout(layout)
+        
+    def set_document(self, doc):
+        """Set the current PDF document"""
+        self.current_doc = doc
+        
+    def switch_view_mode(self, mode):
+        """Switch between list and icon views"""
+        if mode == 'list':
+            self.view_stack.setCurrentIndex(0)
+            self.list_view_action.setChecked(True)
+            self.icon_view_action.setChecked(False)
+        else:
+            self.view_stack.setCurrentIndex(1)
+            self.list_view_action.setChecked(False)
+            self.icon_view_action.setChecked(True)
+        
+        # Update content in the current view
+        if hasattr(self, '_current_content'):
+            self.update_content(self._current_content)
+        
+    def _find_nearest_caption(self, element, page_elements):
+        """Find the nearest caption for an element on the same page"""
+        element_type = element.get('category', '').lower()
+        element_coords = element.get('coordinates', [])
+        
+        if not element_coords or len(element_coords) < 4:
+            return None
+            
+        # Get element's bounding box
+        element_x1 = element_coords[0]['x']
+        element_y1 = element_coords[0]['y']
+        element_x2 = element_coords[2]['x']
+        element_y2 = element_coords[2]['y']
+        element_center_x = (element_x1 + element_x2) / 2
+        element_center_y = (element_y1 + element_y2) / 2
+        
+        # Find all captions on the page
+        captions = []
+        for other_element in page_elements:
+            if other_element.get('category', '').lower() == 'caption':
+                caption_coords = other_element.get('coordinates', [])
+                if caption_coords and len(caption_coords) >= 4:
+                    caption_x1 = caption_coords[0]['x']
+                    caption_y1 = caption_coords[0]['y']
+                    caption_x2 = caption_coords[2]['x']
+                    caption_y2 = caption_coords[2]['y']
+                    caption_center_x = (caption_x1 + caption_x2) / 2
+                    caption_center_y = (caption_y1 + caption_y2) / 2
+                    
+                    # Calculate distance between element and caption
+                    dx = caption_center_x - element_center_x
+                    dy = caption_center_y - element_center_y
+                    distance = (dx * dx + dy * dy) ** 0.5
+                    
+                    captions.append({
+                        'element': other_element,
+                        'distance': distance,
+                        'is_below': caption_y1 > element_y2,  # Caption is below the element
+                        'is_above': caption_y2 < element_y1,  # Caption is above the element
+                        'is_left': caption_x2 < element_x1,   # Caption is to the left
+                        'is_right': caption_x1 > element_x2   # Caption is to the right
+                    })
+        
+        if not captions:
+            return None
+            
+        # Sort captions by distance
+        captions.sort(key=lambda x: x['distance'])
+        
+        # For tables and figures, prefer captions below
+        if element_type in ['table', 'figure']:
+            below_captions = [c for c in captions if c['is_below']]
+            if below_captions:
+                return below_captions[0]['element']
+        
+        # For images and pictures, prefer captions below or to the right
+        elif element_type in ['image', 'picture']:
+            below_or_right = [c for c in captions if c['is_below'] or c['is_right']]
+            if below_or_right:
+                return below_or_right[0]['element']
+        
+        # If no preferred position found, return the closest caption
+        return captions[0]['element']
+
+    def _sort_elements_by_position(self, items):
+        """Sort elements based on page number and position in a two-column layout"""
+        def get_position_key(item):
+            # First sort by page number
+            page = item.get('page', 0)
+            
+            coords = item.get('coordinates', [])
+            if not coords or len(coords) < 4:
+                return (page, 0, 0)  # Default position if coordinates are missing
+                
+            # Get center point of the element
+            x1 = coords[0]['x']
+            y1 = coords[0]['y']
+            x2 = coords[2]['x']
+            y2 = coords[2]['y']
+            center_x = (x1 + x2) / 2
+            center_y = (y1 + y2) / 2
+            
+            # Determine column (left or right)
+            # Assuming page is divided into two equal columns
+            is_left_column = center_x < 0.5
+            
+            # Determine vertical position (top or bottom)
+            # Using 0.5 as the midpoint
+            is_top = center_y < 0.5
+            
+            # Return a tuple for sorting:
+            # First element: page number
+            # Second element: 0 for left column, 1 for right column
+            # Third element: 0 for top, 1 for bottom
+            return (page, 0 if is_left_column else 1, 0 if is_top else 1)
+        
+        # Sort items based on their position
+        return sorted(items, key=get_position_key)
+
+    def _get_category_from_caption(self, caption):
+        """Extract category from caption text (e.g., 'Figure 1. ...' -> 'figure')"""
+        if not caption:
+            return None
+            
+        # Split by whitespace and get first word
+        first_word = caption.split()[0].lower()
+        
+        # Map common category words
+        category_map = {
+            'figure': 'figure',
+            'fig': 'figure',
+            'table': 'table',
+            'image': 'image',
+            'picture': 'picture',
+            'photo': 'picture',
+            'diagram': 'figure',
+            'chart': 'figure',
+            'graph': 'figure'
+        }
+        
+        return category_map.get(first_word)
+
+    def update_content(self, page_structures):
+        """Update the structured content view with page structures"""
+        self._current_content = page_structures  # Store for view switching
+        
+        # Clear current view
+        self.content_tree.clear()
+        self._clear_grid()
+        
+        # Group content by type
+        content_by_type = {
+            'image': [],
+            'table': [],
+            'figure': [],
+            'picture': []
+        }
+        
+        # Process each page's structure
+        for page_num, structure in page_structures.items():
+            elements = structure.get('structure', {}).get('elements', [])
+            for element in elements:
+                element_type = element.get('category', '').lower()
+                if element_type in content_by_type:
+                    # Find nearest caption
+                    caption_element = self._find_nearest_caption(element, elements)
+                    caption = caption_element.get('content', {}).get('text', '') if caption_element else None
+                    
+                    # Try to get category from caption
+                    if caption:
+                        caption_category = self._get_category_from_caption(caption)
+                        if caption_category:
+                            element_type = caption_category
+                    
+                    content_by_type[element_type].append({
+                        'page': int(page_num) + 1,  # Convert to 1-based page number
+                        'content': element.get('content', {}).get('text', ''),
+                        'caption': caption,
+                        'coordinates': element.get('coordinates', []),
+                        'page_width': element.get('attributes', {}).get('page_width', 0),
+                        'page_height': element.get('attributes', {}).get('page_height', 0)
+                    })
+        
+        # Sort elements by position for each type
+        for content_type in content_by_type:
+            content_by_type[content_type] = self._sort_elements_by_position(content_by_type[content_type])
+        
+        # Update current view
+        if self.view_stack.currentIndex() == 0:
+            self._update_list_view(content_by_type)
+        else:
+            self._update_icon_view(content_by_type)
+    
+    def _update_list_view(self, content_by_type):
+        """Update the list view with content"""
+        for content_type, items in content_by_type.items():
+            if items:
+                type_item = QTreeWidgetItem(self.content_tree)
+                type_item.setText(0, content_type.capitalize())
+                type_item.setExpanded(True)
+                
+                for item in items:
+                    content_item = QTreeWidgetItem(type_item)
+                    content_item.setText(0, f"Page {item['page']}")
+                    content_item.setText(1, item['content'])
+                    content_item.setText(2, item['caption'] if item['caption'] else '')
+    
+    def _update_icon_view(self, content_by_type):
+        """Update the icon view with content"""
+        self._clear_grid()
+        
+        if not self.current_doc:
+            logger.warning("No PDF document available for icon view")
+            return
+            
+        row = 0
+        col = 0
+        max_cols = 3  # Number of items per row
+        
+        for content_type, items in content_by_type.items():
+            if items:
+                # Add type label (single line)
+                type_label = QLabel(content_type.capitalize())
+                type_label.setStyleSheet("font-weight: bold;")
+                self.content_grid.addWidget(type_label, row, 0, 1, max_cols)
+                row += 1
+                
+                # Add items
+                for item in items:
+                    # Create item widget
+                    item_widget = QWidget()
+                    item_layout = QVBoxLayout()
+                    item_layout.setContentsMargins(5, 5, 5, 5)
+                    
+                    # Get page pixmap
+                    try:
+                        page = self.current_doc[item['page'] - 1]  # Convert to 0-based index
+                        zoom = 4  # Higher zoom for better quality (4x)
+                        matrix = fitz.Matrix(zoom, zoom)
+                        pix = page.get_pixmap(matrix=matrix)
+                        
+                        # Convert to QImage
+                        img = QImage(pix.samples, pix.width, pix.height, 
+                                   pix.stride, QImage.Format.Format_RGB888)
+                        
+                        # Get coordinates
+                        coords = item['coordinates']
+                        if coords and len(coords) >= 4:
+                            # Convert relative coordinates to absolute
+                            x1 = int(coords[0]['x'] * pix.width)
+                            y1 = int(coords[0]['y'] * pix.height)
+                            x2 = int(coords[2]['x'] * pix.width)
+                            y2 = int(coords[2]['y'] * pix.height)
+                            
+                            # Clip the region
+                            clipped_img = img.copy(x1, y1, x2 - x1, y2 - y1)
+                            
+                            # Create QPixmap and scale to reasonable size
+                            pixmap = QPixmap.fromImage(clipped_img)
+                            max_size = 400  # Increased maximum size for the image
+                            pixmap = pixmap.scaled(max_size, max_size, 
+                                                 Qt.AspectRatioMode.KeepAspectRatio,
+                                                 Qt.TransformationMode.SmoothTransformation)
+                            
+                            # Create image label
+                            image_label = QLabel()
+                            image_label.setPixmap(pixmap)
+                            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                            item_layout.addWidget(image_label)
+                            
+                            # Store pixmap for dialog
+                            item_pixmap = pixmap
+                        else:
+                            item_pixmap = None
+                    except Exception as e:
+                        logger.error(f"Error creating image for {content_type} on page {item['page']}: {str(e)}")
+                        item_pixmap = None
+                    
+                    # Show caption for tables and figures, content for others
+                    if content_type in ['table', 'figure']:
+                        if item['caption']:
+                            caption_label = QLabel(item['caption'])
+                            caption_label.setWordWrap(True)
+                            caption_label.setStyleSheet("font-style: italic;")
+                            item_layout.addWidget(caption_label)
+                    else:
+                        content_label = QLabel(item['content'])
+                        content_label.setWordWrap(True)
+                        item_layout.addWidget(content_label)
+                    
+                    item_widget.setLayout(item_layout)
+                    item_widget.setStyleSheet("border: 1px solid #ccc; padding: 5px;")
+                    
+                    # Store element data for double-click
+                    item_widget.element_data = {
+                        'type': content_type,
+                        'page': item['page'],
+                        'caption': item['caption'],
+                        'content': item['content'],
+                        'pixmap': item_pixmap
+                    }
+                    
+                    # Add double-click handler
+                    item_widget.mouseDoubleClickEvent = lambda event, widget=item_widget: self._show_element_info(widget)
+                    
+                    # Add to grid
+                    self.content_grid.addWidget(item_widget, row, col)
+                    col += 1
+                    if col >= max_cols:
+                        col = 0
+                        row += 1
+                
+                # Add spacing after each type
+                row += 1
+    
+    def _clear_grid(self):
+        """Clear the grid layout"""
+        while self.content_grid.count():
+            item = self.content_grid.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+    
+    def _is_caption_for_element(self, caption_element, target_element):
+        """Check if a caption element belongs to a target element"""
+        # Get coordinates
+        caption_coords = caption_element.get('coordinates', [])
+        target_coords = target_element.get('coordinates', [])
+        
+        if not caption_coords or not target_coords:
+            return False
+            
+        # Get y-coordinates (vertical position)
+        caption_y = caption_coords[0]['y']
+        target_y = target_coords[0]['y']
+        
+        # Check if caption is below the target element
+        # and within a reasonable distance (e.g., 0.1 of page height)
+        return caption_y > target_y and (caption_y - target_y) < 0.1
+
+    def _show_element_info(self, widget):
+        """Show detailed information about an element"""
+        if hasattr(widget, 'element_data'):
+            dialog = ElementInfoDialog(widget.element_data, self)
+            dialog.exec()
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -389,8 +845,17 @@ class MainWindow(QMainWindow):
         # Create directory tree widget
         self.create_directory_tree()
         
+        # Create tab widget
+        self.tab_widget = QTabWidget()
+        self.setCentralWidget(self.tab_widget)
+        
+        # Create PDF viewer tab
         self.pdf_viewer = PDFViewer()
-        self.setCentralWidget(self.pdf_viewer)
+        self.tab_widget.addTab(self.pdf_viewer, "PDF View")
+        
+        # Create structured content tab
+        self.structured_view = StructuredContentView()
+        self.tab_widget.addTab(self.structured_view, "Structured Content")
         
         self.create_toolbar()
         self.create_menu()
@@ -575,15 +1040,22 @@ class MainWindow(QMainWindow):
         self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
         logger.info(f"Opened PDF file: {self.current_file}")
         
+        # Set document in structured view
+        self.structured_view.set_document(self.doc)
+        
         # Try to load analysis from database
         if self.load_analysis_from_database(file_path, zotero_key):
             self.update_page_display()
+            # Update structured content view with all page structures
+            self.structured_view.update_content(self.document_data['page_structures'])
             self.status_label.showMessage(f"Loaded analysis for {os.path.basename(file_path)}", 3000)
         else:
             # Try to load session from database
             try:
                 self.load_session(file_path)
                 logger.info(f"Loaded session data for {file_path}")
+                # Update structured content view with all page structures
+                self.structured_view.update_content(self.document_data['page_structures'])
                 self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
             except Exception as e:
                 logger.error(f"Error loading session data: {str(e)}")
@@ -1405,6 +1877,9 @@ class MainWindow(QMainWindow):
                 boxes = structure.get('structure', {}).get('elements', [])
                 self.pdf_viewer.set_bounding_boxes(boxes)
                 logger.debug(f"Setting bounding boxes for page {self.current_page}: {len(boxes)} boxes")
+                
+                # Update structured content view
+                self.structured_view.update_content(self.document_data['page_structures'])
             else:
                 self.pdf_viewer.set_bounding_boxes([])
                 logger.debug(f"No structure found for page {self.current_page}")
