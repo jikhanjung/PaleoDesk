@@ -2010,7 +2010,7 @@ class MainWindow(QMainWindow):
                             pass
 
             def process_collection(collection):
-                """Process a collection and its items"""
+                """Process a collection and its items recursively"""
                 nonlocal total_files
                 
                 # Select the collection to populate items tree
@@ -2045,6 +2045,11 @@ class MainWindow(QMainWindow):
                             QApplication.processEvents()
                             
                             process_pdf_item(child)
+                
+                # Process subcollections recursively
+                for i in range(collection.childCount()):
+                    subcollection = collection.child(i)
+                    process_collection(subcollection)
 
             # Process collections
             if selected_collection_id:
