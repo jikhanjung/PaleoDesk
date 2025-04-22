@@ -60,13 +60,14 @@ def setup_logging():
     level_name = settings.value("logging/level", "INFO")
     level = getattr(logging, level_name, logging.INFO)
     
-    # Configure logging
+    # Configure logging with UTF-8 encoding
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler()
+            logging.FileHandler(log_file, encoding='utf-8'),
+            # Use a custom StreamHandler for console that handles Unicode
+            logging.StreamHandler(sys.stdout)  # stdout is typically UTF-8 on modern systems
         ]
     )
     logger = logging.getLogger(PROGRAM_NAME)
@@ -514,6 +515,37 @@ class MainWindow(QMainWindow):
             'page_structures': {},
             'metadata': {}
         }
+        
+        # Try to find the item in the items tree to get Zotero key
+        zotero_key = None
+        current_item = None
+        for i in range(self.items_tree.topLevelItemCount()):
+            item = self.items_tree.topLevelItem(i)
+            if hasattr(item, 'file_path') and item.file_path == file_path:
+                current_item = item
+                break
+            # Check child items if no match found
+            for j in range(item.childCount()):
+                child = item.child(j)
+                if hasattr(child, 'file_path') and child.file_path == file_path:
+                    current_item = child
+                    break
+            if current_item:
+                break
+        
+        # Get Zotero key from the item if available
+        if current_item and hasattr(current_item, 'zotero_key'):
+            zotero_key = current_item.zotero_key
+            logger.debug(f"Found Zotero key for file: {zotero_key}")
+        
+        # If no Zotero key found in tree, try to extract from path
+        if not zotero_key and 'storage' in file_path:
+            storage_dir = os.path.dirname(file_path)
+            potential_key = os.path.basename(storage_dir)
+            if len(potential_key) == 8:  # Zotero keys are 8 characters
+                zotero_key = potential_key
+                logger.debug(f"Extracted Zotero key from path: {zotero_key}")
+        
         self.doc = fitz.open(file_path)
         self.current_page = 0
         self.pdf_viewer.current_page = 0
@@ -523,7 +555,7 @@ class MainWindow(QMainWindow):
         logger.info(f"Opened PDF file: {self.current_file}")
         
         # Try to load analysis from database
-        if self.load_analysis_from_database(file_path):
+        if self.load_analysis_from_database(file_path, zotero_key):
             self.update_page_display()
             self.status_label.showMessage(f"Loaded analysis for {os.path.basename(file_path)}", 3000)
         else:
@@ -1059,15 +1091,32 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error processing PDF: {str(e)}")
             return False
 
-    def load_analysis_from_database(self, file_path):
+    def load_analysis_from_database(self, file_path, zotero_key=None):
         """Load analysis results from database for a given file"""
         try:
             with db:
-                doc = PDFDocument.get(PDFDocument.file_path == file_path)
-                if doc.last_analyzed:
+                # Try to find document by Zotero key first
+                document = None
+                if zotero_key:
+                    try:
+                        document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                        logger.debug(f"Found document by Zotero key: {zotero_key}")
+                    except DoesNotExist:
+                        logger.debug(f"No document found with Zotero key: {zotero_key}")
+                
+                # If no document found by Zotero key, try file path
+                if not document:
+                    try:
+                        document = PDFDocument.get(PDFDocument.file_path == file_path)
+                        logger.debug(f"Found document by file path: {file_path}")
+                    except DoesNotExist:
+                        logger.debug(f"No document found with file path: {file_path}")
+                        return False
+                
+                if document.last_analyzed:
                     pages = (PageAnalysis
                            .select()
-                           .where(PageAnalysis.document == doc)
+                           .where(PageAnalysis.document == document)
                            .order_by(PageAnalysis.page_number))
                     
                     for page in pages:
@@ -1076,8 +1125,6 @@ class MainWindow(QMainWindow):
                     
                     logger.info(f"Loaded analysis from database for {file_path}")
                     return True
-        except DoesNotExist:
-            logger.debug(f"No analysis found in database for {file_path}")
         except Exception as e:
             logger.error(f"Error loading analysis from database: {str(e)}")
         
@@ -1121,22 +1168,45 @@ class MainWindow(QMainWindow):
                     file_hash = calculate_file_hash(self.current_file)
                     logger.debug(f"No Zotero key found, using file hash: {file_hash}")
                 
+                # Try to find existing document
+                document = None
                 try:
-                    if zotero_key:
-                        document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
-                        logger.debug(f"Found existing document by Zotero key: {zotero_key}")
-                    else:
-                        document = PDFDocument.get(PDFDocument.file_hash == file_hash)
-                        logger.debug(f"Found existing document by file hash: {file_hash}")
+                    # First try by file path
+                    document = PDFDocument.get(PDFDocument.file_path == self.current_file)
+                    logger.debug(f"Found existing document by file path: {self.current_file}")
                 except DoesNotExist:
-                    document = PDFDocument.create(
-                        file_path=self.current_file,
-                        file_hash=file_hash,
-                        zotero_key=zotero_key,
-                        title=os.path.basename(self.current_file),
-                        page_count=len(self.doc) if self.doc else 0
-                    )
-                    logger.debug(f"Created new document record with Zotero key: {zotero_key}")
+                    try:
+                        # Then try by Zotero key if available
+                        if zotero_key:
+                            document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                            logger.debug(f"Found existing document by Zotero key: {zotero_key}")
+                    except DoesNotExist:
+                        try:
+                            # Finally try by file hash if available
+                            if file_hash:
+                                document = PDFDocument.get(PDFDocument.file_hash == file_hash)
+                                logger.debug(f"Found existing document by file hash: {file_hash}")
+                        except DoesNotExist:
+                            # Create new document if none found
+                            document = PDFDocument.create(
+                                file_path=self.current_file,
+                                file_hash=file_hash,
+                                zotero_key=zotero_key,
+                                title=os.path.basename(self.current_file),
+                                page_count=len(self.doc) if self.doc else 0
+                            )
+                            logger.debug(f"Created new document record")
+                
+                # Update document fields if needed
+                if document:
+                    if not document.file_hash and file_hash:
+                        document.file_hash = file_hash
+                    if not document.zotero_key and zotero_key:
+                        document.zotero_key = zotero_key
+                    if not document.page_count and self.doc:
+                        document.page_count = len(self.doc)
+                    document.save()
+                    logger.debug(f"Updated document record")
                 
                 # Prepare session data
                 session_data = {
@@ -1184,7 +1254,16 @@ class MainWindow(QMainWindow):
                 document = None
                 zotero_key = None
                 
-                # Try to find the file in the items tree
+                # Extract Zotero key from file path
+                storage_dir = os.path.dirname(file_path)
+                if 'storage' in storage_dir:
+                    # The Zotero key is typically the directory name in the storage folder
+                    potential_key = os.path.basename(storage_dir)
+                    if len(potential_key) == 8:  # Zotero keys are 8 characters
+                        zotero_key = potential_key
+                        logger.debug(f"Extracted Zotero key from path: {zotero_key}")
+                
+                # Also try to find the file in the items tree
                 current_item = None
                 for i in range(self.items_tree.topLevelItemCount()):
                     item = self.items_tree.topLevelItem(i)
@@ -1203,75 +1282,85 @@ class MainWindow(QMainWindow):
                 # Get Zotero key from the item if available
                 if current_item and hasattr(current_item, 'zotero_key'):
                     zotero_key = current_item.zotero_key
-                    logger.debug(f"Found Zotero key for file: {zotero_key}")
+                    logger.debug(f"Found Zotero key from item: {zotero_key}")
                 
                 try:
                     if zotero_key:
-                        document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
-                        logger.debug(f"Found document by Zotero key: {zotero_key}")
-                    else:
-                        # Fall back to file hash if no Zotero key
+                        # Try to find document by Zotero key
+                        try:
+                            document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                            logger.debug(f"Found document by Zotero key: {zotero_key}")
+                        except DoesNotExist:
+                            logger.debug(f"No document found with Zotero key: {zotero_key}")
+                    
+                    if not document:
+                        # Fall back to file hash if no document found by Zotero key
                         file_hash = calculate_file_hash(file_path)
-                        document = PDFDocument.get(PDFDocument.file_hash == file_hash)
-                        logger.debug(f"Found document by file hash: {file_hash}")
+                        try:
+                            document = PDFDocument.get(PDFDocument.file_hash == file_hash)
+                            logger.debug(f"Found document by file hash: {file_hash}")
+                        except DoesNotExist:
+                            logger.debug(f"No document found with file hash: {file_hash}")
+                            raise
+                        
                 except DoesNotExist:
                     logger.error(f"No session found for {file_path}")
                     return
                 
-                # Get most recent session
-                session = (SessionData
-                         .select()
-                         .where(SessionData.document == document)
-                         .order_by(SessionData.created_at.desc())
-                         .first())
+            # Get most recent session
+            session = (SessionData
+                     .select()
+                     .where(SessionData.document == document)
+                     .order_by(SessionData.created_at.desc())
+                     .first())
+            
+            if not session:
+                logger.error(f"No session data found for {file_path}")
+                return
+            
+            # Load session data
+            session_data = json.loads(session.session_data)
+            self.document_data = session_data.get('document_data', {})
+            logger.debug(f"Loaded document data: {self.document_data.keys()}")
+            
+            # Load page structures
+            page_structures = dict(self.document_data.get('page_structures', {}))
+            logger.debug(f"Loaded page structures: {page_structures}")
+            
+            # Open the PDF file
+            try:
+                self.current_file = file_path
+                self.pdf_directory = os.path.dirname(file_path)
+                self.doc = fitz.open(file_path)
+                self.current_page = session.current_page
+                self.pdf_viewer.current_page = self.current_page
+                self.pdf_viewer.open_pdf(file_path)
                 
-                if not session:
-                    logger.error(f"No session data found for {file_path}")
-                    return
+                # Update UI
+                self.update_navigation()
                 
-                # Load session data
-                session_data = json.loads(session.session_data)
-                self.document_data = session_data.get('document_data', {})
-                logger.debug(f"Loaded document data: {self.document_data.keys()}")
+                # Load page structures and show bounding boxes
+                for page_num, structure in page_structures.items():
+                    page_num = int(page_num)  # Convert string key to int
+                    self.document_data['page_structures'][str(page_num)] = structure
+                    logger.debug(f"Set structure for page {page_num}")
                 
-                # Load page structures
-                page_structures = dict(self.document_data.get('page_structures', {}))
-                logger.debug(f"Loaded page structures: {page_structures}")
+                # Enable bounding boxes if any page has structure
+                if page_structures:
+                    self.pdf_viewer.toggle_bounding_boxes(True)
+                    # Set bounding boxes for current page
+                    current_page_boxes = page_structures.get(str(self.current_page), [])
+                    if current_page_boxes:
+                        self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
                 
-                # Open the PDF file
-                try:
-                    self.current_file = file_path
-                    self.pdf_directory = os.path.dirname(file_path)
-                    self.doc = fitz.open(file_path)
-                    self.current_page = session.current_page
-                    self.pdf_viewer.current_page = self.current_page
-                    self.pdf_viewer.open_pdf(file_path)
-                    
-                    # Update UI
-                    self.update_navigation()
-                    
-                    # Load page structures and show bounding boxes
-                    for page_num, structure in page_structures.items():
-                        page_num = int(page_num)  # Convert string key to int
-                        self.document_data['page_structures'][str(page_num)] = structure
-                        logger.debug(f"Set structure for page {page_num}")
-                    
-                    # Enable bounding boxes if any page has structure
-                    if page_structures:
-                        self.pdf_viewer.toggle_bounding_boxes(True)
-                        # Set bounding boxes for current page
-                        current_page_boxes = page_structures.get(str(self.current_page), [])
-                        if current_page_boxes:
-                            self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
-                    
-                    logger.info(f"Successfully loaded session with {len(self.doc)} pages (Zotero key: {zotero_key})")
-                    self.status_label.showMessage("Session loaded successfully", 3000)
-                    
-                except Exception as e:
-                    logger.error(f"Error opening PDF file: {str(e)}")
-                    QMessageBox.warning(self, "Error", f"Failed to open PDF file: {str(e)}")
-                    return
+                logger.info(f"Successfully loaded session with {len(self.doc)} pages (Zotero key: {zotero_key})")
+                self.status_label.showMessage("Session loaded successfully", 3000)
                 
+            except Exception as e:
+                logger.error(f"Error opening PDF file: {str(e)}")
+                QMessageBox.warning(self, "Error", f"Failed to open PDF file: {str(e)}")
+                return
+            
         except Exception as e:
             logger.error(f"Error loading session: {str(e)}")
             logger.error("Full error details:", exc_info=True)
@@ -1516,10 +1605,12 @@ class MainWindow(QMainWindow):
                         a.path
                     ) as title,
                     i.key as zotero_key,
-                    ci.collectionID
+                    ci.collectionID,
+                    i2.key as parent_key
                 FROM itemAttachments a
                 JOIN items i ON a.itemID = i.itemID
                 LEFT JOIN collectionItems ci ON i.itemID = ci.itemID
+                LEFT JOIN items i2 ON a.parentItemID = i2.itemID
                 WHERE a.contentType = 'application/pdf'
             """)
             
@@ -1537,7 +1628,7 @@ class MainWindow(QMainWindow):
                     attachments_by_parent[parent_id].append(attachment)
                 else:
                     standalone_attachments.append(attachment)
-                logger.debug(f"Attachment {attachment[3]} -> Parent {parent_id} (Key: {attachment[4]})")
+                logger.debug(f"Attachment {attachment[3]} -> Parent {parent_id} (Key: {attachment[4]}, Parent Key: {attachment[6]})")
             
             # Create collection hierarchy
             collection_map = {}
@@ -1568,7 +1659,7 @@ class MainWindow(QMainWindow):
             logger.info(f"Using storage base directory: {storage_base}")
             
             # Function to add PDF item to items tree
-            def add_pdf_to_items_tree(zotero_key, display_name, parent_item=None, collection_id=None):
+            def add_pdf_to_items_tree(zotero_key, display_name, parent_item=None, collection_id=None, parent_key=None):
                 storage_dir = os.path.join(storage_base, zotero_key)
                 if os.path.exists(storage_dir):
                     # Look for PDF files in the key's directory
@@ -1588,7 +1679,9 @@ class MainWindow(QMainWindow):
                         
                         pdf_item.setText(0, display_name)
                         pdf_item.file_path = pdf_path
-                        pdf_item.zotero_key = zotero_key  # Store Zotero key
+                        pdf_item.zotero_key = zotero_key  # Store attachment's Zotero key
+                        if parent_key:
+                            pdf_item.parent_zotero_key = parent_key  # Store parent's Zotero key if available
                         
                         # Add to collection if specified
                         if collection_id and collection_id in self.collection_data:
@@ -1596,10 +1689,28 @@ class MainWindow(QMainWindow):
                                 self.collection_data[collection_id].append({
                                     'text': display_name,
                                     'file_path': pdf_path,
-                                    'zotero_key': zotero_key  # Store Zotero key
+                                    'zotero_key': zotero_key,  # Store attachment's Zotero key
+                                    'parent_zotero_key': parent_key  # Store parent's Zotero key if available
                                 })
                         
-                        logger.debug(f"Added PDF: {display_name} from {pdf_path}")
+                        # Create or update document in database with Zotero key
+                        try:
+                            with db:
+                                try:
+                                    document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                                    logger.debug(f"Found existing document by Zotero key: {zotero_key}")
+                                except DoesNotExist:
+                                    document = PDFDocument.create(
+                                        file_path=pdf_path,
+                                        zotero_key=zotero_key,
+                                        title=display_name,
+                                        page_count=0  # Will be updated when file is opened
+                                    )
+                                    logger.debug(f"Created new document record with Zotero key: {zotero_key}")
+                        except Exception as e:
+                            logger.error(f"Error creating/updating document record: {str(e)}")
+                        
+                        logger.debug(f"Added PDF: {display_name} from {pdf_path} (Key: {zotero_key}, Parent Key: {parent_key})")
                         return True
                     else:
                         logger.warning(f"No PDF files found in directory: {storage_dir}")
@@ -1641,6 +1752,7 @@ class MainWindow(QMainWindow):
                         parent_item = QTreeWidgetItem()
                         parent_item.setText(0, display_text)
                         parent_item.item_id = item_id
+                        parent_item.zotero_key = key  # Store parent's Zotero key
                         self.items_tree.addTopLevelItem(parent_item)
                         
                         # Add PDF attachments as children
@@ -1648,11 +1760,12 @@ class MainWindow(QMainWindow):
                         for attachment in attachments_by_parent[item_id]:
                             try:
                                 zotero_key = attachment[4]  # Zotero key
+                                parent_key = attachment[6]  # Parent's Zotero key
                                 display_name = attachment[3]
                                 if display_name.startswith('storage:'):
                                     display_name = os.path.basename(display_name)
                                 
-                                if add_pdf_to_items_tree(zotero_key, display_name, parent_item, collection_id):
+                                if add_pdf_to_items_tree(zotero_key, display_name, parent_item, collection_id, parent_key):
                                     has_pdfs = True
                                     
                             except Exception as e:
@@ -1662,7 +1775,8 @@ class MainWindow(QMainWindow):
                         processed_items[item_id] = {
                             'parent_item': parent_item,
                             'collections': set([collection_id]) if collection_id else set(),
-                            'has_pdfs': has_pdfs
+                            'has_pdfs': has_pdfs,
+                            'zotero_key': key  # Store parent's Zotero key
                         }
                     else:
                         # Add collection to existing item
@@ -1690,9 +1804,12 @@ class MainWindow(QMainWindow):
                             self.collection_data[collection_id].append({
                                 'text': item_data['parent_item'].text(0),
                                 'item_id': item_id,
+                                'zotero_key': item_data['zotero_key'],  # Store parent's Zotero key
                                 'children': [{
                                     'text': child.text(0),
-                                    'file_path': child.file_path
+                                    'file_path': child.file_path,
+                                    'zotero_key': child.zotero_key if hasattr(child, 'zotero_key') else None,
+                                    'parent_zotero_key': child.parent_zotero_key if hasattr(child, 'parent_zotero_key') else None
                                 } for child in [item_data['parent_item'].child(i) for i in range(item_data['parent_item'].childCount())]]
                             })
             
