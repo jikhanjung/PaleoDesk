@@ -2002,6 +2002,23 @@ class MainWindow(QMainWindow):
                                         item.file_path == item_data['file_path']):
                                         pdf_items.append(item)
                                         break
+
+                # If no PDFs found in the collections, check if there are any PDFs in the items tree
+                if not pdf_items:
+                    # Get all items from the items tree
+                    def get_all_items(item):
+                        items = []
+                        if hasattr(item, 'file_path') and item.file_path.lower().endswith('.pdf'):
+                            items.append(item)
+                        for i in range(item.childCount()):
+                            items.extend(get_all_items(item.child(i)))
+                        return items
+
+                    # Get all PDF items from the items tree
+                    for i in range(self.items_tree.topLevelItemCount()):
+                        pdf_items.extend(get_all_items(self.items_tree.topLevelItem(i)))
+
+                    logger.info(f"Found {len(pdf_items)} PDFs in items tree")
             else:
                 # Get all PDF files from items tree
                 for i in range(self.items_tree.topLevelItemCount()):
