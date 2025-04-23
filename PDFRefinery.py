@@ -8,8 +8,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QComboBox, QRadioButton, QButtonGroup, QTabWidget,
                            QGridLayout, QStackedWidget, QFormLayout, QTextEdit,
                            QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem,
-                           QFrame)
-from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, pyqtSignal, QTimer
+                           QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox)
+from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor
 import fitz  # PyMuPDF
 import datetime
@@ -177,7 +177,7 @@ class PDFViewer(QWidget):
         self.zoom = 1.0
         self.drag_start = None
         self.drag_pos = None
-        self.bounding_boxes = []
+        self.bounding_boxes = {}
         self.show_bounding_boxes = False
         self.doc = None
         self.total_pages = 0
@@ -392,77 +392,65 @@ class PDFViewer(QWidget):
             current_height = page_bottom
 
     def paintEvent(self, event):
-        """Paint the current page"""
-        if not self.pixmap or not hasattr(self, 'current_page_width') or not hasattr(self, 'current_page_height'):
+        """Handle painting of the widget"""
+        if not self.page_pixmaps:
             return
-        
+            
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Calculate scaling to fit the page in the widget
-        scale = min(
-            self.width() / self.current_page_width,
-            self.height() / self.current_page_height
-        )
-        
-        # Calculate the scaled size
-        scaled_width = int(self.current_page_width * scale)
-        scaled_height = int(self.current_page_height * scale)
-        
-        # Calculate the position to center the page, taking into account pan offset
-        x = (self.width() - scaled_width) // 2 + self.pan_offset.x()
-        y = (self.height() - scaled_height) // 2 + self.pan_offset.y()
-        
-        # Draw the page
-        painter.drawPixmap(x, y, scaled_width, scaled_height, self.pixmap)
-        
-        # Draw bounding boxes if enabled
-        if self.show_bounding_boxes and self.bounding_boxes:
-            # Get the main window instance
-            main_window = self.window()
-            if hasattr(main_window, 'document_data'):
-                # Get page structures
-                page_structures = main_window.document_data.get('page_structures', {})
-                current_page_structure = page_structures.get(str(self.current_page), {})
-                
-                if current_page_structure:
-                    elements = current_page_structure.get('structure', {}).get('elements', [])
-                    for element in elements:
-                        # Get coordinates
-                        coords = element.get('coordinates', [])
-                        if len(coords) >= 4:
-                            # Scale the coordinates to match the displayed page
-                            x1 = int(coords[0]['x'] * scaled_width) + x
-                            y1 = int(coords[0]['y'] * scaled_height) + y
-                            x2 = int(coords[2]['x'] * scaled_width) + x
-                            y2 = int(coords[2]['y'] * scaled_height) + y
+        # Draw pages
+        current_y = 0
+        for page_num, page_data in self.page_pixmaps.items():
+            pixmap = page_data['pixmap']
+            height = page_data['height']
+            
+            # Calculate scaling to fit width while maintaining aspect ratio
+            scale = self.width() / pixmap.width()
+            scaled_height = int(height * scale)  # Convert to int
+            
+            # Draw the page
+            painter.drawPixmap(0, int(current_y), pixmap.scaled(self.width(), scaled_height, 
+                                                         Qt.AspectRatioMode.KeepAspectRatio,
+                                                         Qt.TransformationMode.SmoothTransformation))
+            
+            # Draw bounding boxes if enabled
+            if self.show_bounding_boxes and self.bounding_boxes:
+                # Get boxes for current page
+                page_boxes = self.bounding_boxes.get(page_num, [])
+                for element in page_boxes:
+                    if 'coordinates' in element:
+                        coords = element['coordinates']
+                        if len(coords) == 4:  # Ensure we have all 4 corners
+                            # Scale coordinates to match displayed page
+                            x1 = int(coords[0]['x'] * self.width())
+                            y1 = int(coords[0]['y'] * scaled_height + current_y)
+                            x2 = int(coords[2]['x'] * self.width())
+                            y2 = int(coords[2]['y'] * scaled_height + current_y)
                             
                             # Set color based on category
-                            category = element.get('category', '').lower()
+                            category = element.get('category', 'unknown')
                             if category == 'figure':
-                                color = QColor(255, 0, 0, 128)  # Red with alpha
+                                painter.setPen(QPen(Qt.GlobalColor.red, 2))
                             elif category == 'table':
-                                color = QColor(0, 255, 0, 128)  # Green with alpha
+                                painter.setPen(QPen(Qt.GlobalColor.blue, 2))
                             elif category == 'caption':
-                                color = QColor(0, 0, 255, 128)  # Blue with alpha
+                                painter.setPen(QPen(Qt.GlobalColor.green, 2))
                             else:
-                                color = QColor(128, 128, 128, 128)  # Gray with alpha
+                                painter.setPen(QPen(Qt.GlobalColor.yellow, 2))
                             
-                            # Draw the box
-                            painter.setPen(QPen(color, 2))
-                            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 32))  # Very transparent fill
-                            painter.drawRect(x1, y1, x2 - x1, y2 - y1)
-                            
-                            # Draw category label
-                            painter.setPen(QPen(Qt.GlobalColor.black, 1))
-                            painter.drawText(x1, y1 - 5, category)
+                            # Draw rectangle
+                            painter.drawRect(QRectF(x1, y1, x2 - x1, y2 - y1))
+            
+            current_y += scaled_height
 
     def set_bounding_boxes(self, boxes):
-        """Set bounding boxes for the current page"""
+        """Set bounding boxes for all pages"""
         if not boxes:
             return
             
         # Clear existing boxes
-        self.bounding_boxes.clear()
+        self.bounding_boxes = {}
         
         # Get the main window instance
         main_window = self.window()
@@ -472,12 +460,12 @@ class PDFViewer(QWidget):
         # Get all page structures
         page_structures = main_window.document_data.get('page_structures', {})
         
-        # Set boxes for current page
-        current_page_structure = page_structures.get(str(self.current_page), {})
-        if current_page_structure:
-            elements = current_page_structure.get('structure', {}).get('elements', [])
-            self.bounding_boxes = elements
-            logger.debug(f"Set {len(elements)} bounding boxes for page {self.current_page + 1}")
+        # Set boxes for each page
+        for page_num, structure in page_structures.items():
+            page_boxes = structure.get('structure', {}).get('elements', [])
+            if page_boxes:
+                self.bounding_boxes[int(page_num)] = page_boxes
+                logger.debug(f"Set {len(page_boxes)} bounding boxes for page {int(page_num) + 1}")
         
         self.update()
 
@@ -571,100 +559,6 @@ class PDFViewer(QWidget):
         total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
         return QSize(self.width(), total_height)
     
-    def paintEvent(self, event):
-        if not self.page_pixmaps:
-            return
-            
-        painter = QPainter(self)
-        y_offset = 0
-        
-        # Get visible area
-        self.visible_rect = QRect(0, -self.pan_offset.y(), 
-                                self.width(), self.height())
-        
-        # Draw each page
-        for i, pixmap_dict in self.page_pixmaps.items():
-            #logger.debug(f"Drawing page {i}, pixmap: {pixmap_dict}")
-            pixmap = pixmap_dict['pixmap']
-
-            # Check if page is visible
-            page_rect = QRect(0, y_offset, pixmap.width(), pixmap.height())
-            if page_rect.intersects(self.visible_rect):
-                # Draw the page
-                painter.drawPixmap(0, y_offset, pixmap)
-                
-                # Draw bounding boxes if enabled and page has boxes
-                if self.show_bounding_boxes and i in self.bounding_boxes:
-                    # Define colors for different categories with alpha values
-                    category_colors = {
-                        'page header': QColor(0, 0, 139, 64),  # darkBlue with alpha
-                        'title': QColor(0, 100, 0, 64),        # darkGreen with alpha
-                        'section header': QColor(0, 128, 0, 64),  # green with alpha
-                        'text': QColor(0, 0, 255, 64),         # blue with alpha
-                        'picture': QColor(255, 255, 0, 64),    # yellow with alpha
-                        'caption': QColor(139, 139, 0, 64),    # darkYellow with alpha
-                        'page footer': QColor(0, 139, 139, 64),  # darkCyan with alpha
-                        'list item': QColor(139, 0, 139, 64)   # magenta with alpha
-                    }
-                    
-                    # Get current page dimensions
-                    page = self.doc[i]
-                    mediabox = page.mediabox
-                    page_width = mediabox.width
-                    page_height = mediabox.height
-                    
-                    # Calculate scale factors based on displayed size
-                    display_scale = self.zoom
-                    
-                    for box in self.bounding_boxes[i]:
-                        try:
-                            # Get relative coordinates and convert to absolute page coordinates
-                            rel_x1 = box['coordinates'][0]['x']
-                            rel_y1 = box['coordinates'][0]['y']
-                            rel_x2 = box['coordinates'][2]['x']
-                            rel_y2 = box['coordinates'][2]['y']
-                            
-                            # Convert to screen coordinates
-                            x1 = int(rel_x1 * pixmap.width())
-                            y1 = int(rel_y1 * pixmap.height())
-                            x2 = int(rel_x2 * pixmap.width())
-                            y2 = int(rel_y2 * pixmap.height())
-                            
-                            # Adjust for vertical offset
-                            y1 += y_offset
-                            y2 += y_offset
-                            
-                            # Get category and corresponding color
-                            category = box.get('category', 'text').lower()
-                            color = category_colors.get(category, QColor(255, 0, 0, 64))  # red with alpha as default
-                            
-                            # Draw the rectangle with 2-pixel width and semi-transparent fill
-                            pen = QPen(color, 2)
-                            painter.setPen(pen)
-                            color.setAlpha(64)
-                            painter.setBrush(color)
-                            painter.drawRect(x1, y1, x2 - x1, y2 - y1)
-                            
-                            # Draw category label with semi-transparent background
-                            label_color = color
-                            label_color.setAlpha(128)  # Slightly more opaque for better text readability
-                            painter.setPen(Qt.GlobalColor.black)
-                            painter.setBrush(label_color)
-                            # Draw a small rectangle for the label background
-                            label_rect = painter.boundingRect(x1, y1 - 20, 100, 20, 
-                                                            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                                                            category)
-                            painter.drawRect(label_rect)
-                            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, category)
-                            
-                        except Exception as e:
-                            logger.error(f"Error drawing bounding box: {str(e)}")
-            
-            # Update y_offset for next page
-            y_offset += pixmap.height() + 20  # Add 20 pixels spacing between pages
-            
-        painter.end()
-        
     def scroll_to_page(self, page_num):
         """Scroll to make the specified page visible"""
         if not self.bounding_boxes or page_num < 0 or page_num >= len(self.bounding_boxes):
