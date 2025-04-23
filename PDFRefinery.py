@@ -808,6 +808,8 @@ class StructuredContentView(QWidget):
         logger.debug("StructuredContentView initialized")
         
     def init_ui(self):
+        """Initialize the UI"""
+        # Create main layout
         layout = QVBoxLayout()
         
         # Create toolbar for view mode switching
@@ -822,18 +824,24 @@ class StructuredContentView(QWidget):
         
         self.icon_view_action = QAction("Icon View", self)
         self.icon_view_action.setCheckable(True)
-        self.icon_view_action.setChecked(True)
+        self.icon_view_action.setChecked(True)  # Set icon view as default
         self.icon_view_action.triggered.connect(lambda: self.switch_view_mode('icon'))
         
         # Add actions to toolbar
         toolbar.addAction(self.list_view_action)
         toolbar.addAction(self.icon_view_action)
         
+        # Add Save to Database button
+        self.save_action = QAction("Save to Database", self)
+        self.save_action.setEnabled(False)  # Disabled for now until we implement the feature
+        self.save_action.setToolTip("This feature will be implemented in a future update")
+        toolbar.addAction(self.save_action)
+        
         layout.addWidget(toolbar)
         
         # Create list widget for both views
         self.content_list = QListWidget()
-        self.content_list.setViewMode(QListWidget.ViewMode.IconMode)
+        self.content_list.setViewMode(QListWidget.ViewMode.IconMode)  # Set icon mode as default
         self.content_list.setIconSize(QSize(200, 200))
         self.content_list.setSpacing(10)
         self.content_list.setResizeMode(QListWidget.ResizeMode.Adjust)
@@ -842,7 +850,12 @@ class StructuredContentView(QWidget):
         self.content_list.itemDoubleClicked.connect(self._show_element_info)
         
         layout.addWidget(self.content_list)
+        
         self.setLayout(layout)
+        
+        # Initialize with icon view
+        self.current_view_mode = 'icon'
+        self.switch_view_mode('icon')
         
     def set_document(self, doc):
         """Set the current PDF document"""
@@ -1232,12 +1245,23 @@ class StructuredContentView(QWidget):
         return caption_y > target_y and (caption_y - target_y) < 0.1
 
     def _show_element_info(self, item):
-        """Show detailed information about an element"""
-        # Get the widget associated with the list item
-        widget = self.content_list.itemWidget(item)
-        if widget and hasattr(widget, 'element_data'):
-            dialog = ElementInfoDialog(widget.element_data, self)
-            dialog.exec()
+        """Show element information dialog"""
+        # Get the main window instance
+        main_window = self.window()
+        if not main_window:
+            return
+            
+        # Get the page number from the item's data
+        page_num = item.data(Qt.ItemDataRole.UserRole)
+        logger.debug(f"Page number: {page_num}")
+        if page_num is not None:
+            # Scroll to the page in PDF viewer
+            main_window.pdf_viewer.scroll_to_page(page_num)
+            main_window.pdf_viewer.set_current_page(page_num)
+            
+        # Show element info dialog
+        dialog = ElementInfoDialog(item.data(Qt.ItemDataRole.UserRole + 1), self)
+        dialog.exec()
 
 class MainWindow(QMainWindow):
     def __init__(self):
