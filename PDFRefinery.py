@@ -399,6 +399,18 @@ class PDFViewer(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
+        # Define category colors with alpha
+        category_colors = {
+            'page header': QColor(0, 0, 139, 64),  # darkBlue with alpha
+            'title': QColor(0, 100, 0, 64),        # darkGreen with alpha
+            'section header': QColor(0, 128, 0, 64),  # green with alpha
+            'text': QColor(0, 0, 255, 64),         # blue with alpha
+            'picture': QColor(255, 255, 0, 64),    # yellow with alpha
+            'caption': QColor(139, 139, 0, 64),    # darkYellow with alpha
+            'page footer': QColor(0, 139, 139, 64),  # darkCyan with alpha
+            'list item': QColor(139, 0, 139, 64)   # magenta with alpha
+        }
+        
         # Draw pages
         current_y = 0
         for page_num, page_data in self.page_pixmaps.items():
@@ -428,19 +440,28 @@ class PDFViewer(QWidget):
                             x2 = int(coords[2]['x'] * self.width())
                             y2 = int(coords[2]['y'] * scaled_height + current_y)
                             
-                            # Set color based on category
-                            category = element.get('category', 'unknown')
-                            if category == 'figure':
-                                painter.setPen(QPen(Qt.GlobalColor.red, 2))
-                            elif category == 'table':
-                                painter.setPen(QPen(Qt.GlobalColor.blue, 2))
-                            elif category == 'caption':
-                                painter.setPen(QPen(Qt.GlobalColor.green, 2))
-                            else:
-                                painter.setPen(QPen(Qt.GlobalColor.yellow, 2))
+                            # Get category and corresponding color
+                            category = element.get('category', 'text').lower()
+                            color = category_colors.get(category, QColor(255, 0, 0, 64))  # red with alpha as default
                             
-                            # Draw rectangle
-                            painter.drawRect(QRectF(x1, y1, x2 - x1, y2 - y1))
+                            # Draw the rectangle with 2-pixel width and semi-transparent fill
+                            pen = QPen(color, 2)
+                            painter.setPen(pen)
+                            color.setAlpha(64)
+                            painter.setBrush(color)
+                            painter.drawRect(x1, y1, x2 - x1, y2 - y1)
+                            
+                            # Draw category label with semi-transparent background
+                            label_color = color
+                            label_color.setAlpha(128)  # Slightly more opaque for better text readability
+                            painter.setPen(Qt.GlobalColor.black)
+                            painter.setBrush(label_color)
+                            # Draw a small rectangle for the label background
+                            label_rect = painter.boundingRect(x1, y1 - 20, 100, 20, 
+                                                            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                                                            category)
+                            painter.drawRect(label_rect)
+                            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, category)
             
             current_y += scaled_height
 
@@ -750,13 +771,6 @@ class ElementInfoDialog(QDialog):
         caption_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout.addWidget(caption_label)
         
-        caption_text = QTextEdit()
-        caption_text.setReadOnly(True)
-        caption_text.setPlainText(self.element_data.get('caption', ''))
-        caption_text.setMaximumHeight(100)  # Limit height for captions
-        caption_text.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        layout.addWidget(caption_text)
-        
         # Add image if available
         pixmap = self.element_data.get('pixmap')
         if pixmap:
@@ -767,6 +781,13 @@ class ElementInfoDialog(QDialog):
             image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             image_label.setMinimumSize(200, 200)  # Set minimum size for the image
             layout.addWidget(image_label, 1)  # Add stretch factor of 1
+
+        caption_text = QTextEdit()
+        caption_text.setReadOnly(True)
+        caption_text.setPlainText(self.element_data.get('caption', ''))
+        caption_text.setMaximumHeight(100)  # Limit height for captions
+        caption_text.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout.addWidget(caption_text)
         
         # Add close button
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
