@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QGridLayout, QStackedWidget, QFormLayout, QTextEdit,
                            QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem,
                            QFrame)
-from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, pyqtSignal, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor
 import fitz  # PyMuPDF
 import datetime
@@ -172,30 +172,40 @@ class PDFViewer(QWidget):
     
     def __init__(self):
         super().__init__()
-        self.doc = None
+        self.pixmap = None
         self.current_page = 0
         self.zoom = 1.0
-        self.pan_offset = QPoint(0, 0)
-        self.last_pan_pos = None
-        self.last_mouse_pos = None
-        self.pixmap = None
-        self.page_boxes = {}  # Store bounding boxes for each page
-        self.show_boxes = False
-        self.page_pixmaps = []  # Store pixmaps for all pages
-        self.page_heights = []  # Store height of each page
-        self.visible_rect = QRect()  # Store visible area
+        self.drag_start = None
+        self.drag_pos = None
+        self.bounding_boxes = []
+        self.show_bounding_boxes = False
+        self.doc = None
+        self.total_pages = 0
+        self.initial_load_pages = 3  # Number of pages to load initially
+        self.loaded_pages = set()  # Track which pages are loaded
+        self.page_pixmaps = {}  # Cache for page pixmaps
+        self.page_loading = False  # Flag to prevent multiple simultaneous loads
+        self.pan_offset = QPoint(0, 0)  # Add pan offset
+        self.last_pan_pos = None  # Add last pan position
+        self.current_page_width = 0  # Add current page width
+        self.current_page_height = 0  # Add current page height
+        
+        # Set up the widget
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
         # Create zoom buttons
         self.create_zoom_buttons()
         
-        # Enable mouse tracking for panning
-        self.setMouseTracking(True)
+        # Set minimum size
+        self.setMinimumSize(400, 600)
         
-        # Set size policy to allow scrolling
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        
-        logger.debug("PDFViewer initialized")
-        
+        # Set background color
+        self.setAutoFillBackground(True)
+        palette = self.palette()
+        palette.setColor(self.backgroundRole(), Qt.GlobalColor.white)
+        self.setPalette(palette)
+
     def create_zoom_buttons(self):
         """Create zoom control buttons"""
         # Create container widget for buttons
@@ -237,47 +247,222 @@ class PDFViewer(QWidget):
         # Position the zoom widget
         self.zoom_widget.setFixedSize(80, 40)
         self.zoom_widget.move(self.width() - 90, 10)  # Position in top-right corner
-        
-    def set_zoom(self, new_zoom):
-        old_zoom = self.zoom
-        self.zoom = new_zoom
-        
-        # Calculate new pan offset to zoom around mouse position
-        if hasattr(self, 'last_mouse_pos'):
-            mouse_pos = self.last_mouse_pos
-            old_pos = mouse_pos - self.pan_offset
-            scale_factor = new_zoom / old_zoom
-            new_pos = old_pos * scale_factor
-            self.pan_offset = mouse_pos - new_pos
+
+    def open_pdf(self, file_path):
+        """Open a PDF file and load initial pages"""
+        try:
+            self.doc = fitz.open(file_path)
+            self.total_pages = len(self.doc)
+            self.current_page = 0
+            self.loaded_pages.clear()
+            self.page_pixmaps.clear()
             
-        self.display_all_pages()
-        self.update_current_page()  # Update current page when zooming
-        logger.debug(f"Zoom changed from {old_zoom:.2f} to {new_zoom:.2f}")
-        
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.last_pan_pos = event.pos()
+            # Load initial pages
+            self.load_initial_pages()
             
-    def mouseMoveEvent(self, event):
-        if self.last_pan_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            delta = event.pos() - self.last_pan_pos
-            self.pan_offset += delta
-            self.last_pan_pos = event.pos()
-            self.update_current_page()  # Update current page when scrolling
+            # Update the display
+            self.update_current_page()
             self.update()
-        self.last_mouse_pos = event.pos()
             
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.last_pan_pos = None
+            logger.info(f"Opened PDF with {self.total_pages} pages")
+            return True
+        except Exception as e:
+            logger.error(f"Error opening PDF: {str(e)}")
+            return False
+
+    def load_initial_pages(self):
+        """Load the initial set of pages"""
+        try:
+            # Load first few pages
+            for page_num in range(min(self.initial_load_pages, self.total_pages)):
+                self.load_page(page_num)
+            
+            # Start loading next set of pages in background
+            self.load_next_pages()
+        except Exception as e:
+            logger.error(f"Error loading initial pages: {str(e)}")
+
+    def load_page(self, page_num):
+        """Load a single page and cache its pixmap"""
+        if page_num in self.loaded_pages or page_num >= self.total_pages:
+            return
+        
+        try:
+            page = self.doc[page_num]
+            pix = page.get_pixmap(matrix=fitz.Matrix(self.zoom, self.zoom))
+            img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(img)
+            self.page_pixmaps[page_num] = {
+                'pixmap': pixmap,
+                'width': pix.width,
+                'height': pix.height
+            }
+            self.loaded_pages.add(page_num)
+            logger.debug(f"Loaded page {page_num}")
+        except Exception as e:
+            logger.error(f"Error loading page {page_num}: {str(e)}")
+
+    def load_next_pages(self):
+        """Load next set of pages in background"""
+        if self.page_loading or not self.doc:
+            return
+        
+        self.page_loading = True
+        try:
+            # Find the highest loaded page number
+            max_loaded = max(self.loaded_pages) if self.loaded_pages else -1
+            
+            # Load next set of pages
+            next_pages = range(max_loaded + 1, min(max_loaded + self.initial_load_pages + 1, self.total_pages))
+            for page_num in next_pages:
+                self.load_page(page_num)
+            
+            # Update display if current page was loaded
+            if self.current_page in self.loaded_pages:
+                self.update_current_page()
+                self.update()
+        finally:
+            self.page_loading = False
+
+    def update_current_page(self):
+        """Update the current page display"""
+        if not self.doc or self.current_page >= self.total_pages:
+            self.pixmap = None
+            self.current_page_width = 0
+            self.current_page_height = 0
+            return
+        
+        # Load the page if not already loaded
+        if self.current_page not in self.loaded_pages:
+            self.load_page(self.current_page)
+        
+        # Get the page pixmap from cache
+        if self.current_page in self.page_pixmaps:
+            page_data = self.page_pixmaps[self.current_page]
+            self.pixmap = page_data['pixmap']
+            self.current_page_width = page_data['width']
+            self.current_page_height = page_data['height']
+            
+            # Start loading next pages if we're near the end of loaded pages
+            if self.current_page >= max(self.loaded_pages) - 1:
+                self.load_next_pages()
+        else:
+            self.pixmap = None
+            self.current_page_width = 0
+            self.current_page_height = 0
+
+    def scroll_to_page(self, page_num):
+        """Scroll to a specific page"""
+        if 0 <= page_num < self.total_pages:
+            self.current_page = page_num
+            self.update_current_page()
+            self.update()
+
+    def set_current_page(self, page_num):
+        """Set the current page number"""
+        if 0 <= page_num < self.total_pages:
+            self.current_page = page_num
+            self.update_current_page()
+            self.update()
+
+    def update_current_page_from_scroll(self, scroll_value):
+        """Update current page based on scroll position"""
+        if not self.doc:
+            return
+            
+        # Calculate viewport center
+        viewport_height = self.height()
+        viewport_center = scroll_value + viewport_height / 2
+        
+        # Get page heights from loaded pages
+        page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
+        logger.debug(f"Page heights: {page_heights}")
+        
+        # Find the page that contains the viewport center
+        current_height = 0
+        for i, height in enumerate(page_heights):
+            page_bottom = current_height + height
+            logger.debug(f"Page {i} range: {current_height} to {page_bottom}")
+            
+            if current_height <= viewport_center < page_bottom:
+                if self.current_page != i:
+                    self.current_page = i
+                    logger.debug(f"Current page updated to {i + 1}")
+                break
+            current_height = page_bottom
+
+    def paintEvent(self, event):
+        """Paint the current page"""
+        if not self.pixmap or not hasattr(self, 'current_page_width') or not hasattr(self, 'current_page_height'):
+            return
+        
+        painter = QPainter(self)
+        
+        # Calculate scaling to fit the page in the widget
+        scale = min(
+            self.width() / self.current_page_width,
+            self.height() / self.current_page_height
+        )
+        
+        # Calculate the scaled size
+        scaled_width = int(self.current_page_width * scale)
+        scaled_height = int(self.current_page_height * scale)
+        
+        # Calculate the position to center the page, taking into account pan offset
+        x = (self.width() - scaled_width) // 2 + self.pan_offset.x()
+        y = (self.height() - scaled_height) // 2 + self.pan_offset.y()
+        
+        # Draw the page
+        painter.drawPixmap(x, y, scaled_width, scaled_height, self.pixmap)
+        
+        # Draw bounding boxes if enabled
+        if self.show_bounding_boxes and self.bounding_boxes:
+            # Get the main window instance
+            main_window = self.window()
+            if hasattr(main_window, 'document_data'):
+                # Get page structures
+                page_structures = main_window.document_data.get('page_structures', {})
+                current_page_structure = page_structures.get(str(self.current_page), {})
+                
+                if current_page_structure:
+                    elements = current_page_structure.get('structure', {}).get('elements', [])
+                    for element in elements:
+                        # Get coordinates
+                        coords = element.get('coordinates', [])
+                        if len(coords) >= 4:
+                            # Scale the coordinates to match the displayed page
+                            x1 = int(coords[0]['x'] * scaled_width) + x
+                            y1 = int(coords[0]['y'] * scaled_height) + y
+                            x2 = int(coords[2]['x'] * scaled_width) + x
+                            y2 = int(coords[2]['y'] * scaled_height) + y
+                            
+                            # Set color based on category
+                            category = element.get('category', '').lower()
+                            if category == 'figure':
+                                color = QColor(255, 0, 0, 128)  # Red with alpha
+                            elif category == 'table':
+                                color = QColor(0, 255, 0, 128)  # Green with alpha
+                            elif category == 'caption':
+                                color = QColor(0, 0, 255, 128)  # Blue with alpha
+                            else:
+                                color = QColor(128, 128, 128, 128)  # Gray with alpha
+                            
+                            # Draw the box
+                            painter.setPen(QPen(color, 2))
+                            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 32))  # Very transparent fill
+                            painter.drawRect(x1, y1, x2 - x1, y2 - y1)
+                            
+                            # Draw category label
+                            painter.setPen(QPen(Qt.GlobalColor.black, 1))
+                            painter.drawText(x1, y1 - 5, category)
 
     def set_bounding_boxes(self, boxes):
-        """Set bounding boxes for all pages"""
+        """Set bounding boxes for the current page"""
         if not boxes:
             return
             
         # Clear existing boxes
-        self.page_boxes.clear()
+        self.bounding_boxes.clear()
         
         # Get the main window instance
         main_window = self.window()
@@ -287,144 +472,103 @@ class PDFViewer(QWidget):
         # Get all page structures
         page_structures = main_window.document_data.get('page_structures', {})
         
-        # Set boxes for each page
-        for page_num, structure in page_structures.items():
-            page_boxes = structure.get('structure', {}).get('elements', [])
-            if page_boxes:
-                self.page_boxes[int(page_num)] = page_boxes
-                logger.debug(f"Set {len(page_boxes)} bounding boxes for page {int(page_num) + 1}")
+        # Set boxes for current page
+        current_page_structure = page_structures.get(str(self.current_page), {})
+        if current_page_structure:
+            elements = current_page_structure.get('structure', {}).get('elements', [])
+            self.bounding_boxes = elements
+            logger.debug(f"Set {len(elements)} bounding boxes for page {self.current_page + 1}")
         
         self.update()
-        
+
     def toggle_bounding_boxes(self, show):
         """Toggle bounding box display"""
-        self.show_boxes = show
+        self.show_bounding_boxes = show
         self.update()
+
+    def set_zoom(self, new_zoom):
+        """Set the zoom level"""
+        if 0.1 <= new_zoom <= 5.0:  # Limit zoom range
+            self.zoom = new_zoom
+            # Clear page cache when zoom changes
+            self.page_pixmaps.clear()
+            self.loaded_pages.clear()
+            # Reload current page with new zoom
+            self.update_current_page()
+            self.update()
+        
+    def mousePressEvent(self, event):
+        """Handle mouse press events"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_start = event.pos()
+            self.last_pan_pos = event.pos()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move events"""
+        if self.last_pan_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            # Calculate the movement delta
+            delta = event.pos() - self.last_pan_pos
+            self.pan_offset += delta
+            self.last_pan_pos = event.pos()
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release events"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_start = None
+            self.last_pan_pos = None
 
     def update_current_page(self):
         """Update current page based on visible area"""
-        if not self.page_heights:
+        if not self.page_pixmaps:
             return
             
         # Calculate which page is most visible in the viewport
         viewport_center = -self.pan_offset.y() + self.height() / 2
         current_y = 0
         
-        for i, height in enumerate(self.page_heights):
-            if current_y <= viewport_center < current_y + height:
+        # Get page heights from loaded pages
+        page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
+        
+        # Find the page that contains the viewport center
+        for i, height in enumerate(page_heights):
+            page_bottom = current_y + height
+            if current_y <= viewport_center < page_bottom:
                 if self.current_page != i:
                     self.current_page = i
                     logger.debug(f"Current page updated to {i + 1}")
                 break
-            current_y += height
-            
+            current_y = page_bottom
+
     def resizeEvent(self, event):
         """Handle widget resize"""
         super().resizeEvent(event)
-        # Keep zoom buttons in top-right corner
+        # Reposition zoom widget
         if hasattr(self, 'zoom_widget'):
             self.zoom_widget.move(self.width() - 90, 10)
             
-        # If we have pages, update their display
+        # If we have pages, update their display without reloading
         if self.page_pixmaps:
-            self.display_all_pages()
-    
-    def open_pdf(self, file_path):
-        if file_path:
-            try:
-                self.doc = fitz.open(file_path)
-                self.current_page = 0
-                self.pan_offset = QPoint(0, 0)
-                self.page_pixmaps = []  # Clear existing pixmaps
-                self.page_heights = []  # Clear existing heights
-                self.display_all_pages()
-                logger.info(f"Opened PDF file: {file_path}")
-            except Exception as e:
-                logger.error(f"Error opening PDF file {file_path}: {str(e)}")
-                raise
-                
-    def display_all_pages(self):
-        """Display all pages vertically"""
-        if not self.doc:
-            return
-            
-        try:
-            # Clear existing pixmaps and heights
-            self.page_pixmaps = []
-            self.page_heights = []
-            
-            # Log initial dimensions
-            logger.debug(f"Initial dimensions - width: {self.width()}, height: {self.height()}")
-            
-            # Render all pages
-            for page_num in range(len(self.doc)):
-                page = self.doc[page_num]
-                # Use a higher zoom factor for better quality
-                display_zoom = self.zoom
-                render_zoom = display_zoom * 2  # Double the zoom for rendering
-                matrix = fitz.Matrix(render_zoom, render_zoom)
-                pix = page.get_pixmap(matrix=matrix)
-                
-                # Convert to QImage
-                img = QImage(pix.samples, pix.width, pix.height, 
-                           pix.stride, QImage.Format.Format_RGB888)
-                
-                # Create QPixmap
-                pixmap = QPixmap.fromImage(img)
-                
-                # Scale the pixmap to the display size
-                display_width = int(self.width() * display_zoom)  # Convert to integer
-                # Calculate height maintaining aspect ratio
-                aspect_ratio = pixmap.height() / pixmap.width()
-                display_height = int(display_width * aspect_ratio)
-                
-                pixmap = pixmap.scaled(display_width, display_height,
-                                     Qt.AspectRatioMode.KeepAspectRatio,
-                                     Qt.TransformationMode.SmoothTransformation)
-                
-                self.page_pixmaps.append(pixmap)
-                self.page_heights.append(pixmap.height() + 20)  # Add 20 pixels spacing
-                
-                # Log page dimensions
-                logger.debug(f"Page {page_num + 1} - width: {display_width}, height: {display_height}, "
-                           f"spacing: 20, total height: {pixmap.height() + 20}")
-            
-            # Set minimum size to ensure all content is visible
-            total_height = sum(self.page_heights)
-            
-            # Set the widget's size to be larger than the viewport
-            self.setMinimumHeight(total_height)
-            self.setMinimumWidth(self.width())
-            
-            # Reset pan offset if it would cause empty space at the top
-            if self.pan_offset.y() > 0:
-                self.pan_offset.setY(0)
-            
-            # Log final dimensions
-            logger.debug(f"Final dimensions - total height: {total_height}, "
-                       f"viewport height: {self.height()}, "
-                       f"zoom: {self.zoom}, "
-                       f"number of pages: {len(self.page_pixmaps)}")
-            
+            # Update current page display
+            self.update_current_page()
             self.update()
-        except Exception as e:
-            logger.error(f"Error displaying pages: {str(e)}")
-            raise
-            
+    
     def sizeHint(self):
         """Return the size hint for the widget"""
-        if not self.page_heights:
+        if not self.bounding_boxes:
             return super().sizeHint()
             
-        total_height = sum(self.page_heights)
+        # Calculate total height based on loaded pages
+        total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
         return QSize(self.width(), total_height)
         
     def minimumSizeHint(self):
         """Return the minimum size hint for the widget"""
-        if not self.page_heights:
+        if not self.bounding_boxes:
             return super().minimumSizeHint()
             
-        total_height = sum(self.page_heights)
+        # Calculate total height based on loaded pages
+        total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
         return QSize(self.width(), total_height)
     
     def paintEvent(self, event):
@@ -439,7 +583,10 @@ class PDFViewer(QWidget):
                                 self.width(), self.height())
         
         # Draw each page
-        for i, pixmap in enumerate(self.page_pixmaps):
+        for i, pixmap_dict in self.page_pixmaps.items():
+            #logger.debug(f"Drawing page {i}, pixmap: {pixmap_dict}")
+            pixmap = pixmap_dict['pixmap']
+
             # Check if page is visible
             page_rect = QRect(0, y_offset, pixmap.width(), pixmap.height())
             if page_rect.intersects(self.visible_rect):
@@ -447,7 +594,7 @@ class PDFViewer(QWidget):
                 painter.drawPixmap(0, y_offset, pixmap)
                 
                 # Draw bounding boxes if enabled and page has boxes
-                if self.show_boxes and i in self.page_boxes:
+                if self.show_bounding_boxes and i in self.bounding_boxes:
                     # Define colors for different categories with alpha values
                     category_colors = {
                         'page header': QColor(0, 0, 139, 64),  # darkBlue with alpha
@@ -469,7 +616,7 @@ class PDFViewer(QWidget):
                     # Calculate scale factors based on displayed size
                     display_scale = self.zoom
                     
-                    for box in self.page_boxes[i]:
+                    for box in self.bounding_boxes[i]:
                         try:
                             # Get relative coordinates and convert to absolute page coordinates
                             rel_x1 = box['coordinates'][0]['x']
@@ -520,17 +667,17 @@ class PDFViewer(QWidget):
         
     def scroll_to_page(self, page_num):
         """Scroll to make the specified page visible"""
-        if not self.page_heights or page_num < 0 or page_num >= len(self.page_heights):
+        if not self.bounding_boxes or page_num < 0 or page_num >= len(self.bounding_boxes):
             return
             
         # Calculate the y position for the target page
         y_position = 0
         for i in range(page_num):
-            y_position += self.page_heights[i]
+            y_position += self.bounding_boxes[i]['structure']['structure']['elements'][0]['attributes']['page_height']
             
         # Center the page in the viewport
         viewport_height = self.height()
-        target_y = int(y_position - (viewport_height - self.page_heights[page_num]) / 2)
+        target_y = int(y_position - (viewport_height - self.bounding_boxes[page_num]['structure']['structure']['elements'][0]['attributes']['page_height']) / 2)
         
         # Update pan offset
         self.pan_offset.setY(-target_y)
@@ -547,37 +694,142 @@ class PDFViewer(QWidget):
 
     def update_current_page_from_scroll(self, scroll_value):
         """Update current page based on scroll position"""
-        if not self.page_heights:
+        if not self.bounding_boxes:
             return
             
-        # Calculate which page is most visible in the viewport
-        # The scroll_value is the top of the viewport, so we need to add half the viewport height
-        # to get the center point
-        viewport_height = self.parent().height()
-        viewport_center = scroll_value + (viewport_height / 2)
+        # Calculate viewport center
+        viewport_height = self.height()
+        viewport_center = scroll_value + viewport_height / 2
         
-        logger.debug(f"Viewport center: {viewport_center}, scroll value: {scroll_value}, viewport height: {viewport_height}")
-        logger.debug(f"Page heights: {self.page_heights}")
+        # Get page heights from loaded pages
+        page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
+        logger.debug(f"Page heights: {page_heights}")
         
         # Find the page that contains the viewport center
         current_height = 0
-        for i, height in enumerate(self.page_heights):
+        for i, height in enumerate(page_heights):
             page_bottom = current_height + height
             logger.debug(f"Page {i} range: {current_height} to {page_bottom}")
             
             if current_height <= viewport_center < page_bottom:
-                # Convert to 0-based page number for internal use
-                new_page = i
-                if new_page != self.current_page:
-                    self.current_page = new_page
-                    logger.debug(f"Current page updated to {self.current_page + 1} from scroll position {scroll_value}")
-                    
-                    # Update page number display
-                    main_window = self.window()
-                    if hasattr(main_window, 'current_page_input'):
-                        main_window.current_page_input.setText(str(self.current_page + 1))
+                if self.current_page != i:
+                    self.current_page = i
+                    logger.debug(f"Current page updated to {i + 1}")
                 break
             current_height = page_bottom
+
+    def display_all_pages(self):
+        """Display all pages vertically with lazy loading"""
+        if not self.doc:
+            return
+            
+        try:
+            # Clear existing pixmaps and heights
+            self.page_pixmaps = {}
+            self.loaded_pages.clear()
+            
+            # Log initial dimensions
+            logger.debug(f"Initial dimensions - width: {self.width()}, height: {self.height()}")
+            
+            # Load initial set of pages
+            for page_num in range(min(self.initial_load_pages, len(self.doc))):
+                self.load_page(page_num)
+            
+            # Calculate total height based on loaded pages
+            total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
+            
+            # Set the widget's size to be larger than the viewport
+            self.setMinimumHeight(total_height)
+            self.setMinimumWidth(self.width())
+            
+            # Reset pan offset if it would cause empty space at the top
+            if self.pan_offset.y() > 0:
+                self.pan_offset.setY(0)
+            
+            # Log final dimensions
+            logger.debug(f"Initial display - total height: {total_height}, "
+                       f"viewport height: {self.height()}, "
+                       f"zoom: {self.zoom}, "
+                       f"number of pages loaded: {len(self.page_pixmaps)}")
+            
+            # Start loading next set of pages in background
+            self.load_next_pages()
+            
+            self.update()
+        except Exception as e:
+            logger.error(f"Error displaying pages: {str(e)}")
+            raise
+
+    def load_next_pages(self):
+        """Load next set of pages in background"""
+        if self.page_loading or not self.doc:
+            return
+        
+        self.page_loading = True
+        try:
+            # Find the highest loaded page number
+            max_loaded = max(self.loaded_pages) if self.loaded_pages else -1
+            
+            # Load next set of pages
+            next_pages = range(max_loaded + 1, min(max_loaded + self.initial_load_pages + 1, len(self.doc)))
+            for page_num in next_pages:
+                self.load_page(page_num)
+            
+            # Update display if current page was loaded
+            if self.current_page in self.loaded_pages:
+                self.update_current_page()
+                self.update()
+                
+            # Update total height
+            total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
+            self.setMinimumHeight(total_height)
+            
+            # If there are more pages to load, schedule next batch
+            if max_loaded + self.initial_load_pages < len(self.doc):
+                QTimer.singleShot(100, self.load_next_pages)
+        finally:
+            self.page_loading = False
+
+    def load_page(self, page_num):
+        """Load a single page and cache its pixmap"""
+        if page_num in self.loaded_pages or page_num >= len(self.doc):
+            return
+        
+        try:
+            page = self.doc[page_num]
+            # Use a higher zoom factor for better quality
+            display_zoom = self.zoom
+            render_zoom = display_zoom * 2  # Double the zoom for rendering
+            matrix = fitz.Matrix(render_zoom, render_zoom)
+            pix = page.get_pixmap(matrix=matrix)
+            
+            # Convert to QImage
+            img = QImage(pix.samples, pix.width, pix.height, 
+                       pix.stride, QImage.Format.Format_RGB888)
+            
+            # Create QPixmap
+            pixmap = QPixmap.fromImage(img)
+            
+            # Scale the pixmap to the display size
+            display_width = int(self.width() * display_zoom)  # Convert to integer
+            # Calculate height maintaining aspect ratio
+            aspect_ratio = pixmap.height() / pixmap.width()
+            display_height = int(display_width * aspect_ratio)
+            
+            pixmap = pixmap.scaled(display_width, display_height,
+                                 Qt.AspectRatioMode.KeepAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+            
+            # Store page data
+            self.page_pixmaps[page_num] = {
+                'pixmap': pixmap,
+                'width': display_width,
+                'height': display_height
+            }
+            self.loaded_pages.add(page_num)
+            logger.debug(f"Loaded page {page_num + 1} - width: {display_width}, height: {display_height}")
+        except Exception as e:
+            logger.error(f"Error loading page {page_num}: {str(e)}")
 
 class ElementInfoDialog(QDialog):
     def __init__(self, element_data, parent=None):
@@ -1266,7 +1518,7 @@ class MainWindow(QMainWindow):
                 # Direct click on a PDF item
                 if item.file_path.lower().endswith('.pdf'):
                     # Clear bounding boxes before loading new PDF
-                    self.pdf_viewer.page_boxes.clear()
+                    self.pdf_viewer.bounding_boxes.clear()
                     self.pdf_viewer.set_bounding_boxes([])
                     self.load_pdf_file(item.file_path)
                     logger.debug(f"Loading PDF file: {item.file_path}")
@@ -1284,7 +1536,7 @@ class MainWindow(QMainWindow):
                     # If there's exactly one PDF, load it
                     pdf_item = pdf_items[0]
                     # Clear bounding boxes before loading new PDF
-                    self.pdf_viewer.page_boxes.clear()
+                    self.pdf_viewer.bounding_boxes.clear()
                     self.pdf_viewer.set_bounding_boxes([])
                     self.load_pdf_file(pdf_item.file_path)
                     logger.debug(f"Loading single PDF attachment: {pdf_item.file_path}")
@@ -1292,7 +1544,7 @@ class MainWindow(QMainWindow):
                     # If there are multiple PDFs, load the first one and log a message
                     pdf_item = pdf_items[0]
                     # Clear bounding boxes before loading new PDF
-                    self.pdf_viewer.page_boxes.clear()
+                    self.pdf_viewer.bounding_boxes.clear()
                     self.pdf_viewer.set_bounding_boxes([])
                     self.load_pdf_file(pdf_item.file_path)
                     logger.info(f"Loading first of {len(pdf_items)} PDF attachments: {pdf_item.file_path}")
@@ -1374,7 +1626,7 @@ class MainWindow(QMainWindow):
             return
             
         # Clear existing boxes
-        self.page_boxes.clear()
+        self.bounding_boxes.clear()
         
         # Get the main window instance
         main_window = self.window()
@@ -1388,7 +1640,11 @@ class MainWindow(QMainWindow):
         for page_num, structure in page_structures.items():
             page_boxes = structure.get('structure', {}).get('elements', [])
             if page_boxes:
-                self.page_boxes[int(page_num)] = page_boxes
+                self.bounding_boxes.append({
+                    'page': int(page_num) + 1,
+                    'structure': structure,
+                    'coordinates': page_boxes
+                })
                 logger.debug(f"Set {len(page_boxes)} bounding boxes for page {int(page_num) + 1}")
         
         self.update()
@@ -2240,7 +2496,7 @@ class MainWindow(QMainWindow):
             # Calculate scroll position
             y_position = 0
             for i in range(self.current_page):
-                y_position += self.pdf_viewer.page_heights[i]
+                y_position += self.pdf_viewer.bounding_boxes[i]['structure']['structure']['elements'][0]['attributes']['page_height']
             
             # Scroll to the page
             self.pdf_scroll.verticalScrollBar().setValue(y_position)
@@ -2256,7 +2512,7 @@ class MainWindow(QMainWindow):
             # Calculate scroll position
             y_position = 0
             for i in range(self.current_page):
-                y_position += self.pdf_viewer.page_heights[i]
+                y_position += self.pdf_viewer.bounding_boxes[i]['structure']['structure']['elements'][0]['attributes']['page_height']
             
             # Scroll to the page
             self.pdf_scroll.verticalScrollBar().setValue(y_position)
@@ -2272,7 +2528,7 @@ class MainWindow(QMainWindow):
             self.next_button.setEnabled(self.current_page < len(self.doc) - 1)
             
             # Update bounding boxes for current page
-            if self.pdf_viewer.show_boxes:
+            if self.pdf_viewer.show_bounding_boxes:
                 current_page_boxes = self.document_data['page_structures'].get(str(self.current_page), {})
                 if current_page_boxes:
                     self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
@@ -2293,7 +2549,7 @@ class MainWindow(QMainWindow):
                 # Calculate scroll position
                 y_position = 0
                 for i in range(self.current_page):
-                    y_position += self.pdf_viewer.page_heights[i]
+                    y_position += self.pdf_viewer.bounding_boxes[i]['structure']['structure']['elements'][0]['attributes']['page_height']
                 
                 # Scroll to the page
                 self.pdf_scroll.verticalScrollBar().setValue(y_position)
