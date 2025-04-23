@@ -1272,9 +1272,15 @@ class MainWindow(QMainWindow):
         self.pdf_viewer.pixmap = None
         self.pdf_viewer.update()
         
+        # Scroll PDF view area to top
+        self.pdf_scroll.verticalScrollBar().setValue(0)
+        
         if hasattr(item, 'file_path') and item.file_path:
             # Direct click on a PDF item
             if item.file_path.lower().endswith('.pdf'):
+                # Clear bounding boxes before loading new PDF
+                self.pdf_viewer.page_boxes.clear()
+                self.pdf_viewer.set_bounding_boxes([])
                 self.load_pdf_file(item.file_path)
                 logger.debug(f"Loading PDF file: {item.file_path}")
         else:
@@ -1290,11 +1296,17 @@ class MainWindow(QMainWindow):
             if len(pdf_items) == 1:
                 # If there's exactly one PDF, load it
                 pdf_item = pdf_items[0]
+                # Clear bounding boxes before loading new PDF
+                self.pdf_viewer.page_boxes.clear()
+                self.pdf_viewer.set_bounding_boxes([])
                 self.load_pdf_file(pdf_item.file_path)
                 logger.debug(f"Loading single PDF attachment: {pdf_item.file_path}")
             elif len(pdf_items) > 1:
                 # If there are multiple PDFs, load the first one and log a message
                 pdf_item = pdf_items[0]
+                # Clear bounding boxes before loading new PDF
+                self.pdf_viewer.page_boxes.clear()
+                self.pdf_viewer.set_bounding_boxes([])
                 self.load_pdf_file(pdf_item.file_path)
                 logger.info(f"Loading first of {len(pdf_items)} PDF attachments: {pdf_item.file_path}")
 
@@ -2592,7 +2604,6 @@ class MainWindow(QMainWindow):
                 return False
             
             # Clear existing items
-            self.collections_tree.clear()
             self.items_tree.clear()
             
             # Track processed items and their collections
