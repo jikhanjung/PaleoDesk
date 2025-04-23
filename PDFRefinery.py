@@ -1160,6 +1160,9 @@ class MainWindow(QMainWindow):
         # Add recent files list
         self.load_recent_files()
 
+        # Initialize collection items cache
+        self.collection_items_cache = {}
+
     def init_database(self):
         """Initialize the database"""
         try:
@@ -1236,79 +1239,67 @@ class MainWindow(QMainWindow):
                 'metadata': {}
             }
             
-            # Get all items for this collection
-            if hasattr(self, 'collection_data') and item.collection_id in self.collection_data:
-                for item_data in self.collection_data[item.collection_id]:
-                    # Create a new tree item
-                    new_item = QTreeWidgetItem()
-                    new_item.setText(0, item_data['text'])
-                    
-                    # Copy relevant attributes
-                    if 'item_id' in item_data:
-                        new_item.item_id = item_data['item_id']
-                    if 'file_path' in item_data:
-                        new_item.file_path = item_data['file_path']
-                    
-                    # If item data has children (PDF attachments), copy them
-                    for child_data in item_data.get('children', []):
-                        child_item = QTreeWidgetItem()
-                        child_item.setText(0, child_data['text'])
-                        if 'file_path' in child_data:
-                            child_item.file_path = child_data['file_path']
-                        new_item.addChild(child_item)
-                    
-                    self.items_tree.addTopLevelItem(new_item)
+            # Load items for this collection
+            self.load_collection_items(item.collection_id)
             
             logger.debug(f"Showing items for collection: {item.text(0)}")
 
     def item_clicked(self, item, column):
         """Handle click on item in items tree"""
-        # Clear existing document data and session information
-        self.document_data = {
-            'page_structures': {},
-            'metadata': {}
-        }
-        self.pdf_viewer.set_bounding_boxes([])
-        self.pdf_viewer.pixmap = None
-        self.pdf_viewer.update()
-        
-        # Scroll PDF view area to top
-        self.pdf_scroll.verticalScrollBar().setValue(0)
-        
-        if hasattr(item, 'file_path') and item.file_path:
-            # Direct click on a PDF item
-            if item.file_path.lower().endswith('.pdf'):
-                # Clear bounding boxes before loading new PDF
-                self.pdf_viewer.page_boxes.clear()
-                self.pdf_viewer.set_bounding_boxes([])
-                self.load_pdf_file(item.file_path)
-                logger.debug(f"Loading PDF file: {item.file_path}")
-        else:
-            # Click on a parent item - check for PDF attachments
-            pdf_items = []
-            for i in range(item.childCount()):
-                child = item.child(i)
-                if (hasattr(child, 'file_path') and 
-                    child.file_path and 
-                    child.file_path.lower().endswith('.pdf')):
-                    pdf_items.append(child)
+        try:
+            # Set wait cursor
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             
-            if len(pdf_items) == 1:
-                # If there's exactly one PDF, load it
-                pdf_item = pdf_items[0]
-                # Clear bounding boxes before loading new PDF
-                self.pdf_viewer.page_boxes.clear()
-                self.pdf_viewer.set_bounding_boxes([])
-                self.load_pdf_file(pdf_item.file_path)
-                logger.debug(f"Loading single PDF attachment: {pdf_item.file_path}")
-            elif len(pdf_items) > 1:
-                # If there are multiple PDFs, load the first one and log a message
-                pdf_item = pdf_items[0]
-                # Clear bounding boxes before loading new PDF
-                self.pdf_viewer.page_boxes.clear()
-                self.pdf_viewer.set_bounding_boxes([])
-                self.load_pdf_file(pdf_item.file_path)
-                logger.info(f"Loading first of {len(pdf_items)} PDF attachments: {pdf_item.file_path}")
+            # Clear existing document data and session information
+            self.document_data = {
+                'page_structures': {},
+                'metadata': {}
+            }
+            self.pdf_viewer.set_bounding_boxes([])
+            self.pdf_viewer.pixmap = None
+            self.pdf_viewer.update()
+            
+            # Scroll PDF view area to top
+            self.pdf_scroll.verticalScrollBar().setValue(0)
+            
+            if hasattr(item, 'file_path') and item.file_path:
+                # Direct click on a PDF item
+                if item.file_path.lower().endswith('.pdf'):
+                    # Clear bounding boxes before loading new PDF
+                    self.pdf_viewer.page_boxes.clear()
+                    self.pdf_viewer.set_bounding_boxes([])
+                    self.load_pdf_file(item.file_path)
+                    logger.debug(f"Loading PDF file: {item.file_path}")
+            else:
+                # Click on a parent item - check for PDF attachments
+                pdf_items = []
+                for i in range(item.childCount()):
+                    child = item.child(i)
+                    if (hasattr(child, 'file_path') and 
+                        child.file_path and 
+                        child.file_path.lower().endswith('.pdf')):
+                        pdf_items.append(child)
+                
+                if len(pdf_items) == 1:
+                    # If there's exactly one PDF, load it
+                    pdf_item = pdf_items[0]
+                    # Clear bounding boxes before loading new PDF
+                    self.pdf_viewer.page_boxes.clear()
+                    self.pdf_viewer.set_bounding_boxes([])
+                    self.load_pdf_file(pdf_item.file_path)
+                    logger.debug(f"Loading single PDF attachment: {pdf_item.file_path}")
+                elif len(pdf_items) > 1:
+                    # If there are multiple PDFs, load the first one and log a message
+                    pdf_item = pdf_items[0]
+                    # Clear bounding boxes before loading new PDF
+                    self.pdf_viewer.page_boxes.clear()
+                    self.pdf_viewer.set_bounding_boxes([])
+                    self.load_pdf_file(pdf_item.file_path)
+                    logger.info(f"Loading first of {len(pdf_items)} PDF attachments: {pdf_item.file_path}")
+        finally:
+            # Restore cursor
+            QApplication.restoreOverrideCursor()
+            self.ensure_normal_cursor()
 
     def load_pdf_file(self, file_path):
         """Load a PDF file and try to load its analysis from database"""
@@ -2371,6 +2362,10 @@ class MainWindow(QMainWindow):
             
             logger.info(f"Found Zotero database at: {db_path}")
             
+            # Store the database path and directory for later use
+            self.zotero_db_path = db_path
+            self.zotero_dir = zotero_dir
+            
             # Connect to the database in read-only mode
             uri = f"file:{db_path}?mode=ro"
             conn = sqlite3.connect(uri, uri=True)
@@ -2419,7 +2414,7 @@ class MainWindow(QMainWindow):
             # Create collection hierarchy first
             collection_map = {}
             root_collections = []
-            self.collection_data = {}  # Store item data by collection ID
+            self.collection_data = {}
             
             for collection_id, name, parent_id, level in collections:
                 item = QTreeWidgetItem()
@@ -2443,10 +2438,38 @@ class MainWindow(QMainWindow):
             for i in range(self.collections_tree.topLevelItemCount()):
                 self.collections_tree.topLevelItem(i).setExpanded(True)
             
-            # Get parent items and their collections
-            self.status_label.showMessage("Loading parent items...", 0)
+            self.status_label.showMessage("Loaded Zotero library structure", 3000)
+            logger.info("Loaded Zotero library structure")
+            
+        except Exception as e:
+            logger.error(f"Error loading Zotero library: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Could not load Zotero library:\n{str(e)}")
+            
+        finally:
+            # Restore cursor
+            QApplication.restoreOverrideCursor()
+            self.ensure_normal_cursor()
+
+    def load_collection_items(self, collection_id):
+        """Load items for a specific collection"""
+        try:
+            # Check if items are already in cache
+            if collection_id in self.collection_items_cache:
+                logger.debug(f"Retrieving items for collection {collection_id} from cache")
+                self._display_cached_collection_items(collection_id)
+                return
+            
+            # Set wait cursor
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+            self.status_label.showMessage("Loading collection items...", 0)
             QApplication.processEvents()
             
+            # Connect to the database in read-only mode
+            uri = f"file:{self.zotero_db_path}?mode=ro"
+            conn = sqlite3.connect(uri, uri=True)
+            cursor = conn.cursor()
+            
+            # Get parent items and their collections
             cursor.execute("""
                 SELECT DISTINCT
                     i.itemID,
@@ -2478,21 +2501,19 @@ class MainWindow(QMainWindow):
                 LEFT JOIN itemData id ON i.itemID = id.itemID
                 LEFT JOIN itemDataValues idv ON id.valueID = idv.valueID
                 LEFT JOIN collectionItems ci ON i.itemID = ci.itemID
-                WHERE i.itemID NOT IN (SELECT itemID FROM itemAttachments)
+                WHERE ci.collectionID = ?
+                AND i.itemID NOT IN (SELECT itemID FROM itemAttachments)
                 AND it.typeName NOT IN ('attachment', 'note')
                 AND (id.fieldID IS NULL OR id.fieldID = (
                     SELECT fieldID FROM fields WHERE fieldName = 'title'
                 ))
                 ORDER BY idv.value
-            """)
+            """, (collection_id,))
             
             parent_items = cursor.fetchall()
-            logger.debug(f"Found {len(parent_items)} parent items")
+            logger.debug(f"Found {len(parent_items)} parent items for collection {collection_id}")
             
-            # Get all PDF attachments (both standalone and child attachments)
-            self.status_label.showMessage("Loading PDF attachments...", 0)
-            QApplication.processEvents()
-            
+            # Get all PDF attachments for these items
             cursor.execute("""
                 SELECT 
                     a.itemID,
@@ -2515,10 +2536,12 @@ class MainWindow(QMainWindow):
                 LEFT JOIN collectionItems ci ON i.itemID = ci.itemID
                 LEFT JOIN items i2 ON a.parentItemID = i2.itemID
                 WHERE a.contentType = 'application/pdf'
-            """)
+                AND (a.parentItemID IN (SELECT itemID FROM collectionItems WHERE collectionID = ?)
+                     OR ci.collectionID = ?)
+            """, (collection_id, collection_id))
             
             attachments = cursor.fetchall()
-            logger.info(f"Found {len(attachments)} PDF attachments")
+            logger.info(f"Found {len(attachments)} PDF attachments for collection {collection_id}")
             
             # Create a dictionary of attachments by parent ID for faster lookup
             attachments_by_parent = {}
@@ -2531,15 +2554,9 @@ class MainWindow(QMainWindow):
                     attachments_by_parent[parent_id].append(attachment)
                 else:
                     standalone_attachments.append(attachment)
-                logger.debug(f"Attachment {attachment[3]} -> Parent {parent_id} (Key: {attachment[4]}, Parent Key: {attachment[6]})")
-            
-            # Create collection hierarchy
-            self.status_label.showMessage("Creating collection hierarchy...", 0)
-            QApplication.processEvents()
             
             # Process items and attachments
-            storage_base = os.path.join(zotero_dir, 'storage')
-            logger.info(f"Using storage base directory: {storage_base}")
+            storage_base = os.path.join(self.zotero_dir, 'storage')
             
             # Function to add PDF item to items tree and save to database
             def add_pdf_to_items_tree(zotero_key, display_name, parent_item=None, collection_id=None, parent_key=None):
@@ -2558,44 +2575,31 @@ class MainWindow(QMainWindow):
                             pdf_item = QTreeWidgetItem(parent_item)
                         else:
                             pdf_item = QTreeWidgetItem()
-                            #self.items_tree.addTopLevelItem(pdf_item)
+                            self.items_tree.addTopLevelItem(pdf_item)
                         
                         pdf_item.setText(0, display_name)
                         pdf_item.file_path = pdf_path
-                        pdf_item.zotero_key = zotero_key  # Store attachment's Zotero key
+                        pdf_item.zotero_key = zotero_key
                         if parent_key:
-                            pdf_item.parent_zotero_key = parent_key  # Store parent's Zotero key if available
+                            pdf_item.parent_zotero_key = parent_key
                         
                         # Save document to database only if it doesn't exist
                         try:
                             with db:
-                                # Check if document already exists
                                 try:
                                     document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
                                     logger.debug(f"Document already exists in database: {zotero_key}")
                                 except DoesNotExist:
-                                    # Create new document only if it doesn't exist
                                     document = PDFDocument.create(
                                         file_path=pdf_path,
                                         zotero_key=zotero_key,
                                         title=display_name,
-                                        page_count=0  # Will be updated when file is opened
+                                        page_count=0
                                     )
                                     logger.debug(f"Created new document record for {display_name}")
                         except Exception as e:
                             logger.error(f"Error checking/saving document to database: {str(e)}")
                         
-                        # Add to collection if specified
-                        if collection_id and collection_id in self.collection_data:
-                            if parent_item is None:  # Only add standalone PDFs to collection items
-                                self.collection_data[collection_id].append({
-                                    'text': display_name,
-                                    'file_path': pdf_path,
-                                    'zotero_key': zotero_key,  # Store attachment's Zotero key
-                                    'parent_zotero_key': parent_key  # Store parent's Zotero key if available
-                                })
-                        
-                        logger.debug(f"Added PDF: {display_name} from {pdf_path} (Key: {zotero_key}, Parent Key: {parent_key})")
                         return True
                     else:
                         logger.warning(f"No PDF files found in directory: {storage_dir}")
@@ -2606,8 +2610,8 @@ class MainWindow(QMainWindow):
             # Clear existing items
             self.items_tree.clear()
             
-            # Track processed items and their collections
-            processed_items = {}
+            # Store items in cache
+            collection_items = []
             
             # Process parent items and their attachments
             total_items = len(parent_items)
@@ -2637,41 +2641,44 @@ class MainWindow(QMainWindow):
                     elif year:
                         display_text = f"{display_text} ({year})"
                     
-                    if item_id not in processed_items:
-                        # Create new parent item
-                        parent_item = QTreeWidgetItem()
-                        parent_item.setText(0, display_text)
-                        parent_item.item_id = item_id
-                        parent_item.zotero_key = key  # Store parent's Zotero key
-                        #self.items_tree.addTopLevelItem(parent_item)
-                        
-                        # Add PDF attachments as children
-                        has_pdfs = False
-                        for attachment in attachments_by_parent[item_id]:
-                            try:
-                                zotero_key = attachment[4]  # Zotero key
-                                parent_key = attachment[6]  # Parent's Zotero key
-                                display_name = attachment[3]
-                                if display_name.startswith('storage:'):
-                                    display_name = os.path.basename(display_name)
+                    # Create new parent item
+                    parent_item = QTreeWidgetItem()
+                    parent_item.setText(0, display_text)
+                    parent_item.item_id = item_id
+                    parent_item.zotero_key = key
+                    self.items_tree.addTopLevelItem(parent_item)
+                    
+                    # Store parent item in cache
+                    parent_item_data = {
+                        'text': display_text,
+                        'item_id': item_id,
+                        'zotero_key': key,
+                        'children': []
+                    }
+                    
+                    # Add PDF attachments as children
+                    for attachment in attachments_by_parent[item_id]:
+                        try:
+                            zotero_key = attachment[4]  # Zotero key
+                            parent_key = attachment[6]  # Parent's Zotero key
+                            display_name = attachment[3]
+                            if display_name.startswith('storage:'):
+                                display_name = os.path.basename(display_name)
+                            
+                            if add_pdf_to_items_tree(zotero_key, display_name, parent_item, collection_id, parent_key):
+                                # Store child item in cache
+                                child_item_data = {
+                                    'text': display_name,
+                                    'zotero_key': zotero_key,
+                                    'parent_zotero_key': parent_key,
+                                    'file_path': os.path.join(storage_base, zotero_key, [f for f in os.listdir(os.path.join(storage_base, zotero_key)) if f.lower().endswith('.pdf')][0])
+                                }
+                                parent_item_data['children'].append(child_item_data)
                                 
-                                if add_pdf_to_items_tree(zotero_key, display_name, parent_item, collection_id, parent_key):
-                                    has_pdfs = True
-                                    
-                            except Exception as e:
-                                logger.error(f"Error processing attachment {zotero_key}: {str(e)}")
-                        
-                        # Store the parent item and its collections
-                        processed_items[item_id] = {
-                            'parent_item': parent_item,
-                            'collections': set([collection_id]) if collection_id else set(),
-                            'has_pdfs': has_pdfs,
-                            'zotero_key': key  # Store parent's Zotero key
-                        }
-                    else:
-                        # Add collection to existing item
-                        if collection_id:
-                            processed_items[item_id]['collections'].add(collection_id)
+                        except Exception as e:
+                            logger.error(f"Error processing attachment {zotero_key}: {str(e)}")
+                    
+                    collection_items.append(parent_item_data)
             
             # Process standalone PDF attachments
             total_standalone = len(standalone_attachments)
@@ -2687,46 +2694,69 @@ class MainWindow(QMainWindow):
                     if display_name.startswith('storage:'):
                         display_name = os.path.basename(display_name)
                     
-                    add_pdf_to_items_tree(zotero_key, display_name, None, attachment[5])  # attachment[5] is collectionID
+                    if add_pdf_to_items_tree(zotero_key, display_name, None, attachment[5]):  # attachment[5] is collectionID
+                        # Store standalone item in cache
+                        standalone_item_data = {
+                            'text': display_name,
+                            'zotero_key': zotero_key,
+                            'file_path': os.path.join(storage_base, zotero_key, [f for f in os.listdir(os.path.join(storage_base, zotero_key)) if f.lower().endswith('.pdf')][0])
+                        }
+                        collection_items.append(standalone_item_data)
                     
                 except Exception as e:
                     logger.error(f"Error processing standalone attachment {zotero_key}: {str(e)}")
             
-            # Add items to their collections
-            self.status_label.showMessage("Organizing collections...", 0)
-            QApplication.processEvents()
+            # Store items in cache
+            self.collection_items_cache[collection_id] = collection_items
             
-            for item_id, item_data in processed_items.items():
-                if item_data['has_pdfs']:
-                    for collection_id in item_data['collections']:
-                        if collection_id in self.collection_data:
-                            self.collection_data[collection_id].append({
-                                'text': item_data['parent_item'].text(0),
-                                'item_id': item_id,
-                                'zotero_key': item_data['zotero_key'],  # Store parent's Zotero key
-                                'children': [{
-                                    'text': child.text(0),
-                                    'file_path': child.file_path,
-                                    'zotero_key': child.zotero_key if hasattr(child, 'zotero_key') else None,
-                                    'parent_zotero_key': child.parent_zotero_key if hasattr(child, 'parent_zotero_key') else None
-                                } for child in [item_data['parent_item'].child(i) for i in range(item_data['parent_item'].childCount())]]
-                            })
-            
-            # Expand the first level of collections
-            for i in range(self.collections_tree.topLevelItemCount()):
-                self.collections_tree.topLevelItem(i).setExpanded(True)
-            
-            self.status_label.showMessage("Loaded Zotero library structure", 3000)
-            logger.info("Loaded Zotero library structure")
+            self.status_label.showMessage("Loaded collection items", 3000)
+            logger.info(f"Loaded items for collection {collection_id}")
             
         except Exception as e:
-            logger.error(f"Error loading Zotero library: {str(e)}")
-            QMessageBox.warning(self, "Error", f"Could not load Zotero library:\n{str(e)}")
+            logger.error(f"Error loading collection items: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Could not load collection items:\n{str(e)}")
             
         finally:
             # Restore cursor
             QApplication.restoreOverrideCursor()
             self.ensure_normal_cursor()
+
+    def _display_cached_collection_items(self, collection_id):
+        """Display items from cache for a collection"""
+        try:
+            # Clear existing items
+            self.items_tree.clear()
+            
+            # Get items from cache
+            collection_items = self.collection_items_cache[collection_id]
+            
+            # Display items
+            for item_data in collection_items:
+                # Create parent item
+                parent_item = QTreeWidgetItem()
+                parent_item.setText(0, item_data['text'])
+                if 'item_id' in item_data:
+                    parent_item.item_id = item_data['item_id']
+                if 'zotero_key' in item_data:
+                    parent_item.zotero_key = item_data['zotero_key']
+                self.items_tree.addTopLevelItem(parent_item)
+                
+                # Add children if any
+                for child_data in item_data.get('children', []):
+                    child_item = QTreeWidgetItem(parent_item)
+                    child_item.setText(0, child_data['text'])
+                    child_item.zotero_key = child_data['zotero_key']
+                    if 'parent_zotero_key' in child_data:
+                        child_item.parent_zotero_key = child_data['parent_zotero_key']
+                    if 'file_path' in child_data:
+                        child_item.file_path = child_data['file_path']
+            
+            self.status_label.showMessage("Loaded collection items from cache", 3000)
+            logger.debug(f"Displayed cached items for collection {collection_id}")
+            
+        except Exception as e:
+            logger.error(f"Error displaying cached collection items: {str(e)}")
+            QMessageBox.warning(self, "Error", f"Could not display cached collection items:\n{str(e)}")
 
     def batch_analyze(self):
         """Analyze all PDF files in the items tree"""
@@ -2910,7 +2940,13 @@ class MainWindow(QMainWindow):
                 
                 # Select the collection to populate items tree
                 self.collections_tree.setCurrentItem(collection)
-                self.collection_clicked(collection, 0)
+                
+                # Load collection items if not in cache
+                if collection.collection_id not in self.collection_items_cache:
+                    self.load_collection_items(collection.collection_id)
+                else:
+                    self._display_cached_collection_items(collection.collection_id)
+                
                 QApplication.processEvents()
                 
                 # Process each item in the items tree
@@ -2941,15 +2977,13 @@ class MainWindow(QMainWindow):
                             
                             process_pdf_item(child)
                 
-                # Process subcollections recursively
+                # Process child collections recursively
                 for i in range(collection.childCount()):
-                    subcollection = collection.child(i)
-                    process_collection(subcollection)
+                    process_collection(collection.child(i))
 
-            # Process collections
+            # Process collections based on selection
             if selected_collection_id:
-                # Find and select the specific collection
-                selected_collection = None
+                # Find the selected collection
                 def find_collection(item, target_id):
                     if hasattr(item, 'collection_id') and item.collection_id == target_id:
                         return item
@@ -2960,6 +2994,7 @@ class MainWindow(QMainWindow):
                     return None
 
                 # Search through all collections recursively
+                selected_collection = None
                 for i in range(self.collections_tree.topLevelItemCount()):
                     item = self.collections_tree.topLevelItem(i)
                     selected_collection = find_collection(item, selected_collection_id)
@@ -2968,39 +3003,38 @@ class MainWindow(QMainWindow):
 
                 if selected_collection:
                     process_collection(selected_collection)
-                    logger.info(f"Processed selected collection: {selected_collection.text(0)}")
+                else:
+                    QMessageBox.warning(self, "Collection Not Found", 
+                                      "Could not find the selected collection.")
+                    return
             else:
                 # Process all collections
                 for i in range(self.collections_tree.topLevelItemCount()):
-                    collection = self.collections_tree.topLevelItem(i)
-                    process_collection(collection)
-                    logger.info(f"Processed collection: {collection.text(0)}")
+                    process_collection(self.collections_tree.topLevelItem(i))
 
-            if total_files == 0:
-                QMessageBox.information(self, "No PDF Files", 
-                                      "No PDF files found to analyze.")
-                return
-
-            # Restore previous file if there was one
-            if previous_file and os.path.exists(previous_file):
+            # Restore previous file if any
+            if previous_file and previous_doc:
                 try:
                     self.current_file = previous_file
                     self.pdf_directory = os.path.dirname(previous_file)
-                    self.doc = fitz.open(previous_file)
+                    self.doc = previous_doc
+                    self.current_page = 0
+                    self.pdf_viewer.current_page = 0
                     self.pdf_viewer.open_pdf(previous_file)
-                    self.update_page_display()
+                    self.update_navigation()
                 except Exception as e:
                     logger.error(f"Error restoring previous file: {str(e)}")
 
             # Show completion message
-            msg = f"Batch analysis completed. Analyzed: {analyzed_files}, Failed: {failed_files}, Total: {total_files}"
-            self.status_label.showMessage(msg, 5000)
+            msg = f"Batch analysis completed - {analyzed_files} files analyzed, {failed_files} failed"
+            self.status_label.showMessage(msg, 3000)
             QMessageBox.information(self, "Batch Analysis Complete", msg)
+            logger.info(msg)
 
         except Exception as e:
             logger.error(f"Error in batch analysis: {str(e)}")
-            QMessageBox.warning(self, "Error", f"Error during batch analysis: {str(e)}")
-
+            QMessageBox.critical(self, "Error", f"Error during batch analysis: {str(e)}")
+            
         finally:
             # Restore cursor
             QApplication.restoreOverrideCursor()
