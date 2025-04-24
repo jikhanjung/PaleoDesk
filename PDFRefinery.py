@@ -847,6 +847,7 @@ class StructuredContentView(QWidget):
         self.content_list.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.content_list.setWrapping(False)  # Single column
         self.content_list.setFlow(QListWidget.Flow.TopToBottom)  # Vertical flow
+        self.content_list.itemClicked.connect(self._handle_item_click)
         self.content_list.itemDoubleClicked.connect(self._show_element_info)
         
         layout.addWidget(self.content_list)
@@ -856,6 +857,40 @@ class StructuredContentView(QWidget):
         # Initialize with icon view
         self.current_view_mode = 'icon'
         self.switch_view_mode('icon')
+        
+    def _handle_item_click(self, item):
+        """Handle single click on an item to scroll to the corresponding page"""
+        # Get the main window instance
+        main_window = self.window()
+        if not main_window:
+            return
+            
+        # Get the widget associated with the item
+        widget = self.content_list.itemWidget(item)
+        if not widget or not hasattr(widget, 'element_data'):
+            return
+            
+        # Get the page number from the element data
+        page_num = widget.element_data.get('page')
+        logger.debug(f"Page number: {page_num}")
+        if page_num is not None:
+            # Update current page in PDF viewer
+            main_window.current_page = page_num - 1  # Convert to 0-based index
+            main_window.pdf_viewer.current_page = page_num - 1
+            main_window.pdf_viewer.display_all_pages()
+            
+            # Calculate the scroll position for the target page
+            scroll_bar = main_window.pdf_scroll.verticalScrollBar()
+            target_pos = 0
+            
+            # Sum up the heights of all pages before the target page
+            for i in range(page_num - 1):
+                if i in main_window.pdf_viewer.page_pixmaps:
+                    target_pos += main_window.pdf_viewer.page_pixmaps[i]['height']
+            
+            # Scroll to the target position
+            scroll_bar.setValue(target_pos)
+            main_window.update_navigation()
         
     def set_document(self, doc):
         """Set the current PDF document"""
@@ -1251,16 +1286,35 @@ class StructuredContentView(QWidget):
         if not main_window:
             return
             
-        # Get the page number from the item's data
-        page_num = item.data(Qt.ItemDataRole.UserRole)
+        # Get the widget associated with the item
+        widget = self.content_list.itemWidget(item)
+        if not widget or not hasattr(widget, 'element_data'):
+            return
+            
+        # Get the page number from the element data
+        page_num = widget.element_data.get('page')
         logger.debug(f"Page number: {page_num}")
         if page_num is not None:
-            # Scroll to the page in PDF viewer
-            main_window.pdf_viewer.scroll_to_page(page_num)
-            main_window.pdf_viewer.set_current_page(page_num)
+            # Update current page in PDF viewer
+            main_window.current_page = page_num - 1  # Convert to 0-based index
+            main_window.pdf_viewer.current_page = page_num - 1
+            main_window.pdf_viewer.display_all_pages()
+            
+            # Calculate the scroll position for the target page
+            scroll_bar = main_window.pdf_scroll.verticalScrollBar()
+            target_pos = 0
+            
+            # Sum up the heights of all pages before the target page
+            for i in range(page_num - 1):
+                if i in main_window.pdf_viewer.page_pixmaps:
+                    target_pos += main_window.pdf_viewer.page_pixmaps[i]['height']
+            
+            # Scroll to the target position
+            scroll_bar.setValue(target_pos)
+            main_window.update_navigation()
             
         # Show element info dialog
-        dialog = ElementInfoDialog(item.data(Qt.ItemDataRole.UserRole + 1), self)
+        dialog = ElementInfoDialog(widget.element_data, self)
         dialog.exec()
 
 class MainWindow(QMainWindow):
@@ -2432,13 +2486,15 @@ class MainWindow(QMainWindow):
             self.pdf_viewer.current_page = self.current_page
             self.pdf_viewer.display_all_pages()
             
-            # Calculate scroll position
-            y_position = 0
-            for i in range(self.current_page):
-                y_position += self.pdf_viewer.bounding_boxes[i]['structure']['structure']['elements'][0]['attributes']['page_height']
+            # Get the current scroll position
+            scroll_bar = self.pdf_scroll.verticalScrollBar()
+            current_pos = scroll_bar.value()
             
-            # Scroll to the page
-            self.pdf_scroll.verticalScrollBar().setValue(y_position)
+            # Calculate the height of one page
+            page_height = self.pdf_viewer.page_pixmaps[self.current_page]['height']
+            
+            # Scroll up by one page height
+            scroll_bar.setValue(current_pos - page_height)
             self.update_navigation()
             logger.debug(f"Navigated to previous page: {self.current_page + 1}")
             
@@ -2448,13 +2504,15 @@ class MainWindow(QMainWindow):
             self.pdf_viewer.current_page = self.current_page
             self.pdf_viewer.display_all_pages()
             
-            # Calculate scroll position
-            y_position = 0
-            for i in range(self.current_page):
-                y_position += self.pdf_viewer.bounding_boxes[i]['structure']['structure']['elements'][0]['attributes']['page_height']
+            # Get the current scroll position
+            scroll_bar = self.pdf_scroll.verticalScrollBar()
+            current_pos = scroll_bar.value()
             
-            # Scroll to the page
-            self.pdf_scroll.verticalScrollBar().setValue(y_position)
+            # Calculate the height of one page
+            page_height = self.pdf_viewer.page_pixmaps[self.current_page]['height']
+            
+            # Scroll down by one page height
+            scroll_bar.setValue(current_pos + page_height)
             self.update_navigation()
             logger.debug(f"Navigated to next page: {self.current_page + 1}")
             
@@ -2485,18 +2543,22 @@ class MainWindow(QMainWindow):
                 self.pdf_viewer.current_page = self.current_page
                 self.pdf_viewer.display_all_pages()
                 
-                # Calculate scroll position
-                y_position = 0
-                for i in range(self.current_page):
-                    y_position += self.pdf_viewer.bounding_boxes[i]['structure']['structure']['elements'][0]['attributes']['page_height']
+                # Calculate the scroll position for the target page
+                scroll_bar = self.pdf_scroll.verticalScrollBar()
+                target_pos = 0
                 
-                # Scroll to the page
-                self.pdf_scroll.verticalScrollBar().setValue(y_position)
+                # Sum up the heights of all pages before the target page
+                for i in range(page_num):
+                    if i in self.pdf_viewer.page_pixmaps:
+                        target_pos += self.pdf_viewer.page_pixmaps[i]['height']
+                
+                # Scroll to the target position
+                scroll_bar.setValue(target_pos)
                 self.update_navigation()
                 logger.debug(f"Navigated to page: {self.current_page + 1}")
             else:
                 QMessageBox.warning(self, "Invalid Page", 
-                                  f"Please enter a page number between 1 and {len(self.doc)}")
+                                  f"Page number must be between 1 and {len(self.doc)}")
                 self.current_page_input.setText(str(self.current_page + 1))
         except ValueError:
             QMessageBox.warning(self, "Invalid Input", "Please enter a valid page number")
