@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QComboBox, QRadioButton, QButtonGroup, QTabWidget,
                            QGridLayout, QStackedWidget, QFormLayout, QTextEdit,
                            QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem,
-                           QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox)
+                           QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox, QToolTip)
 from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor
 import fitz  # PyMuPDF
@@ -189,6 +189,7 @@ class PDFViewer(QWidget):
         self.last_pan_pos = None  # Add last pan position
         self.current_page_width = 0  # Add current page width
         self.current_page_height = 0  # Add current page height
+        self.hovered_box = None  # Track currently hovered bounding box
         
         # Set up the widget
         self.setMouseTracking(True)
@@ -514,12 +515,132 @@ class PDFViewer(QWidget):
 
     def mouseMoveEvent(self, event):
         """Handle mouse move events"""
+        # Get the main window instance
+        main_window = self.window()
+        if not main_window:
+            return
+
         if self.last_pan_pos and event.buttons() & Qt.MouseButton.LeftButton:
             # Calculate the movement delta
             delta = event.pos() - self.last_pan_pos
             self.pan_offset += delta
             self.last_pan_pos = event.pos()
             self.update()
+        else:
+            # Check if mouse is over a bounding box
+            self._check_bounding_box_hover(event.pos())
+
+    def _check_bounding_box_hover(self, pos):
+        """Check if mouse is over a bounding box"""
+        main_window = self.window()
+        if not main_window or not self.bounding_boxes:
+            return
+
+        # Get scroll position for PDF coordinate calculation only
+        scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
+        
+        # Calculate widget to pixmap ratio for proper scaling
+        widget_width = self.width()
+        first_page_width = next((self.page_pixmaps[i]['width'] for i in range(len(self.page_pixmaps)) if i in self.page_pixmaps), None)
+        if not first_page_width:
+            return
+            
+        # This ratio accounts for how much the PDF is scaled to fit the widget width
+        width_ratio = widget_width / (first_page_width * self.zoom)
+        
+        # Use raw mouse position for viewport coordinates
+        viewport_x = pos.x()
+        viewport_y = pos.y()
+        
+        # Calculate absolute y position in document (scaled) - only used for status bar display
+        absolute_y = (viewport_y + scroll_value) / self.zoom
+
+        # Find current page based on viewport position
+        current_y = 0
+        current_page = None
+
+        # Use viewport_y directly for page detection since it's already in screen coordinates
+        for page_num in range(len(self.page_pixmaps)):
+            if page_num in self.page_pixmaps:
+                page_height = self.page_pixmaps[page_num]['height']  # Use actual height, not scaled
+                scaled_height = page_height * self.zoom * width_ratio  # Scale height by both zoom and ratio
+                if current_y <= viewport_y < current_y + scaled_height:
+                    current_page = page_num
+                    break
+                current_y += scaled_height
+
+        if current_page is None:
+            return
+
+        # Check boxes on current page
+        page_boxes = self.bounding_boxes.get(current_page, [])
+        for box in page_boxes:
+            if 'coordinates' not in box:
+                continue
+                
+            coords = box['coordinates']
+            if len(coords) != 4:
+                continue
+                
+            # Get coordinates from the box
+            x1 = coords[0]['x']
+            y1 = coords[0]['y']
+            x2 = coords[2]['x']  # Use point 2 for bottom-right
+            y2 = coords[2]['y']
+            
+            # Get page dimensions for scaling
+            page_width = self.page_pixmaps[current_page]['width']
+            page_height = self.page_pixmaps[current_page]['height']
+            
+            # Convert normalized coordinates to screen space, applying both zoom and width ratio
+            screen_x1 = x1 * page_width * self.zoom * width_ratio
+            screen_x2 = x2 * page_width * self.zoom * width_ratio
+            
+            # Calculate screen y coordinates relative to viewport, applying both zoom and width ratio
+            screen_y1 = y1 * page_height * self.zoom * width_ratio + current_y
+            screen_y2 = y2 * page_height * self.zoom * width_ratio + current_y
+
+            logger.debug(f"Checking box on page {current_page}: ({x1}, {y1}) to ({x2}, {y2})")
+            logger.debug(f"Box coordinates: {coords}")
+            logger.debug(f"Page start y: {current_y}")
+            logger.debug(f"Viewport x,y: ({viewport_x}, {viewport_y})")
+            logger.debug(f"Screen box: ({screen_x1:.1f}, {screen_y1:.1f}) to ({screen_x2:.1f}, {screen_y2:.1f})")
+            logger.debug(f"Zoom level: {self.zoom}")
+            logger.debug(f"Width ratio: {width_ratio}")
+
+            # Check if mouse is within box boundaries using viewport coordinates
+            if (screen_x1 <= viewport_x <= screen_x2 and 
+                screen_y1 <= viewport_y <= screen_y2):
+                logger.debug(f"Mouse inside box at viewport({viewport_x}, {viewport_y})")
+                self.setCursor(Qt.CursorShape.PointingHandCursor)
+                
+                # Show box information in status bar
+                category = box.get('category', 'Unknown').capitalize()
+                # Convert viewport coordinates to PDF coordinates for display
+                pdf_x = viewport_x / (self.zoom * width_ratio)
+                pdf_y = absolute_y
+                status_msg = (f"Page {current_page + 1} | "
+                            f"Category: {category} | "
+                            f"Box: ({x1:.2f}, {y1:.2f}) to ({x2:.2f}, {y2:.2f}) | "
+                            f"Viewport: ({viewport_x}, {viewport_y}) | "
+                            f"PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | "
+                            f"Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f}")
+                main_window.status_label.showMessage(status_msg, 0)
+                return
+            else:
+                logger.debug(f"Mouse outside box: ({viewport_x}, {viewport_y}) not in ({screen_x1:.1f}, {screen_y1:.1f}) to ({screen_x2:.1f}, {screen_y2:.1f})")
+
+        # If we get here, mouse is not over any box
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        # Reset status bar to default coordinate display
+        # Convert viewport coordinates to PDF coordinates for display
+        pdf_x = viewport_x / (self.zoom * width_ratio)
+        pdf_y = absolute_y
+        if hasattr(main_window, 'status_label'):
+            main_window.status_label.showMessage(
+                f"Page {current_page + 1} | Viewport: ({viewport_x}, {viewport_y}) | PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f}", 
+                0
+            )
 
     def mouseReleaseEvent(self, event):
         """Handle mouse release events"""
@@ -745,6 +866,13 @@ class PDFViewer(QWidget):
             logger.debug(f"Loaded page {page_num + 1} - width: {display_width}, height: {display_height}")
         except Exception as e:
             logger.error(f"Error loading page {page_num}: {str(e)}")
+
+    def leaveEvent(self, event):
+        """Handle mouse leave events"""
+        if self.hovered_box is not None:
+            self.hovered_box = None
+            QToolTip.hideText()
+            logger.debug("Mouse left widget, hiding tooltip")
 
 class ElementInfoDialog(QDialog):
     def __init__(self, element_data, parent=None):
