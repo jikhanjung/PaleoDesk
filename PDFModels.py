@@ -76,6 +76,25 @@ class SessionData(BaseModel):
             (('document', 'created_at'), False),  # Index for faster lookups
         )
 
+class StructuredElement(BaseModel):
+    """Model for storing structured elements from PDFs"""
+    document = ForeignKeyField(PDFDocument, backref='elements')
+    page_number = IntegerField()
+    element_id = CharField()  # ID within the page
+    element_type = CharField()  # Type of element (e.g., 'figure', 'table', 'text')
+    coordinates = TextField()  # JSON string of coordinates
+    content = TextField(null=True)  # Text content or description
+    caption = TextField(null=True)  # Associated caption text
+    metadata = TextField(null=True)  # JSON string for additional metadata
+    created_at = DateTimeField(default=datetime.datetime.now)
+    updated_at = DateTimeField(default=datetime.datetime.now)
+    
+    class Meta:
+        indexes = (
+            (('document', 'page_number', 'element_id'), True),  # Unique together
+            (('document', 'element_type'), False),  # Index for type-based queries
+        )
+
 def init_database(db_path):
     """Initialize the database with all required tables"""
     try:
@@ -86,7 +105,7 @@ def init_database(db_path):
             
             if not tables_exist:
                 # Create tables if they don't exist
-                db.create_tables([PDFDocument, PageAnalysis, SessionData])
+                db.create_tables([PDFDocument, PageAnalysis, SessionData, StructuredElement])
                 logger.info("Created new database tables")
             else:
                 # Handle migration for existing database

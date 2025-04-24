@@ -18,8 +18,8 @@ import requests
 import json
 import sqlite3
 import shutil
-from peewee import DoesNotExist
-from PDFModels import (db, PDFDocument, PageAnalysis, SessionData, init_database,
+from peewee import DoesNotExist, chunked
+from PDFModels import (db, PDFDocument, PageAnalysis, SessionData, StructuredElement, init_database,
                       calculate_file_hash, DEFAULT_LOG_DIRECTORY, COMPANY_NAME,
                       PROGRAM_NAME, DEFAULT_DB_DIRECTORY, DB_PATH)
 import hashlib
@@ -646,6 +646,7 @@ class PDFViewer(QWidget):
                                             if hasattr(main_window, 'structured_view'):
                                                 logger.debug("Updating structured content view")
                                                 main_window.structured_view.update_content(main_window.document_data['page_structures'])
+                                                main_window.save_session()
                                                 logger.debug("Structured content view update called")
                                             else:
                                                 logger.warning("No structured_view found in main window")
@@ -1360,6 +1361,7 @@ class StructuredContentView(QWidget):
                 if element_type in content_by_type:
                     # Find nearest caption
                     caption_element = self._find_nearest_caption(element, elements)
+                    logger.debug(f"Caption element: {caption_element}")
                     caption = caption_element.get('content', {}).get('text', '') if caption_element else None
                     
                     # Try to get category from caption
@@ -1646,6 +1648,7 @@ class MainWindow(QMainWindow):
 
         self.document_data = {
             'page_structures': {},
+            'initial_page_structures': {},
             'metadata': {}
         }
         self.recent_files = []
@@ -1785,6 +1788,7 @@ class MainWindow(QMainWindow):
             # Clear current document data
             self.document_data = {
                 'page_structures': {},
+                'initial_page_structures': {},
                 'metadata': {}
             }
             
@@ -1802,6 +1806,7 @@ class MainWindow(QMainWindow):
             # Clear existing document data and session information
             self.document_data = {
                 'page_structures': {},
+                'initial_page_structures': {},
                 'metadata': {}
             }
             self.pdf_viewer.set_bounding_boxes([])
@@ -1856,6 +1861,7 @@ class MainWindow(QMainWindow):
         self.pdf_directory = os.path.dirname(file_path)
         self.document_data = {
             'page_structures': {},
+            'initial_page_structures': {},
             'metadata': {}
         }
         
@@ -2200,6 +2206,7 @@ class MainWindow(QMainWindow):
             self.pdf_directory = os.path.dirname(file_path)
             self.document_data = {
                 'page_structures': {},
+                'initial_page_structures': {},
                 'metadata': {}
             }
             self.doc = fitz.open(file_path)
@@ -2427,6 +2434,17 @@ class MainWindow(QMainWindow):
                                         }
                                     }
                                 }
+                                self.document_data['initial_page_structures'][page_num] = {
+                                    'timestamp': datetime.datetime.now().isoformat(),
+                                    'structure': {
+                                        'elements': elements,
+                                        'metadata': {
+                                            'page_number': int(page_num),
+                                            'page_width': elements[0]['attributes']['page_width'],
+                                            'page_height': elements[0]['attributes']['page_height']
+                                        }
+                                    }
+                                }
                             
                             # Update the display
                             self.update_page_display()
@@ -2515,7 +2533,7 @@ class MainWindow(QMainWindow):
             if not hasattr(self, 'current_file') or not self.current_file:
                 logger.debug("No current file to save session for")
                 return
-                
+            
             with db:
                 # Get or create PDFDocument using Zotero key if available
                 file_hash = None
@@ -2587,10 +2605,42 @@ class MainWindow(QMainWindow):
                     document.save()
                     logger.debug(f"Updated document record")
                 
+                # Save structured elements
+                if 'page_structures' in self.document_data:
+                    logger.debug("Saving structured elements to database")
+                    # Delete existing elements for this document
+                    StructuredElement.delete().where(StructuredElement.document == document).execute()
+                    
+                    # Create new elements
+                    elements_to_create = []
+                    for page_num, page_data in self.document_data['page_structures'].items():
+                        if 'structure' in page_data and 'elements' in page_data['structure']:
+                            for element in page_data['structure']['elements']:
+                                logger.debug(f"Creating element: {element}")
+                                elements_to_create.append({
+                                    'document': document,
+                                    'page_number': int(page_num),
+                                    'element_id': str(element.get('id', '')),
+                                    'element_type': element.get('category', 'unknown'),
+                                    'coordinates': json.dumps(element.get('coordinates', [])),
+                                    'content': json.dumps(element.get('content', {})),
+                                    'caption': json.dumps(element.get('caption', {})),
+                                    'metadata': json.dumps(element.get('metadata', {})),
+                                    'created_at': datetime.datetime.now(),
+                                    'updated_at': datetime.datetime.now()
+                                })
+                    
+                    if elements_to_create:
+                        with db.atomic():
+                            for batch in chunked(elements_to_create, 100):
+                                StructuredElement.insert_many(batch).execute()
+                        logger.debug(f"Saved {len(elements_to_create)} structured elements")
+                
                 # Prepare session data
                 session_data = {
                     'document_data': {
                         'page_structures': self.document_data['page_structures'],
+                        'initial_page_structures': self.document_data['initial_page_structures'],
                         'metadata': self.document_data['metadata'],
                         'page_dimensions': self.document_data.get('page_dimensions', {})
                     },
@@ -2705,6 +2755,37 @@ class MainWindow(QMainWindow):
             # Load page structures
             page_structures = dict(self.document_data.get('page_structures', {}))
             logger.debug(f"Loaded page structures: {page_structures}")
+            
+            # Load and merge structured elements
+            elements = (StructuredElement
+                      .select()
+                      .where(StructuredElement.document == document)
+                      .order_by(StructuredElement.page_number))
+            
+            logger.debug(f"Loading {elements.count()} structured elements")
+            for element in elements:
+                page_num = str(element.page_number)
+                if page_num not in page_structures:
+                    page_structures[page_num] = {'structure': {'elements': []}}
+                
+                # Convert element to dictionary format
+                element_data = {
+                    'id': element.element_id,
+                    'category': element.element_type,
+                    'coordinates': json.loads(element.coordinates),
+                    'content': json.loads(element.content) if element.content else {},
+                    'caption': json.loads(element.caption) if element.caption else {},
+                    'metadata': json.loads(element.metadata) if element.metadata else {}
+                }
+                
+                # Update existing element or append new one
+                elements_list = page_structures[page_num]['structure']['elements']
+                for i, existing in enumerate(elements_list):
+                    if str(existing.get('id')) == str(element.element_id):
+                        elements_list[i] = element_data
+                        break
+                else:
+                    elements_list.append(element_data)
             
             # Open the PDF file
             try:
@@ -3435,6 +3516,7 @@ class MainWindow(QMainWindow):
                 # Clear existing document data and session information
                 self.document_data = {
                     'page_structures': {},
+                    'initial_page_structures': {},
                     'metadata': {}
                 }
                 self.pdf_viewer.set_bounding_boxes([])
@@ -3621,4 +3703,6 @@ if __name__ == "__main__":
 '''
 Build command:
 pyinstaller --name "PDFRefinery_v0.0.1.exe" --add-data "icons/*.png:icons" --onefile --noconsole PDFRefinery.py
+docker run --rm --name pdf-document-layout-analysis -p 8051:5060 --entrypoint ./start.sh huridocs/pdf-document-layout-analysis:v0.0.23
+
 '''
