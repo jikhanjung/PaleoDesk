@@ -190,6 +190,13 @@ class PDFViewer(QWidget):
         self.current_page_width = 0  # Add current page width
         self.current_page_height = 0  # Add current page height
         self.hovered_box = None  # Track currently hovered bounding box
+        # Add these new instance variables
+        self.dragging_box = None  # Currently dragged box
+        self.drag_start_pos = None  # Mouse position when drag started
+        self.original_box_coords = None  # Original coordinates of the box being dragged
+        self.current_box_page = None  # Page number of the box being dragged
+        self.resize_edges = None  # Which edges are being resized (e.g., 'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw')
+        self.edge_threshold = 10  # Pixels from edge to trigger resize cursor
         
         # Set up the widget
         self.setMouseTracking(True)
@@ -510,18 +517,73 @@ class PDFViewer(QWidget):
     def mousePressEvent(self, event):
         """Handle mouse press events"""
         if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_start = event.pos()
-            self.last_pan_pos = event.pos()
+            # If we're over a box, start dragging or resizing
+            if self.dragging_box is not None:
+                self.drag_start_pos = event.pos()
+                # Store original coordinates and element id
+                self.original_box_coords = self.dragging_box['coordinates'].copy()
+                self.dragging_box_id = self.dragging_box.get('id')  # Store the element id
+            else:
+                # Normal panning behavior
+                self.last_pan_pos = event.pos()
 
     def mouseMoveEvent(self, event):
         """Handle mouse move events"""
-        # Get the main window instance
         main_window = self.window()
         if not main_window:
             return
 
-        if self.last_pan_pos and event.buttons() & Qt.MouseButton.LeftButton:
-            # Calculate the movement delta
+        if self.drag_start_pos and self.dragging_box and event.buttons() & Qt.MouseButton.LeftButton:
+            # Calculate the movement delta in viewport coordinates
+            delta_x = event.pos().x() - self.drag_start_pos.x()
+            delta_y = event.pos().y() - self.drag_start_pos.y()
+            
+            # Convert delta to PDF coordinates
+            widget_width = self.width()
+            first_page_width = next((self.page_pixmaps[i]['width'] for i in range(len(self.page_pixmaps)) if i in self.page_pixmaps), None)
+            if not first_page_width:
+                return
+                
+            width_ratio = widget_width / (first_page_width * self.zoom)
+            
+            # Get page dimensions
+            page_width = self.page_pixmaps[self.current_box_page]['width']
+            page_height = self.page_pixmaps[self.current_box_page]['height']
+            
+            # Convert movement to normalized coordinates
+            screen_page_width = page_width * self.zoom * width_ratio
+            screen_page_height = page_height * self.zoom * width_ratio
+            
+            delta_x_norm = delta_x / screen_page_width
+            delta_y_norm = delta_y / screen_page_height
+
+            if self.resize_edges:
+                # Resizing - update only the edges being dragged
+                coords = self.dragging_box['coordinates']
+                if 'n' in self.resize_edges:
+                    coords[0]['y'] = self.original_box_coords[0]['y'] + delta_y_norm
+                    coords[1]['y'] = self.original_box_coords[1]['y'] + delta_y_norm
+                if 's' in self.resize_edges:
+                    coords[2]['y'] = self.original_box_coords[2]['y'] + delta_y_norm
+                    coords[3]['y'] = self.original_box_coords[3]['y'] + delta_y_norm
+                if 'w' in self.resize_edges:
+                    coords[0]['x'] = self.original_box_coords[0]['x'] + delta_x_norm
+                    coords[3]['x'] = self.original_box_coords[3]['x'] + delta_x_norm
+                if 'e' in self.resize_edges:
+                    coords[1]['x'] = self.original_box_coords[1]['x'] + delta_x_norm
+                    coords[2]['x'] = self.original_box_coords[2]['x'] + delta_x_norm
+            else:
+                # Normal dragging - move all points
+                for i in range(4):
+                    self.dragging_box['coordinates'][i]['x'] = self.original_box_coords[i]['x'] + delta_x_norm
+                    self.dragging_box['coordinates'][i]['y'] = self.original_box_coords[i]['y'] + delta_y_norm
+            
+            # Update drag start position to current position for smooth continuous dragging
+            self.drag_start_pos = event.pos()
+            
+            self.update()  # Redraw the view
+        elif self.last_pan_pos and event.buttons() & Qt.MouseButton.LeftButton:
+            # Normal panning behavior
             delta = event.pos() - self.last_pan_pos
             self.pan_offset += delta
             self.last_pan_pos = event.pos()
@@ -530,123 +592,84 @@ class PDFViewer(QWidget):
             # Check if mouse is over a bounding box
             self._check_bounding_box_hover(event.pos())
 
-    def _check_bounding_box_hover(self, pos):
-        """Check if mouse is over a bounding box"""
-        main_window = self.window()
-        if not main_window or not self.bounding_boxes:
-            return
-
-        # Get scroll position for PDF coordinate calculation only
-        scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
-        
-        # Calculate widget to pixmap ratio for proper scaling
-        widget_width = self.width()
-        first_page_width = next((self.page_pixmaps[i]['width'] for i in range(len(self.page_pixmaps)) if i in self.page_pixmaps), None)
-        if not first_page_width:
-            return
-            
-        # This ratio accounts for how much the PDF is scaled to fit the widget width
-        width_ratio = widget_width / (first_page_width * self.zoom)
-        
-        # Use raw mouse position for viewport coordinates
-        viewport_x = pos.x()
-        viewport_y = pos.y()
-        
-        # Calculate absolute y position in document (scaled) - only used for status bar display
-        absolute_y = (viewport_y + scroll_value) / self.zoom
-
-        # Find current page based on viewport position
-        current_y = 0
-        current_page = None
-
-        # Use viewport_y directly for page detection since it's already in screen coordinates
-        for page_num in range(len(self.page_pixmaps)):
-            if page_num in self.page_pixmaps:
-                page_height = self.page_pixmaps[page_num]['height']  # Use actual height, not scaled
-                scaled_height = page_height * self.zoom * width_ratio  # Scale height by both zoom and ratio
-                if current_y <= viewport_y < current_y + scaled_height:
-                    current_page = page_num
-                    break
-                current_y += scaled_height
-
-        if current_page is None:
-            return
-
-        # Check boxes on current page
-        page_boxes = self.bounding_boxes.get(current_page, [])
-        for box in page_boxes:
-            if 'coordinates' not in box:
-                continue
-                
-            coords = box['coordinates']
-            if len(coords) != 4:
-                continue
-                
-            # Get coordinates from the box
-            x1 = coords[0]['x']
-            y1 = coords[0]['y']
-            x2 = coords[2]['x']  # Use point 2 for bottom-right
-            y2 = coords[2]['y']
-            
-            # Get page dimensions for scaling
-            page_width = self.page_pixmaps[current_page]['width']
-            page_height = self.page_pixmaps[current_page]['height']
-            
-            # Convert normalized coordinates to screen space, applying both zoom and width ratio
-            screen_x1 = x1 * page_width * self.zoom * width_ratio
-            screen_x2 = x2 * page_width * self.zoom * width_ratio
-            
-            # Calculate screen y coordinates relative to viewport, applying both zoom and width ratio
-            screen_y1 = y1 * page_height * self.zoom * width_ratio + current_y
-            screen_y2 = y2 * page_height * self.zoom * width_ratio + current_y
-
-            logger.debug(f"Checking box on page {current_page}: ({x1}, {y1}) to ({x2}, {y2})")
-            logger.debug(f"Box coordinates: {coords}")
-            logger.debug(f"Page start y: {current_y}")
-            logger.debug(f"Viewport x,y: ({viewport_x}, {viewport_y})")
-            logger.debug(f"Screen box: ({screen_x1:.1f}, {screen_y1:.1f}) to ({screen_x2:.1f}, {screen_y2:.1f})")
-            logger.debug(f"Zoom level: {self.zoom}")
-            logger.debug(f"Width ratio: {width_ratio}")
-
-            # Check if mouse is within box boundaries using viewport coordinates
-            if (screen_x1 <= viewport_x <= screen_x2 and 
-                screen_y1 <= viewport_y <= screen_y2):
-                logger.debug(f"Mouse inside box at viewport({viewport_x}, {viewport_y})")
-                self.setCursor(Qt.CursorShape.PointingHandCursor)
-                
-                # Show box information in status bar
-                category = box.get('category', 'Unknown').capitalize()
-                # Convert viewport coordinates to PDF coordinates for display
-                pdf_x = viewport_x / (self.zoom * width_ratio)
-                pdf_y = absolute_y
-                status_msg = (f"Page {current_page + 1} | "
-                            f"Category: {category} | "
-                            f"Box: ({x1:.2f}, {y1:.2f}) to ({x2:.2f}, {y2:.2f}) | "
-                            f"Viewport: ({viewport_x}, {viewport_y}) | "
-                            f"PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | "
-                            f"Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f}")
-                main_window.status_label.showMessage(status_msg, 0)
-                return
-            else:
-                logger.debug(f"Mouse outside box: ({viewport_x}, {viewport_y}) not in ({screen_x1:.1f}, {screen_y1:.1f}) to ({screen_x2:.1f}, {screen_y2:.1f})")
-
-        # If we get here, mouse is not over any box
-        self.setCursor(Qt.CursorShape.ArrowCursor)
-        # Reset status bar to default coordinate display
-        # Convert viewport coordinates to PDF coordinates for display
-        pdf_x = viewport_x / (self.zoom * width_ratio)
-        pdf_y = absolute_y
-        if hasattr(main_window, 'status_label'):
-            main_window.status_label.showMessage(
-                f"Page {current_page + 1} | Viewport: ({viewport_x}, {viewport_y}) | PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f}", 
-                0
-            )
-
     def mouseReleaseEvent(self, event):
         """Handle mouse release events"""
         if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_start = None
             self.last_pan_pos = None
+            if self.dragging_box:
+                logger.debug(f"Box release - Page: {self.current_box_page}, Box ID: {self.dragging_box_id}")
+                logger.debug(f"New coordinates: {self.dragging_box['coordinates']}")
+                
+                # Update the page structure with new box coordinates
+                if self.current_box_page is not None and self.current_box_page in self.bounding_boxes:
+                    # Find and update the box in the page structure
+                    page_boxes = self.bounding_boxes[self.current_box_page]
+                    for i, box in enumerate(page_boxes):
+                        if box is self.dragging_box:  # Compare by reference
+                            # Update the box coordinates in the page structure
+                            page_boxes[i] = self.dragging_box
+                            logger.debug(f"Updated box in bounding_boxes[{self.current_box_page}][{i}]")
+                            break
+                    
+                    # Update the main window's page structure if available
+                    # Find the main window by traversing up the widget hierarchy
+                    parent = self.parent()
+                    while parent is not None:
+                        if isinstance(parent, MainWindow):
+                            main_window = parent
+                            break
+                        parent = parent.parent()
+                    
+                    if parent is None:
+                        logger.warning("Could not find MainWindow in widget hierarchy")
+                        return
+
+                    logger.debug(f"Found main window: {main_window}")
+                    if hasattr(main_window, 'document_data'):
+                        logger.debug("Found document_data in main window")
+                        if 'page_structures' in main_window.document_data:
+                            logger.debug(f"Found page_structures in document_data")
+                            page_key = str(self.current_box_page)
+                            if page_key in main_window.document_data['page_structures']:
+                                logger.debug(f"Found page {page_key} in page_structures")
+                                page_structure = main_window.document_data['page_structures'][page_key]
+                                if 'structure' in page_structure and 'elements' in page_structure['structure']:
+                                    elements = page_structure['structure']['elements']
+                                    logger.debug(f"Found {len(elements)} elements in page structure")
+                                    # Find and update the corresponding element by id
+                                    for element in elements:
+                                        if element.get('id') == self.dragging_box_id:
+                                            logger.debug(f"Found matching element with id {self.dragging_box_id}")
+                                            # Update coordinates
+                                            element['coordinates'] = self.dragging_box['coordinates']
+                                            # Update the structured content view
+                                            if hasattr(main_window, 'structured_view'):
+                                                logger.debug("Updating structured content view")
+                                                main_window.structured_view.update_content(main_window.document_data['page_structures'])
+                                                logger.debug("Structured content view update called")
+                                            else:
+                                                logger.warning("No structured_view found in main window")
+                                            break
+                                    else:
+                                        logger.warning(f"No element found with id {self.dragging_box_id}")
+                                else:
+                                    logger.warning("No 'structure' or 'elements' in page_structure")
+                            else:
+                                logger.warning(f"Page {page_key} not found in page_structures")
+                        else:
+                            logger.warning("No page_structures found in document_data")
+                    else:
+                        logger.warning("No document_data found in main window")
+                
+                # Reset dragging state
+                self.drag_start_pos = None
+                self.original_box_coords = None
+                self.dragging_box_id = None
+                self.resize_edges = None
+                # Keep dragging_box set so we maintain hover state
+                
+                # Force a redraw
+                self.update()
 
     def update_current_page(self):
         """Update current page based on visible area"""
@@ -873,6 +896,151 @@ class PDFViewer(QWidget):
             self.hovered_box = None
             QToolTip.hideText()
             logger.debug("Mouse left widget, hiding tooltip")
+
+    def _check_bounding_box_hover(self, pos):
+        """Check if mouse is over a bounding box"""
+        main_window = self.window()
+        if not main_window or not self.bounding_boxes:
+            return
+
+        # Get scroll position for PDF coordinate calculation only
+        scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
+        
+        # Calculate widget to pixmap ratio for proper scaling
+        widget_width = self.width()
+        first_page_width = next((self.page_pixmaps[i]['width'] for i in range(len(self.page_pixmaps)) if i in self.page_pixmaps), None)
+        if not first_page_width:
+            return
+            
+        # This ratio accounts for how much the PDF is scaled to fit the widget width
+        width_ratio = widget_width / (first_page_width * self.zoom)
+        
+        # Use raw mouse position for viewport coordinates
+        viewport_x = pos.x()
+        viewport_y = pos.y()
+        
+        # Calculate absolute y position in document (scaled) - only used for status bar display
+        absolute_y = (viewport_y + scroll_value) / self.zoom
+
+        # Find current page based on viewport position
+        current_y = 0
+        current_page = None
+
+        # Use viewport_y directly for page detection since it's already in screen coordinates
+        for page_num in range(len(self.page_pixmaps)):
+            if page_num in self.page_pixmaps:
+                page_height = self.page_pixmaps[page_num]['height']  # Use actual height, not scaled
+                scaled_height = page_height * self.zoom * width_ratio  # Scale height by both zoom and ratio
+                if current_y <= viewport_y < current_y + scaled_height:
+                    current_page = page_num
+                    break
+                current_y += scaled_height
+
+        if current_page is None:
+            self.dragging_box = None
+            self.current_box_page = None
+            self.resize_edges = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
+
+        # Check boxes on current page
+        page_boxes = self.bounding_boxes.get(current_page, [])
+        for box in page_boxes:
+            if 'coordinates' not in box:
+                continue
+                
+            coords = box['coordinates']
+            if len(coords) != 4:
+                continue
+                
+            # Get coordinates from the box
+            x1 = coords[0]['x']
+            y1 = coords[0]['y']
+            x2 = coords[2]['x']  # Use point 2 for bottom-right
+            y2 = coords[2]['y']
+            
+            # Get page dimensions for scaling
+            page_width = self.page_pixmaps[current_page]['width']
+            page_height = self.page_pixmaps[current_page]['height']
+            
+            # Convert normalized coordinates to screen space, applying both zoom and width ratio
+            screen_x1 = x1 * page_width * self.zoom * width_ratio
+            screen_x2 = x2 * page_width * self.zoom * width_ratio
+            
+            # Calculate screen y coordinates relative to viewport, applying both zoom and width ratio
+            screen_y1 = y1 * page_height * self.zoom * width_ratio + current_y
+            screen_y2 = y2 * page_height * self.zoom * width_ratio + current_y
+
+            # Check if mouse is within box boundaries using viewport coordinates
+            if (screen_x1 - self.edge_threshold <= viewport_x <= screen_x2 + self.edge_threshold and 
+                screen_y1 - self.edge_threshold <= viewport_y <= screen_y2 + self.edge_threshold):
+                
+                # Determine which edges the cursor is near
+                near_left = abs(viewport_x - screen_x1) <= self.edge_threshold
+                near_right = abs(viewport_x - screen_x2) <= self.edge_threshold
+                near_top = abs(viewport_y - screen_y1) <= self.edge_threshold
+                near_bottom = abs(viewport_y - screen_y2) <= self.edge_threshold
+                
+                self.dragging_box = box
+                self.current_box_page = current_page
+                
+                # Set resize edges and cursor based on position
+                if near_top and near_left:
+                    self.resize_edges = 'nw'
+                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+                elif near_top and near_right:
+                    self.resize_edges = 'ne'
+                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+                elif near_bottom and near_left:
+                    self.resize_edges = 'sw'
+                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+                elif near_bottom and near_right:
+                    self.resize_edges = 'se'
+                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+                elif near_left:
+                    self.resize_edges = 'w'
+                    self.setCursor(Qt.CursorShape.SizeHorCursor)
+                elif near_right:
+                    self.resize_edges = 'e'
+                    self.setCursor(Qt.CursorShape.SizeHorCursor)
+                elif near_top:
+                    self.resize_edges = 'n'
+                    self.setCursor(Qt.CursorShape.SizeVerCursor)
+                elif near_bottom:
+                    self.resize_edges = 's'
+                    self.setCursor(Qt.CursorShape.SizeVerCursor)
+                else:
+                    self.resize_edges = None
+                    self.setCursor(Qt.CursorShape.OpenHandCursor if not self.drag_start_pos else Qt.CursorShape.ClosedHandCursor)
+                
+                # Show box information in status bar
+                category = box.get('category', 'Unknown').capitalize()
+                # Convert viewport coordinates to PDF coordinates for display
+                pdf_x = viewport_x / (self.zoom * width_ratio)
+                pdf_y = absolute_y
+                status_msg = (f"Page {current_page + 1} | "
+                            f"Category: {category} | "
+                            f"Box: ({x1:.2f}, {y1:.2f}) to ({x2:.2f}, {y2:.2f}) | "
+                            f"Viewport: ({viewport_x}, {viewport_y}) | "
+                            f"PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | "
+                            f"Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f}")
+                main_window.status_label.showMessage(status_msg, 0)
+                return
+
+        # If we get here, mouse is not over any box
+        self.dragging_box = None
+        self.current_box_page = None
+        self.resize_edges = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        # Reset status bar to default coordinate display
+        # Convert viewport coordinates to PDF coordinates for display
+        pdf_x = viewport_x / (self.zoom * width_ratio)
+        pdf_y = absolute_y
+        if hasattr(main_window, 'status_label'):
+            main_window.status_label.showMessage(
+                f"Page {current_page + 1} | Viewport: ({viewport_x}, {viewport_y}) | PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f}", 
+                0
+            )
 
 class ElementInfoDialog(QDialog):
     def __init__(self, element_data, parent=None):
@@ -1167,6 +1335,9 @@ class StructuredContentView(QWidget):
 
     def update_content(self, page_structures):
         """Update the structured content view with page structures"""
+        logger.debug("StructuredContentView.update_content called")
+        logger.debug(f"Received page_structures with {len(page_structures)} pages")
+        
         self._current_content = page_structures  # Store for view switching
         
         # Clear current view
@@ -1183,6 +1354,7 @@ class StructuredContentView(QWidget):
         # Process each page's structure
         for page_num, structure in page_structures.items():
             elements = structure.get('structure', {}).get('elements', [])
+            logger.debug(f"Processing page {page_num} with {len(elements)} elements")
             for element in elements:
                 element_type = element.get('category', '').lower()
                 if element_type in content_by_type:
@@ -1204,15 +1376,19 @@ class StructuredContentView(QWidget):
                         'page_width': element.get('attributes', {}).get('page_width', 0),
                         'page_height': element.get('attributes', {}).get('page_height', 0)
                     })
+                    logger.debug(f"Added element of type {element_type} from page {page_num}")
         
         # Sort elements by position for each type
         for content_type in content_by_type:
             content_by_type[content_type] = self._sort_elements_by_position(content_by_type[content_type])
+            logger.debug(f"Sorted {len(content_by_type[content_type])} {content_type} elements")
         
         # Update view based on current mode
         if self.content_list.viewMode() == QListWidget.ViewMode.ListMode:
+            logger.debug("Updating list view")
             self._update_list_view(content_by_type)
         else:
+            logger.debug("Updating icon view")
             self._update_icon_view(content_by_type)
     
     def _update_list_view(self, content_by_type):
