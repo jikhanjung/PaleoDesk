@@ -23,6 +23,8 @@ from PDFModels import (db, PDFDocument, PageAnalysis, SessionData, StructuredEle
                       calculate_file_hash, DEFAULT_LOG_DIRECTORY, COMPANY_NAME,
                       PROGRAM_NAME, DEFAULT_DB_DIRECTORY, DB_PATH)
 import hashlib
+import uuid
+import copy
 
 PROGRAM_VERSION = "0.0.1"
 PROGRAM_AUTHOR = "Jikhan Jung"
@@ -198,6 +200,12 @@ class PDFViewer(QWidget):
         self.current_box_page = None  # Page number of the box being dragged
         self.resize_edges = None  # Which edges are being resized (e.g., 'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw')
         self.edge_threshold = 10  # Pixels from edge to trigger resize cursor
+        
+        # Add element creation variables
+        self.creating_element = False
+        self.element_start_pos = None
+        self.element_current_pos = None
+        self.element_type = 'text'  # Default type
         
         # Set up the widget
         self.setMouseTracking(True)
@@ -527,6 +535,15 @@ class PDFViewer(QWidget):
                             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, category)
             
             current_y += scaled_height
+            
+        # Draw element creation rectangle if in progress
+        if self.creating_element and self.element_start_pos is not None and self.element_current_pos is not None:
+            painter.setPen(QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.DashLine))
+            x1 = min(self.element_start_pos.x(), self.element_current_pos.x())
+            y1 = min(self.element_start_pos.y(), self.element_current_pos.y())
+            x2 = max(self.element_start_pos.x(), self.element_current_pos.x())
+            y2 = max(self.element_start_pos.y(), self.element_current_pos.y())
+            painter.drawRect(x1, y1, x2 - x1, y2 - y1)
 
     def set_bounding_boxes(self, boxes):
         """Set bounding boxes for all pages"""
@@ -571,6 +588,11 @@ class PDFViewer(QWidget):
         
     def mousePressEvent(self, event):
         """Handle mouse press events"""
+        if self.creating_element and event.button() == Qt.MouseButton.LeftButton:
+            self.element_start_pos = event.pos()
+            self.element_current_pos = event.pos()
+            return
+            
         if event.button() == Qt.MouseButton.LeftButton:
             # If we're over a box, start dragging or resizing
             if self.dragging_box is not None:
@@ -584,6 +606,11 @@ class PDFViewer(QWidget):
 
     def mouseMoveEvent(self, event):
         """Handle mouse move events"""
+        if self.creating_element and self.element_start_pos is not None:
+            self.element_current_pos = event.pos()
+            self.update()  # Trigger repaint to show the rectangle
+            return
+            
         main_window = self.window()
         if not main_window:
             return
@@ -649,6 +676,111 @@ class PDFViewer(QWidget):
 
     def mouseReleaseEvent(self, event):
         """Handle mouse release events"""
+        if self.creating_element and event.button() == Qt.MouseButton.LeftButton and self.element_start_pos is not None:
+            # Get the main window instance
+            main_window = self.window()
+            if not main_window or not hasattr(main_window, 'document_data'):
+                logger.error("No main window or document data found")
+                return
+                
+            # Calculate the rectangle coordinates
+            x1 = min(self.element_start_pos.x(), self.element_current_pos.x())
+            y1 = min(self.element_start_pos.y(), self.element_current_pos.y())
+            x2 = max(self.element_start_pos.x(), self.element_current_pos.x())
+            y2 = max(self.element_start_pos.y(), self.element_current_pos.y())
+            
+            # Get current page height from page_pixmaps
+            if self.current_cursor_page in self.page_pixmaps:
+                page_height = self.page_pixmaps[self.current_cursor_page]['height']
+                
+                # Calculate total height of pages before current page
+                total_height_before = 0
+                for i in range(self.current_cursor_page):
+                    if i in self.page_pixmaps:
+                        total_height_before += self.page_pixmaps[i]['height']
+                
+                # Calculate scaling to fit width while maintaining aspect ratio
+                scale = self.width() / self.page_pixmaps[self.current_cursor_page]['width']
+                scaled_height = int(page_height * scale)  # Convert to int
+                
+                # Adjust y coordinates by subtracting the height of previous pages and accounting for scaling
+                y1_adjusted = (y1 - total_height_before) / (scale * self.zoom)
+                y2_adjusted = (y2 - total_height_before) / (scale * self.zoom)
+                
+                # Convert screen coordinates to relative coordinates
+                rel_x1 = x1 / (self.width() * self.zoom)
+                rel_y1 = y1_adjusted / page_height
+                rel_x2 = x2 / (self.width() * self.zoom)
+                rel_y2 = y2_adjusted / page_height
+                
+                logger.info(f"Creating new element on page {self.current_cursor_page}")
+                logger.info(f"Screen coordinates: ({x1}, {y1}) to ({x2}, {y2})")
+                logger.info(f"Page height: {page_height}")
+                logger.info(f"Total height before current page: {total_height_before}")
+                logger.info(f"Scale: {scale}, Zoom: {self.zoom}")
+                logger.info(f"Adjusted y coordinates: ({y1_adjusted}, {y2_adjusted})")
+                logger.info(f"Relative coordinates: ({rel_x1:.3f}, {rel_y1:.3f}) to ({rel_x2:.3f}, {rel_y2:.3f})")
+                
+                # Get current page elements to determine new element ID
+                page_key = str(self.current_cursor_page)
+                if page_key in main_window.document_data['page_structures']:
+                    page_structure = main_window.document_data['page_structures'][page_key]
+                    if 'structure' in page_structure and 'elements' in page_structure['structure']:
+                        elements = page_structure['structure']['elements']
+                        # show elements' page, id and category
+                        logger.info(f"Elements on current page: {[{'page': page_key, 'id': e['id'], 'category': e['category']} for e in elements]}")
+                        
+                        new_id = str(len(elements))  # Use element count as ID
+                        logger.info(f"Current page has {len(elements)} elements, new element ID will be {new_id}")
+                        
+                        # Create new element with normalized coordinates
+                        new_element = {
+                            'id': new_id,
+                            'category': self.element_type,
+                            'coordinates': [
+                                {'x': rel_x1, 'y': rel_y1},  # top-left
+                                {'x': rel_x2, 'y': rel_y1},  # top-right
+                                {'x': rel_x2, 'y': rel_y2},  # bottom-right
+                                {'x': rel_x1, 'y': rel_y2}   # bottom-left
+                            ],
+                            'content': {'text': ''},
+                            'attributes': {
+                                'page_width': self.current_page_width,
+                                'page_height': self.current_page_height
+                            }
+                        }
+                        logger.info(f"Created new element: {new_element}")
+                        
+                        # Add element to current page
+                        elements.append(new_element)
+                        logger.info(f"Added element to page structure, now has {len(elements)} elements")
+                        
+                        # Update bounding boxes
+                        if self.current_cursor_page not in self.bounding_boxes:
+                            self.bounding_boxes[self.current_cursor_page] = []
+                        #self.bounding_boxes[self.current_cursor_page].append(new_element)
+                        #logger.info(f"Added element to bounding boxes for page {self.current_cursor_page}")
+                        
+                        # Update structured content view
+                        if hasattr(main_window, 'structured_view'):
+                            logger.info("Updating structured content view")
+                            main_window.structured_view.update_content(main_window.document_data['page_structures'])
+                            logger.info("Saving session")
+                            main_window.save_session()  # Auto-save after adding element
+                        else:
+                            logger.warning("No structured view found in main window")
+                else:
+                    logger.error(f"Page {page_key} not found in page structures")
+            else:
+                logger.error(f"Page {self.current_cursor_page} not found in page_pixmaps")
+            
+            # Reset element creation state
+            self.creating_element = False
+            self.element_start_pos = None
+            self.element_current_pos = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
+            
         if event.button() == Qt.MouseButton.LeftButton:
             self.last_pan_pos = None
             if self.dragging_box:
@@ -1104,6 +1236,42 @@ class PDFViewer(QWidget):
                 f"Page {current_page + 1} | Viewport: ({viewport_x}, {viewport_y}) | PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f}", 
                 0
             )
+
+    def start_element_creation(self):
+        """Start the element creation process"""
+        self.creating_element = True
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        # Show element type selection dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Select Element Type")
+        layout = QVBoxLayout()
+        
+        # Create radio buttons for element types
+        button_group = QButtonGroup()
+        types = ['text', 'figure', 'table', 'picture', 'caption']
+        for element_type in types:
+            radio = QRadioButton(element_type.capitalize())
+            radio.setChecked(element_type == 'text')
+            button_group.addButton(radio)
+            layout.addWidget(radio)
+        
+        # Add OK and Cancel buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+        
+        dialog.setLayout(layout)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Get selected type
+            for button in button_group.buttons():
+                if button.isChecked():
+                    self.element_type = button.text().lower()
+                    break
+        else:
+            self.creating_element = False
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
 class ElementInfoDialog(QDialog):
     def __init__(self, element_data, parent=None):
@@ -2129,7 +2297,9 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(preferences_action)
         
     def create_toolbar(self):
+        """Create the main toolbar"""
         toolbar = QToolBar("Main Toolbar")
+        toolbar.setMovable(False)
         self.addToolBar(toolbar)
         
         # Open file action
@@ -2181,14 +2351,23 @@ class MainWindow(QMainWindow):
         analyze_action = QAction("Analyze", self)
         analyze_action.triggered.connect(lambda: self.analyze_pdf(self.current_file) if self.current_file else None)
         toolbar.addAction(analyze_action)
-
+        
         # Add separator
         toolbar.addSeparator()
-
+        
         # Batch analyze action
         batch_analyze_action = QAction("Batch Analyze", self)
         batch_analyze_action.triggered.connect(self.batch_analyze)
         toolbar.addAction(batch_analyze_action)
+        
+        # Add separator
+        toolbar.addSeparator()
+        
+        # Add Element action
+        add_element_action = QAction("Add Element", self)
+        add_element_action.setShortcut("Ctrl+N")
+        add_element_action.triggered.connect(self.pdf_viewer.start_element_creation)
+        toolbar.addAction(add_element_action)
 
     def load_recent_files(self):
         """Load recent files from settings"""
@@ -2688,7 +2867,9 @@ class MainWindow(QMainWindow):
                                     'created_at': datetime.datetime.now(),
                                     'updated_at': datetime.datetime.now()
                                 })
-                    
+                    # printout elements' page and id, not the whole element for elements_to_create
+                    logger.info(f"Elements to create: {[{'page': e['page_number'], 'id': e['element_id']} for e in elements_to_create]}")
+
                     if elements_to_create:
                         with db.atomic():
                             for batch in chunked(elements_to_create, 100):
@@ -2828,23 +3009,38 @@ class MainWindow(QMainWindow):
                     page_structures[page_num] = {'structure': {'elements': []}}
                 
                 # Convert element to dictionary format
-                element_data = {
-                    'id': element.element_id,
-                    'category': element.element_type,
-                    'coordinates': json.loads(element.coordinates),
-                    'content': json.loads(element.content) if element.content else {},
-                    'caption': json.loads(element.caption) if element.caption else {},
-                    'metadata': json.loads(element.metadata) if element.metadata else {}
-                }
-                
-                # Update existing element or append new one
-                elements_list = page_structures[page_num]['structure']['elements']
-                for i, existing in enumerate(elements_list):
-                    if str(existing.get('id')) == str(element.element_id):
-                        elements_list[i] = element_data
-                        break
-                else:
-                    elements_list.append(element_data)
+                coords = json.loads(element.coordinates)
+                if len(coords) >= 4:
+                    # Normalize coordinates to ensure x1 < x2 and y1 < y2
+                    x1 = min(coords[0]['x'], coords[2]['x'])
+                    y1 = min(coords[0]['y'], coords[2]['y'])
+                    x2 = max(coords[0]['x'], coords[2]['x'])
+                    y2 = max(coords[0]['y'], coords[2]['y'])
+                    
+                    normalized_coords = [
+                        {'x': x1, 'y': y1},  # top-left
+                        {'x': x2, 'y': y1},  # top-right
+                        {'x': x2, 'y': y2},  # bottom-right
+                        {'x': x1, 'y': y2}   # bottom-left
+                    ]
+                    
+                    element_data = {
+                        'id': element.element_id,
+                        'category': element.element_type,
+                        'coordinates': normalized_coords,
+                        'content': json.loads(element.content) if element.content else {},
+                        'caption': json.loads(element.caption) if element.caption else {},
+                        'metadata': json.loads(element.metadata) if element.metadata else {}
+                    }
+                    
+                    # Update existing element or append new one
+                    elements_list = page_structures[page_num]['structure']['elements']
+                    for i, existing in enumerate(elements_list):
+                        if str(existing.get('id')) == str(element.element_id):
+                            elements_list[i] = element_data
+                            break
+                    else:
+                        elements_list.append(element_data)
             
             # Open the PDF file
             try:
