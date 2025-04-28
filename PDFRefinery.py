@@ -181,7 +181,7 @@ class PDFViewer(QWidget):
         self.drag_pos = None
         self.bounding_boxes = {}
         self.show_bounding_boxes = False
-        self.doc = None
+        self.pdf_document= None
         self.total_pages = 0
         self.initial_load_pages = 3  # Number of pages to load initially
         self.loaded_pages = set()  # Track which pages are loaded
@@ -271,10 +271,13 @@ class PDFViewer(QWidget):
                         element['category'] = new_type
                         logger.info(f"Changed element {box_id} type from {old_type} to {new_type}")
                         
+                        # Save the element to database
+                        self.save_element(page_num, box_id)
+                        
                         # Update the structured content view
                         if hasattr(main_window, 'structured_view'):
                             main_window.structured_view.update_content(main_window.document_data['page_structures'])
-                            main_window.save_session()
+                            #main_window.save_session()
                         break
 
     def create_zoom_buttons(self):
@@ -322,8 +325,8 @@ class PDFViewer(QWidget):
     def open_pdf(self, file_path):
         """Open a PDF file and load initial pages"""
         try:
-            self.doc = fitz.open(file_path)
-            self.total_pages = len(self.doc)
+            self.pdf_document= fitz.open(file_path)
+            self.total_pages = len(self.pdf_document)
             self.current_page = 0
             self.loaded_pages.clear()
             self.page_pixmaps.clear()
@@ -359,7 +362,7 @@ class PDFViewer(QWidget):
             return
         
         try:
-            page = self.doc[page_num]
+            page = self.pdf_document[page_num]
             pix = page.get_pixmap(matrix=fitz.Matrix(self.zoom, self.zoom))
             img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
             pixmap = QPixmap.fromImage(img)
@@ -375,7 +378,7 @@ class PDFViewer(QWidget):
 
     def load_next_pages(self):
         """Load next set of pages in background"""
-        if self.page_loading or not self.doc:
+        if self.page_loading or not self.pdf_document:
             return
         
         self.page_loading = True
@@ -397,7 +400,7 @@ class PDFViewer(QWidget):
 
     def update_current_page(self):
         """Update the current page display"""
-        if not self.doc or self.current_page >= self.total_pages:
+        if not self.pdf_documentor or self.current_page >= self.total_pages:
             self.pixmap = None
             self.current_page_width = 0
             self.current_page_height = 0
@@ -438,7 +441,7 @@ class PDFViewer(QWidget):
 
     def update_current_page_from_scroll(self, scroll_value):
         """Update current page based on scroll position"""
-        if not self.doc:
+        if not self.pdf_document:
             return
             
         # Calculate viewport center
@@ -755,6 +758,9 @@ class PDFViewer(QWidget):
                         elements.append(new_element)
                         logger.info(f"Added element to page structure, now has {len(elements)} elements")
                         
+                        # Save the new element to database
+                        self.save_element(self.current_cursor_page, new_id)
+                        
                         # Update bounding boxes
                         if self.current_cursor_page not in self.bounding_boxes:
                             self.bounding_boxes[self.current_cursor_page] = []
@@ -766,7 +772,7 @@ class PDFViewer(QWidget):
                             logger.info("Updating structured content view")
                             main_window.structured_view.update_content(main_window.document_data['page_structures'])
                             logger.info("Saving session")
-                            main_window.save_session()  # Auto-save after adding element
+                            #main_window.save_session()  # Auto-save after adding element
                         else:
                             logger.warning("No structured view found in main window")
                 else:
@@ -829,11 +835,15 @@ class PDFViewer(QWidget):
                                             logger.debug(f"Found matching element with id {self.dragging_box_id}")
                                             # Update coordinates
                                             element['coordinates'] = self.dragging_box['coordinates']
+                                            
+                                            # Save the updated element to database
+                                            self.save_element(self.current_box_page, self.dragging_box_id)
+                                            
                                             # Update the structured content view
                                             if hasattr(main_window, 'structured_view'):
                                                 logger.debug("Updating structured content view")
                                                 main_window.structured_view.update_content(main_window.document_data['page_structures'])
-                                                main_window.save_session()
+                                                #main_window.save_session()
                                                 logger.debug("Structured content view update called")
                                             else:
                                                 logger.warning("No structured_view found in main window")
@@ -858,6 +868,54 @@ class PDFViewer(QWidget):
                 
                 # Force a redraw
                 self.update()
+
+    def save_element(self, page_num, element_id):
+        """Save the element to database and update the page structure"""
+        # Get the element from the page structure
+        main_window = self.window()
+        page_structure = main_window.document_data['page_structures'][str(page_num)]
+        element = page_structure['structure']['elements'][element_id]
+
+        pdf_path = main_window.current_file_path
+        if not pdf_path:
+            logger.warning("No current document to save element to")
+            return
+        
+        # Get the document from the database
+            
+        try:
+            # Create or update the structured element
+            structured_element = StructuredElement.get_or_create(
+                document=main_window.current_document,
+                page_number=page_num,
+                element_id=str(element_id),
+                defaults={
+                    'element_type': element.get('category', 'unknown'),
+                    'coordinates': json.dumps(element.get('coordinates', [])),
+                    'content': json.dumps(element.get('content', {})),
+                    'caption': json.dumps(element.get('caption', {})),
+                    'metadata': json.dumps(element.get('metadata', {})),
+                    'created_at': datetime.datetime.now(),
+                    'updated_at': datetime.datetime.now()
+                }
+            )[0]
+            
+            # Update the element if it already existed
+            if not structured_element.created_at:
+                structured_element.element_type = element.get('category', 'unknown')
+                structured_element.coordinates = json.dumps(element.get('coordinates', []))
+                structured_element.content = json.dumps(element.get('content', {}))
+                structured_element.caption = json.dumps(element.get('caption', {}))
+                structured_element.metadata = json.dumps(element.get('metadata', {}))
+                structured_element.updated_at = datetime.datetime.now()
+                structured_element.save()
+            
+            logger.info(f"Saved element {element_id} from page {page_num} to database")
+            
+        except Exception as e:
+            logger.error(f"Error saving element to database: {str(e)}")
+            QMessageBox.warning(self, "Save Error", 
+                f"Error saving element to database: {str(e)}")
 
     def update_current_page(self):
         """Update current page based on visible area"""
@@ -933,7 +991,7 @@ class PDFViewer(QWidget):
 
     def set_current_page(self, page_num):
         """Set the current page and scroll to it"""
-        if self.doc and 0 <= page_num < len(self.doc):
+        if self.pdf_document and 0 <= page_num < len(self.pdf_document):
             self.current_page = page_num
             self.display_all_pages()
             self.scroll_to_page(page_num)
@@ -967,7 +1025,7 @@ class PDFViewer(QWidget):
 
     def display_all_pages(self):
         """Display all pages vertically with lazy loading"""
-        if not self.doc:
+        if not self.pdf_document:
             return
             
         try:
@@ -979,7 +1037,7 @@ class PDFViewer(QWidget):
             logger.debug(f"Initial dimensions - width: {self.width()}, height: {self.height()}")
             
             # Load initial set of pages
-            for page_num in range(min(self.initial_load_pages, len(self.doc))):
+            for page_num in range(min(self.initial_load_pages, len(self.pdf_document))):
                 self.load_page(page_num)
             
             # Calculate total height based on loaded pages
@@ -1009,7 +1067,7 @@ class PDFViewer(QWidget):
 
     def load_next_pages(self):
         """Load next set of pages in background"""
-        if self.page_loading or not self.doc:
+        if self.page_loading or not self.pdf_document:
             return
         
         self.page_loading = True
@@ -1018,7 +1076,7 @@ class PDFViewer(QWidget):
             max_loaded = max(self.loaded_pages) if self.loaded_pages else -1
             
             # Load next set of pages
-            next_pages = range(max_loaded + 1, min(max_loaded + self.initial_load_pages + 1, len(self.doc)))
+            next_pages = range(max_loaded + 1, min(max_loaded + self.initial_load_pages + 1, len(self.pdf_document)))
             for page_num in next_pages:
                 self.load_page(page_num)
             
@@ -1032,18 +1090,18 @@ class PDFViewer(QWidget):
             self.setMinimumHeight(total_height)
             
             # If there are more pages to load, schedule next batch
-            if max_loaded + self.initial_load_pages < len(self.doc):
+            if max_loaded + self.initial_load_pages < len(self.pdf_document):
                 QTimer.singleShot(100, self.load_next_pages)
         finally:
             self.page_loading = False
 
     def load_page(self, page_num):
         """Load a single page and cache its pixmap"""
-        if page_num in self.loaded_pages or page_num >= len(self.doc):
+        if page_num in self.loaded_pages or page_num >= len(self.pdf_document):
             return
         
         try:
-            page = self.doc[page_num]
+            page = self.pdf_document[page_num]
             # Use a higher zoom factor for better quality
             display_zoom = self.zoom
             render_zoom = display_zoom * 2  # Double the zoom for rendering
@@ -1880,6 +1938,12 @@ class MainWindow(QMainWindow):
         }
         self.recent_files = []
 
+        # initialize variables
+        self.current_file_path = None
+        self.current_file_directory = None
+        self.pdf_document= None
+        self.current_page = 0
+
         # Create status bar
         self.status_label = self.statusBar()
         self.status_label.showMessage("Ready")
@@ -2084,8 +2148,8 @@ class MainWindow(QMainWindow):
 
     def load_pdf_file(self, file_path):
         """Load a PDF file and try to load its analysis from database"""
-        self.current_file = file_path
-        self.pdf_directory = os.path.dirname(file_path)
+        self.current_file_path = file_path
+        self.current_file_directory = os.path.dirname(file_path)
         self.document_data = {
             'page_structures': {},
             'initial_page_structures': {},
@@ -2122,16 +2186,16 @@ class MainWindow(QMainWindow):
                 zotero_key = potential_key
                 logger.debug(f"Extracted Zotero key from path: {zotero_key}")
         
-        self.doc = fitz.open(file_path)
+        self.pdf_document= fitz.open(file_path)
         self.current_page = 0
         self.pdf_viewer.current_page = 0
         self.pdf_viewer.open_pdf(file_path)
         self.update_navigation()
         self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
-        logger.info(f"Opened PDF file: {self.current_file}")
+        logger.info(f"Opened PDF file: {self.current_file_path}")
         
         # Set document in structured view
-        self.structured_view.set_document(self.doc)
+        self.structured_view.set_document(self.pdf_document)
         
         # Try to load analysis from database
         if self.load_analysis_from_database(file_path, zotero_key):
@@ -2149,6 +2213,15 @@ class MainWindow(QMainWindow):
                 self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
             except Exception as e:
                 logger.error(f"Error loading session data: {str(e)}")
+
+    def load_document_from_database(self, file_path, zotero_key):
+        """Load a PDF file and try to load its analysis from database"""
+        self.current_file_path = file_path
+        self.current_file_directory = os.path.dirname(file_path)
+        self.pdf_document= fitz.open(file_path)
+        self.current_page = 0
+        self.pdf_viewer.current_page = 0
+        
 
     def set_bounding_boxes(self, boxes):
         """Set bounding boxes for all pages"""
@@ -2261,7 +2334,7 @@ class MainWindow(QMainWindow):
                 
                 # Store the list of PDF files
                 self.pdf_files = pdf_files
-                self.current_file_index = 0
+                self.current_file_path_index = 0
                 
             # Expand the first level of directories
             for i in range(self.collections_tree.topLevelItemCount()):
@@ -2349,7 +2422,7 @@ class MainWindow(QMainWindow):
         
         # Analyze action
         analyze_action = QAction("Analyze", self)
-        analyze_action.triggered.connect(lambda: self.analyze_pdf(self.current_file) if self.current_file else None)
+        analyze_action.triggered.connect(lambda: self.analyze_pdf(self.current_file_path) if self.current_file_path else None)
         toolbar.addAction(analyze_action)
         
         # Add separator
@@ -2440,20 +2513,20 @@ class MainWindow(QMainWindow):
             self, "Open PDF File", "", "PDF Files (*.pdf)"
         )
         if file_path:
-            self.current_file = file_path
-            self.pdf_directory = os.path.dirname(file_path)
+            self.current_file_path = file_path
+            self.current_file_directory = os.path.dirname(file_path)
             self.document_data = {
                 'page_structures': {},
                 'initial_page_structures': {},
                 'metadata': {}
             }
-            self.doc = fitz.open(file_path)
+            self.pdf_document= fitz.open(file_path)
             self.current_page = 0
             self.pdf_viewer.current_page = 0
             self.pdf_viewer.open_pdf(file_path)
             self.update_navigation()
             self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
-            logger.info(f"Opened PDF file: {self.current_file}")
+            logger.info(f"Opened PDF file: {self.current_file_path}")
             
             # Try to load analysis from database
             if self.load_analysis_from_database(file_path):
@@ -2531,14 +2604,14 @@ class MainWindow(QMainWindow):
                 logger.info(f"Using analysis service at: {base_url}")
                 
                 # First try PyMuPDF text extraction
-                sample_size = max(1, len(self.doc) // 10)  # 10% of pages or at least 1 page
+                sample_size = max(1, len(self.pdf_document) // 10)  # 10% of pages or at least 1 page
                 logger.info(f"Checking first {sample_size} pages for text content using PyMuPDF")
                 
                 # Check text content in sample pages using PyMuPDF
                 page_char_counts = {}
                 for page_num in range(sample_size):
                     try:
-                        page = self.doc[page_num]
+                        page = self.pdf_document[page_num]
                         text = page.get_text()
                         char_count = len(text.strip())
                         page_char_counts[page_num] = char_count
@@ -2768,7 +2841,7 @@ class MainWindow(QMainWindow):
     def save_session(self):
         """Save current session data to database"""
         try:
-            if not hasattr(self, 'current_file') or not self.current_file:
+            if not hasattr(self, 'current_file') or not self.current_file_path:
                 logger.debug("No current file to save session for")
                 return
             
@@ -2781,13 +2854,13 @@ class MainWindow(QMainWindow):
                 current_item = None
                 for i in range(self.items_tree.topLevelItemCount()):
                     item = self.items_tree.topLevelItem(i)
-                    if hasattr(item, 'file_path') and item.file_path == self.current_file:
+                    if hasattr(item, 'file_path') and item.file_path == self.current_file_path:
                         current_item = item
                         break
                     # Check child items if no match found
                     for j in range(item.childCount()):
                         child = item.child(j)
-                        if hasattr(child, 'file_path') and child.file_path == self.current_file:
+                        if hasattr(child, 'file_path') and child.file_path == self.current_file_path:
                             current_item = child
                             break
                     if current_item:
@@ -2800,15 +2873,15 @@ class MainWindow(QMainWindow):
                 
                 # If no Zotero key found, use file hash
                 if not zotero_key:
-                    file_hash = calculate_file_hash(self.current_file)
+                    file_hash = calculate_file_hash(self.current_file_path)
                     logger.debug(f"No Zotero key found, using file hash: {file_hash}")
                 
                 # Try to find existing document
                 document = None
                 try:
                     # First try by file path
-                    document = PDFDocument.get(PDFDocument.file_path == self.current_file)
-                    logger.debug(f"Found existing document by file path: {self.current_file}")
+                    document = PDFDocument.get(PDFDocument.file_path == self.current_file_path)
+                    logger.debug(f"Found existing document by file path: {self.current_file_path}")
                 except DoesNotExist:
                     try:
                         # Then try by Zotero key if available
@@ -2824,11 +2897,11 @@ class MainWindow(QMainWindow):
                         except DoesNotExist:
                             # Create new document if none found
                             document = PDFDocument.create(
-                                file_path=self.current_file,
+                                file_path=self.current_file_path,
                                 file_hash=file_hash,
                                 zotero_key=zotero_key,
-                                title=os.path.basename(self.current_file),
-                                page_count=len(self.doc) if self.doc else 0
+                                title=os.path.basename(self.current_file_path),
+                                page_count=len(self.pdf_document) if self.pdf_document else 0
                             )
                             logger.debug(f"Created new document record")
                 
@@ -2838,8 +2911,8 @@ class MainWindow(QMainWindow):
                         document.file_hash = file_hash
                     if not document.zotero_key and zotero_key:
                         document.zotero_key = zotero_key
-                    if not document.page_count and self.doc:
-                        document.page_count = len(self.doc)
+                    if not document.page_count and self.pdf_document:
+                        document.page_count = len(self.pdf_document)
                     document.save()
                     logger.debug(f"Updated document record")
                 
@@ -2899,7 +2972,7 @@ class MainWindow(QMainWindow):
                     last_accessed=datetime.datetime.now()
                 )
                 
-                logger.info(f"Session saved to database for {self.current_file} (Zotero key: {zotero_key})")
+                logger.info(f"Session saved to database for {self.current_file_path} (Zotero key: {zotero_key})")
                 logger.debug(f"Saved {len(self.document_data['page_structures'])} page structures")
                 
         except Exception as e:
@@ -3044,9 +3117,9 @@ class MainWindow(QMainWindow):
             
             # Open the PDF file
             try:
-                self.current_file = file_path
-                self.pdf_directory = os.path.dirname(file_path)
-                self.doc = fitz.open(file_path)
+                self.current_file_path = file_path
+                self.current_file_directory = os.path.dirname(file_path)
+                self.pdf_document= fitz.open(file_path)
                 self.current_page = session.current_page
                 self.pdf_viewer.current_page = self.current_page
                 self.pdf_viewer.open_pdf(file_path)
@@ -3068,7 +3141,7 @@ class MainWindow(QMainWindow):
                     if current_page_boxes:
                         self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
                 
-                logger.info(f"Successfully loaded session with {len(self.doc)} pages (Zotero key: {zotero_key})")
+                logger.info(f"Successfully loaded session with {len(self.pdf_document)} pages (Zotero key: {zotero_key})")
                 self.status_label.showMessage("Session loaded successfully", 3000)
                 
             except Exception as e:
@@ -3085,7 +3158,7 @@ class MainWindow(QMainWindow):
         """Update the PDF display and text areas with the current page content"""
         logger.debug(f"Updating page display: current page={self.current_page}")
         try:
-            if self.doc is None:
+            if self.pdf_document is None:
                 return
             
             # Update PDF display
@@ -3108,7 +3181,7 @@ class MainWindow(QMainWindow):
             
             # Update page number display
             self.current_page_input.setText(str(self.current_page + 1))
-            self.total_pages_label.setText(f"/ {len(self.doc)}")
+            self.total_pages_label.setText(f"/ {len(self.pdf_document)}")
             
         except Exception as e:
             logger.error(f"Error updating page display: {str(e)}")
@@ -3121,7 +3194,7 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def prev_page(self):
-        if self.doc and self.current_page > 0:
+        if self.pdf_document and self.current_page > 0:
             self.current_page -= 1
             self.pdf_viewer.current_page = self.current_page
             self.pdf_viewer.display_all_pages()
@@ -3139,7 +3212,7 @@ class MainWindow(QMainWindow):
             logger.debug(f"Navigated to previous page: {self.current_page + 1}")
             
     def next_page(self):
-        if self.doc and self.current_page < len(self.doc) - 1:
+        if self.pdf_document and self.current_page < len(self.pdf_document) - 1:
             self.current_page += 1
             self.pdf_viewer.current_page = self.current_page
             self.pdf_viewer.display_all_pages()
@@ -3158,11 +3231,11 @@ class MainWindow(QMainWindow):
             
     def update_navigation(self):
         """Update navigation controls and page display"""
-        if self.doc:
+        if self.pdf_document:
             self.current_page_input.setText(str(self.current_page + 1))
-            self.total_pages_label.setText(f"/ {len(self.doc)}")
+            self.total_pages_label.setText(f"/ {len(self.pdf_document)}")
             self.prev_button.setEnabled(self.current_page > 0)
-            self.next_button.setEnabled(self.current_page < len(self.doc) - 1)
+            self.next_button.setEnabled(self.current_page < len(self.pdf_document) - 1)
             
             # Update bounding boxes for current page
             if self.pdf_viewer.show_bounding_boxes:
@@ -3173,12 +3246,12 @@ class MainWindow(QMainWindow):
                     self.pdf_viewer.set_bounding_boxes([])
 
     def go_to_page(self):
-        if not self.doc:
+        if not self.pdf_document:
             return
             
         try:
             page_num = int(self.current_page_input.text()) - 1  # Convert to 0-based index
-            if 0 <= page_num < len(self.doc):
+            if 0 <= page_num < len(self.pdf_document):
                 self.current_page = page_num
                 self.pdf_viewer.current_page = self.current_page
                 self.pdf_viewer.display_all_pages()
@@ -3198,7 +3271,7 @@ class MainWindow(QMainWindow):
                 logger.debug(f"Navigated to page: {self.current_page + 1}")
             else:
                 QMessageBox.warning(self, "Invalid Page", 
-                                  f"Page number must be between 1 and {len(self.doc)}")
+                                  f"Page number must be between 1 and {len(self.pdf_document)}")
                 self.current_page_input.setText(str(self.current_page + 1))
         except ValueError:
             QMessageBox.warning(self, "Invalid Input", "Please enter a valid page number")
@@ -3761,8 +3834,8 @@ class MainWindow(QMainWindow):
             failed_files = 0
 
             # Store current file to restore later
-            previous_file = self.current_file if hasattr(self, 'current_file') else None
-            previous_doc = self.doc if hasattr(self, 'doc') else None
+            previous_file = self.current_file_path if hasattr(self, 'current_file_path') else None
+            previous_doc = self.pdf_document if hasattr(self, 'pdf_document') else None
 
             def process_pdf_item(item):
                 """Process a single PDF item"""
@@ -3785,9 +3858,9 @@ class MainWindow(QMainWindow):
 
                 try:
                     # Open the PDF file and show first page
-                    self.current_file = item.file_path
-                    self.pdf_directory = os.path.dirname(item.file_path)
-                    self.doc = fitz.open(item.file_path)
+                    self.current_file_path = item.file_path
+                    self.current_file_directory = os.path.dirname(item.file_path)
+                    self.pdf_document= fitz.open(item.file_path)
                     self.current_page = 0
                     self.pdf_viewer.current_page = 0
                     self.pdf_viewer.open_pdf(item.file_path)
@@ -3825,10 +3898,10 @@ class MainWindow(QMainWindow):
                     # Set text color to red to indicate error
                     item.setForeground(0, Qt.GlobalColor.red)
 
-                    # Make sure to close the document if it's open
-                    if hasattr(self, 'doc') and self.doc:
+                    # Make sure to close the document if it's open  
+                    if hasattr(self, 'pdf_document') and self.pdf_document:
                         try:
-                            self.doc.close()
+                            self.pdf_document.close()
                         except:
                             pass
 
@@ -3913,9 +3986,9 @@ class MainWindow(QMainWindow):
             # Restore previous file if any
             if previous_file and previous_doc:
                 try:
-                    self.current_file = previous_file
-                    self.pdf_directory = os.path.dirname(previous_file)
-                    self.doc = previous_doc
+                    self.current_file_path = previous_file
+                    self.current_file_directory = os.path.dirname(previous_file)
+                    self.pdf_document= previous_doc
                     self.current_page = 0
                     self.pdf_viewer.current_page = 0
                     self.pdf_viewer.open_pdf(previous_file)
