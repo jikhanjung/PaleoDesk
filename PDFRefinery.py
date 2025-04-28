@@ -873,8 +873,10 @@ class PDFViewer(QWidget):
         """Save the element to database and update the page structure"""
         # Get the element from the page structure
         main_window = self.window()
+        
         page_structure = main_window.document_data['page_structures'][str(page_num)]
-        element = page_structure['structure']['elements'][element_id]
+        element = page_structure['structure']['elements'][int(element_id)]
+        logger.info(f"Saving element {element} from page {page_num}")
 
         pdf_path = main_window.current_file_path
         if not pdf_path:
@@ -882,11 +884,23 @@ class PDFViewer(QWidget):
             return
         
         # Get the document from the database
-            
+        zotero_key = None
+        file_hash = None
+        zotero_key = main_window.get_zotero_key_for_current_file()
+        if not zotero_key:
+            logger.debug("No Zotero key found for current file, using file hash")
+            file_hash = main_window.calculate_file_hash(main_window.current_file_path)
+        else:
+            file_hash = None
+        document = main_window.load_document_from_database(main_window.current_file_path, zotero_key, file_hash)
+        if not document:
+            logger.error("No document found in database")
+            return
+
         try:
             # Create or update the structured element
             structured_element = StructuredElement.get_or_create(
-                document=main_window.current_document,
+                document=document,
                 page_number=page_num,
                 element_id=str(element_id),
                 defaults={
@@ -899,18 +913,20 @@ class PDFViewer(QWidget):
                     'updated_at': datetime.datetime.now()
                 }
             )[0]
+
+            old_type = structured_element.element_type
+            new_type = element.get('category', 'unknown')
             
             # Update the element if it already existed
-            if not structured_element.created_at:
-                structured_element.element_type = element.get('category', 'unknown')
-                structured_element.coordinates = json.dumps(element.get('coordinates', []))
-                structured_element.content = json.dumps(element.get('content', {}))
-                structured_element.caption = json.dumps(element.get('caption', {}))
-                structured_element.metadata = json.dumps(element.get('metadata', {}))
-                structured_element.updated_at = datetime.datetime.now()
-                structured_element.save()
-            
-            logger.info(f"Saved element {element_id} from page {page_num} to database")
+            structured_element.element_type = element.get('category', 'unknown')
+            structured_element.coordinates = json.dumps(element.get('coordinates', []))
+            structured_element.content = json.dumps(element.get('content', {}))
+            structured_element.caption = json.dumps(element.get('caption', {}))
+            structured_element.metadata = json.dumps(element.get('metadata', {}))
+            structured_element.updated_at = datetime.datetime.now()
+            structured_element.save()
+
+            #logger.info(f"Saved row_id {structured_element.id} for element {element_id} from page {page_num} to database {old_type} -> {new_type}")
             
         except Exception as e:
             logger.error(f"Error saving element to database: {str(e)}")
@@ -2838,73 +2854,64 @@ class MainWindow(QMainWindow):
         
         return False
 
+    def load_document_from_database(self, file_path, zotero_key=None, file_hash=None):
+        """Load document from database for a given file"""
+        try:
+
+            with db:
+                # Try to find document by Zotero key first
+                document = None
+                if zotero_key:
+                    try:
+                        document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                        logger.debug(f"Found document by Zotero key: {zotero_key}")
+                    except DoesNotExist:
+                        logger.debug(f"No document found with Zotero key: {zotero_key}")
+                        
+                if not document:
+                    try:
+                        document = PDFDocument.get(PDFDocument.file_path == file_path)
+                        logger.debug(f"Found document by file path: {file_path}")
+                    except DoesNotExist:
+                        logger.debug(f"No document found with file path: {file_path}")
+                        return False
+                
+            return document
+        except Exception as e:
+            logger.error(f"Error loading document from database: {str(e)}")
+            return False
+
+    def get_zotero_key_for_current_file(self):
+        """Get Zotero key for the current file"""
+        try:
+            current_item = self.items_tree.currentItem()
+            if current_item and hasattr(current_item, 'zotero_key'):
+                return current_item.zotero_key
+            else:
+                return None
+        except Exception as e:
+            logger.error(f"Error getting Zotero key for current file: {str(e)}")
+            return None
+
     def save_session(self):
         """Save current session data to database"""
         try:
-            if not hasattr(self, 'current_file') or not self.current_file_path:
+            if not hasattr(self, 'current_file_path') or not self.current_file_path:
                 logger.debug("No current file to save session for")
                 return
-            
-            with db:
-                # Get or create PDFDocument using Zotero key if available
+
+            file_hash = None
+            zotero_key = None
+            zotero_key = self.get_zotero_key_for_current_file()
+            if not zotero_key:
+                logger.debug("No Zotero key found for current file, using file hash")
+                file_hash = calculate_file_hash(self.current_file_path)
+            else:
                 file_hash = None
-                zotero_key = None
-                
-                # Try to find the current item in the items tree
-                current_item = None
-                for i in range(self.items_tree.topLevelItemCount()):
-                    item = self.items_tree.topLevelItem(i)
-                    if hasattr(item, 'file_path') and item.file_path == self.current_file_path:
-                        current_item = item
-                        break
-                    # Check child items if no match found
-                    for j in range(item.childCount()):
-                        child = item.child(j)
-                        if hasattr(child, 'file_path') and child.file_path == self.current_file_path:
-                            current_item = child
-                            break
-                    if current_item:
-                        break
-                
-                # Get Zotero key from the item if available
-                if current_item and hasattr(current_item, 'zotero_key'):
-                    zotero_key = current_item.zotero_key
-                    logger.debug(f"Found Zotero key for current file: {zotero_key}")
-                
-                # If no Zotero key found, use file hash
-                if not zotero_key:
-                    file_hash = calculate_file_hash(self.current_file_path)
-                    logger.debug(f"No Zotero key found, using file hash: {file_hash}")
-                
-                # Try to find existing document
-                document = None
-                try:
-                    # First try by file path
-                    document = PDFDocument.get(PDFDocument.file_path == self.current_file_path)
-                    logger.debug(f"Found existing document by file path: {self.current_file_path}")
-                except DoesNotExist:
-                    try:
-                        # Then try by Zotero key if available
-                        if zotero_key:
-                            document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
-                            logger.debug(f"Found existing document by Zotero key: {zotero_key}")
-                    except DoesNotExist:
-                        try:
-                            # Finally try by file hash if available
-                            if file_hash:
-                                document = PDFDocument.get(PDFDocument.file_hash == file_hash)
-                                logger.debug(f"Found existing document by file hash: {file_hash}")
-                        except DoesNotExist:
-                            # Create new document if none found
-                            document = PDFDocument.create(
-                                file_path=self.current_file_path,
-                                file_hash=file_hash,
-                                zotero_key=zotero_key,
-                                title=os.path.basename(self.current_file_path),
-                                page_count=len(self.pdf_document) if self.pdf_document else 0
-                            )
-                            logger.debug(f"Created new document record")
-                
+
+            document = self.load_document_from_database(self.current_file_path, zotero_key, file_hash)
+
+            with db:
                 # Update document fields if needed
                 if document:
                     if not document.file_hash and file_hash:
@@ -2990,65 +2997,21 @@ class MainWindow(QMainWindow):
                     return
 
             logger.info(f"Loading session for {file_path}")
+
+            zotero_key = None
+            file_hash = None
+            zotero_key = self.get_zotero_key_for_current_file()
+            if not zotero_key:
+                logger.debug("No Zotero key found for current file, using file hash")
+                file_hash = calculate_file_hash(self.current_file_path)
+            else:
+                file_hash = None
             
-            with db:
-                # Try to find document by Zotero key first
-                document = None
-                zotero_key = None
-                
-                # Extract Zotero key from file path
-                storage_dir = os.path.dirname(file_path)
-                if 'storage' in storage_dir:
-                    # The Zotero key is typically the directory name in the storage folder
-                    potential_key = os.path.basename(storage_dir)
-                    if len(potential_key) == 8:  # Zotero keys are 8 characters
-                        zotero_key = potential_key
-                        logger.debug(f"Extracted Zotero key from path: {zotero_key}")
-                
-                # Also try to find the file in the items tree
-                current_item = None
-                for i in range(self.items_tree.topLevelItemCount()):
-                    item = self.items_tree.topLevelItem(i)
-                    if hasattr(item, 'file_path') and item.file_path == file_path:
-                        current_item = item
-                        break
-                    # Check child items if no match found
-                    for j in range(item.childCount()):
-                        child = item.child(j)
-                        if hasattr(child, 'file_path') and child.file_path == file_path:
-                            current_item = child
-                            break
-                    if current_item:
-                        break
-                
-                # Get Zotero key from the item if available
-                if current_item and hasattr(current_item, 'zotero_key'):
-                    zotero_key = current_item.zotero_key
-                    logger.debug(f"Found Zotero key from item: {zotero_key}")
-                
-                try:
-                    if zotero_key:
-                        # Try to find document by Zotero key
-                        try:
-                            document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
-                            logger.debug(f"Found document by Zotero key: {zotero_key}")
-                        except DoesNotExist:
-                            logger.debug(f"No document found with Zotero key: {zotero_key}")
-                    
-                    if not document:
-                        # Fall back to file hash if no document found by Zotero key
-                        file_hash = calculate_file_hash(file_path)
-                        try:
-                            document = PDFDocument.get(PDFDocument.file_hash == file_hash)
-                            logger.debug(f"Found document by file hash: {file_hash}")
-                        except DoesNotExist:
-                            logger.debug(f"No document found with file hash: {file_hash}")
-                            raise
-                        
-                except DoesNotExist:
-                    logger.error(f"No session found for {file_path}")
-                    return
-                
+            document = self.load_document_from_database(file_path, zotero_key, file_hash)
+            if not document:
+                logger.error(f"No document found in database for {file_path}")
+                return
+            
             # Get most recent session
             session = (SessionData
                      .select()
