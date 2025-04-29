@@ -2758,48 +2758,40 @@ class MainWindow(QMainWindow):
         while QApplication.overrideCursor() is not None:
             QApplication.restoreOverrideCursor()
 
-    def analyze_pdf(self, file_path):
+    def analyze_pdf(self, file_path, force_analysis=False):
         """Analyze the PDF file and store results in the database."""
         try:
-            # Calculate file hash
-            file_hash = calculate_file_hash(file_path)
+
+            file_hash = None
+            zotero_key = None
+            zotero_key = self.get_zotero_key_for_current_file()
+            if not zotero_key:
+                logger.debug("No Zotero key found for current file, using file hash")
+                file_hash = calculate_file_hash(self.current_file_path)
+            else:
+                file_hash = None
+
+            document = self.load_document_from_database(self.current_file_path, zotero_key, file_hash)
+
+            session = (SessionData
+                        .select()
+                        .where(SessionData.document == document)
+                        .order_by(SessionData.last_accessed.desc())
+                        .first())
             
-            # Check if analysis exists in database
-            try:
-                document = PDFDocument.get(PDFDocument.file_hash == file_hash)
-                logger.info(f"Found existing analysis for {file_path}")
+            if session and not force_analysis:
+                # Load session data
+                session_data = json.loads(session.session_data)
+                self.document_data = session_data.get('document_data', {})
+                self.current_page = session.current_page
+                self.pdf_viewer.current_page = self.current_page
                 
-                # Load existing analysis
-                analyses = (PageAnalysis
-                          .select()
-                          .where(PageAnalysis.document == document)
-                          .order_by(PageAnalysis.page_number))
-                
-                if analyses.count() > 0:
-                    # Load session data if exists
-                    session = (SessionData
-                             .select()
-                             .where(SessionData.document == document)
-                             .order_by(SessionData.last_accessed.desc())
-                             .first())
-                    
-                    if session:
-                        # Load session data
-                        session_data = json.loads(session.session_data)
-                        self.document_data = session_data.get('document_data', {})
-                        self.current_page = session.current_page
-                        self.pdf_viewer.current_page = self.current_page
-                        
-                        # Update UI
-                        self.update_page_display()
-                        self.status_label.showMessage(f"Loaded existing analysis for {os.path.basename(file_path)}", 3000)
-                        logger.info(f"Loaded existing analysis and session data for {file_path}")
-                        return True
-                    
-            except DoesNotExist:
-                logger.info(f"No existing analysis found for {file_path}")
-                document = None
-            
+                # Update UI
+                self.update_page_display()
+                self.status_label.showMessage(f"Loaded existing analysis for {os.path.basename(file_path)}", 3000)
+                logger.info(f"Loaded existing analysis and session data for {file_path}")
+                return True
+
             # Perform new analysis
             logger.info(f"Analyzing PDF: {file_path}")
             self.status_label.showMessage("Analyzing PDF...", 0)  # 0 means show until changed
@@ -4041,7 +4033,7 @@ class MainWindow(QMainWindow):
                         item.setForeground(0, Qt.GlobalColor.red)
 
                     # Close the document
-                    self.doc.close()
+                    self.pdf_document.close()
 
                 except Exception as e:
                     logger.error(f"Error analyzing {item.file_path}: {str(e)}")
