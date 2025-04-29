@@ -475,14 +475,17 @@ class PDFViewer(QWidget):
         """Load next set of pages in background"""
         if self.page_loading or not self.pdf_document:
             return
-        
+            
         self.page_loading = True
         try:
+            # Store current pan offset
+            current_pan_offset = self.pan_offset.y()
+            
             # Find the highest loaded page number
             max_loaded = max(self.loaded_pages) if self.loaded_pages else -1
             
             # Load next set of pages
-            next_pages = range(max_loaded + 1, min(max_loaded + self.initial_load_pages + 1, self.total_pages))
+            next_pages = range(max_loaded + 1, min(max_loaded + self.initial_load_pages + 1, len(self.pdf_document)))
             for page_num in next_pages:
                 self.load_page(page_num)
             
@@ -490,35 +493,22 @@ class PDFViewer(QWidget):
             if self.current_page in self.loaded_pages:
                 self.update_current_page()
                 self.update()
+                
+            # Update total height
+            total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
+            self.setMinimumHeight(total_height)
+            self.updateGeometry()
+            self.adjustSize()
+            
+            # Restore pan offset
+            self.pan_offset.setY(current_pan_offset)
+            self.update()
+            
+            # If there are more pages to load, schedule next batch
+            if max_loaded + self.initial_load_pages < len(self.pdf_document):
+                QTimer.singleShot(100, self.load_next_pages)
         finally:
             self.page_loading = False
-
-    def update_current_page(self):
-        """Update current page based on visible area"""
-        if not self.page_pixmaps:
-            return
-        logger.debug(f"[PDFViewer] update_current_page: pan_offset={self.pan_offset.y()}")
-        # Get the actual viewport height from the parent QScrollArea
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'pdf_scroll'):
-            return
-        viewport_height = main_window.pdf_scroll.viewport().height()
-        # Calculate which page is most visible in the viewport
-        viewport_center = -self.pan_offset.y() + viewport_height / 2
-        current_y = 0
-        logger.debug(f"[PDFViewer] update_current_page: viewport_center={viewport_center}, current_page={self.current_page}")
-        # Get page heights from loaded pages
-        page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
-        # Find the page that contains the viewport center
-        for i, height in enumerate(page_heights):
-            page_bottom = current_y + height
-            if current_y <= viewport_center < page_bottom:
-                if self.current_page != i:
-                    logger.info(f"[PDFViewer] Changing current_page from {self.current_page} to {i} (emitting currentPageChanged)")
-                    self.current_page = i
-                    self.currentPageChanged.emit(self.current_page)
-                break
-            current_y = page_bottom
 
     def scroll_to_page(self, page_num):
         """Scroll to a specific page"""
@@ -542,12 +532,37 @@ class PDFViewer(QWidget):
         if not self.page_pixmaps:
             return
         
+        # Get viewport position
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'pdf_scroll'):
+            return
+        viewport_height = main_window.pdf_scroll.viewport().height()
+        scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
+        viewport_top = scroll_value
+        viewport_bottom = scroll_value + viewport_height
+        
+        logger.debug(f"[paintEvent] Viewport: top={viewport_top}, bottom={viewport_bottom}, current_page={self.current_page}")
+        
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Only paint current_page-1, current_page, current_page+1
         pages_to_paint = [self.current_page - 1, self.current_page, self.current_page + 1]
         current_y = 0
+        
+        # Calculate total height for all pages to maintain layout
+        total_height = 0
+        for page_num in sorted(self.page_pixmaps.keys()):
+            pixmap = self.page_pixmaps[page_num]['pixmap']
+            height = self.page_pixmaps[page_num]['height']
+            scale = self.width() / pixmap.width()
+            scaled_height = int(height * scale)
+            total_height += scaled_height
+            
+        # Set widget size to match total height
+        self.setMinimumHeight(total_height)
+        
+        # Paint pages
         for page_num in sorted(self.page_pixmaps.keys()):
             if page_num not in pages_to_paint:
                 # Calculate height for skipped pages to keep layout
@@ -557,19 +572,30 @@ class PDFViewer(QWidget):
                 scaled_height = int(height * scale)
                 current_y += scaled_height
                 continue
+                
             # Ensure the page is loaded
             if page_num not in self.page_pixmaps:
                 self.load_page(page_num)
                 if page_num not in self.page_pixmaps:
                     continue  # Still not loaded, skip
+                    
             pixmap = self.page_pixmaps[page_num]['pixmap']
             height = self.page_pixmaps[page_num]['height']
             scale = self.width() / pixmap.width()
             scaled_height = int(height * scale)
+            
+            # Check if page is in viewport
+            page_top = current_y
+            page_bottom = current_y + scaled_height
+            is_in_viewport = (page_bottom > viewport_top and page_top < viewport_bottom)
+            
+            logger.debug(f"[paintEvent] Page {page_num}: y={current_y}, height={scaled_height}, in_viewport={is_in_viewport}")
+            
             # Draw the page
             painter.drawPixmap(0, int(current_y), pixmap.scaled(self.width(), scaled_height, 
                                                       Qt.AspectRatioMode.KeepAspectRatio,
                                                       Qt.TransformationMode.SmoothTransformation))
+            
             # Draw bounding boxes if enabled
             if self.show_bounding_boxes and self.bounding_boxes:
                 page_boxes = self.bounding_boxes.get(page_num, [])
@@ -599,6 +625,7 @@ class PDFViewer(QWidget):
                             painter.drawRect(label_rect)
                             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, category_text)
             current_y += scaled_height
+            
         # Draw element creation rectangle if in progress
         if self.creating_element and self.element_start_pos is not None and self.element_current_pos is not None:
             painter.setPen(QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.DashLine))
@@ -1024,32 +1051,57 @@ class PDFViewer(QWidget):
             QMessageBox.warning(self, "Save Error", 
                 f"Error saving element to database: {str(e)}")
 
-    def update_current_page(self):
-        """Update current page based on visible area"""
-        if not self.page_pixmaps:
+    def update_current_page(self, scroll_value=None):
+        """Update current page based on scroll position or current state"""
+        if not self.pdf_document:
             return
-        logger.debug(f"[PDFViewer] update_current_page: pan_offset={self.pan_offset.y()}")
-        # Get the actual viewport height from the parent QScrollArea
+            
+        # Get the main window instance
         main_window = self.window()
         if not main_window or not hasattr(main_window, 'pdf_scroll'):
             return
+            
+        # Get viewport height
         viewport_height = main_window.pdf_scroll.viewport().height()
-        # Calculate which page is most visible in the viewport
-        viewport_center = -self.pan_offset.y() + viewport_height / 2
-        current_y = 0
-        logger.debug(f"[PDFViewer] update_current_page: viewport_center={viewport_center}, current_page={self.current_page}")
-        # Get page heights from loaded pages
-        page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
+        
+        # If scroll_value is provided, use it to calculate viewport center
+        if scroll_value is not None:
+            viewport_center = scroll_value + viewport_height / 2
+        else:
+            # Otherwise, get current scroll position
+            scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
+            viewport_center = scroll_value + viewport_height / 2
+            
+        logger.debug(f"[update_current_page] Viewport center: {viewport_center}, current_page: {self.current_page}")
+        
+        # If bounding boxes are enabled, ensure all pages are loaded
+        if self.show_bounding_boxes and self.bounding_boxes:
+            for page_num in range(len(self.pdf_document)):
+                if page_num not in self.loaded_pages:
+                    self.load_page(page_num)
+        
         # Find the page that contains the viewport center
-        for i, height in enumerate(page_heights):
-            page_bottom = current_y + height
-            if current_y <= viewport_center < page_bottom:
+        current_height = 0
+        for i, page_data in self.page_pixmaps.items():
+            # Calculate scaled height considering zoom rate
+            pixmap = page_data['pixmap']
+            height = page_data['height']
+            scale = self.width() / pixmap.width()
+            scaled_height = int(height * scale)
+            
+            page_bottom = current_height + scaled_height
+            logger.debug(f"[update_current_page] Page {i} range: {current_height} to {page_bottom}, scale={scale}, zoom={self.zoom}")
+            
+            if current_height <= viewport_center < page_bottom:
                 if self.current_page != i:
                     logger.info(f"[PDFViewer] Changing current_page from {self.current_page} to {i} (emitting currentPageChanged)")
                     self.current_page = i
                     self.currentPageChanged.emit(self.current_page)
                 break
-            current_y = page_bottom
+            current_height = page_bottom
+            
+        # Update the display
+        self.update()
 
     def resizeEvent(self, event):
         """Handle widget resize"""
@@ -1111,40 +1163,6 @@ class PDFViewer(QWidget):
             logger.debug(f"Set current page to {page_num + 1}")
             self.currentPageChanged.emit(self.current_page)
 
-    def update_current_page_from_scroll(self, scroll_value):
-        """Update current page based on scroll position"""
-        #if not self.bounding_boxes:
-        #    return
-        logger.debug(f"Updating current page from scroll: {scroll_value}")
-            
-        # Get the actual viewport height from the parent QScrollArea
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'pdf_scroll'):
-            return
-        viewport_height = main_window.pdf_scroll.viewport().height()
-            
-        # Calculate viewport center
-        viewport_center = scroll_value + viewport_height / 2
-        
-        # Get page heights from loaded pages
-        page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
-        logger.debug(f"Page heights: {page_heights}")
-        logger.debug(f"Viewport center: {viewport_center}, current_page: {self.current_page}")
-        
-        # Find the page that contains the viewport center
-        current_height = 0
-        for i, height in enumerate(page_heights):
-            page_bottom = current_height + height
-            logger.debug(f"Page {i} range: {current_height} to {page_bottom}")
-            
-            if current_height <= viewport_center < page_bottom:
-                if self.current_page != i:
-                    logger.info(f"[PDFViewer] Changing current_page from {self.current_page} to {i} (emitting currentPageChanged)")
-                    self.current_page = i
-                    self.currentPageChanged.emit(self.current_page)
-                break
-            current_height = page_bottom
-
     def display_all_pages(self):
         """Display all pages vertically with lazy loading"""
         if not self.pdf_document:
@@ -1168,6 +1186,9 @@ class PDFViewer(QWidget):
             # Set the widget's size to be larger than the viewport
             self.setMinimumHeight(total_height)
             self.setMinimumWidth(self.width())
+            self.updateGeometry()
+            self.adjustSize()
+            self.update()
             
             # Reset pan offset if it would cause empty space at the top
             if self.pan_offset.y() > 0:
@@ -1181,8 +1202,8 @@ class PDFViewer(QWidget):
             
             # Start loading next set of pages in background
             self.load_next_pages()
-            
             self.update()
+            
         except Exception as e:
             logger.error(f"Error displaying pages: {str(e)}")
             raise
@@ -1191,7 +1212,7 @@ class PDFViewer(QWidget):
         """Load next set of pages in background"""
         if self.page_loading or not self.pdf_document:
             return
-        
+            
         self.page_loading = True
         try:
             # Find the highest loaded page number
@@ -1210,6 +1231,9 @@ class PDFViewer(QWidget):
             # Update total height
             total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
             self.setMinimumHeight(total_height)
+            self.updateGeometry()
+            self.adjustSize()
+            self.update()
             
             # If there are more pages to load, schedule next batch
             if max_loaded + self.initial_load_pages < len(self.pdf_document):
@@ -3329,20 +3353,18 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def prev_page(self):
-        if self.pdf_document and self.current_page > 0:
+        """Go to previous page"""
+        if self.current_page > 0:
+            # Get current page height
+            page_height = self.pdf_viewer.page_pixmaps[self.current_page]['height']
+            # Calculate scroll position for previous page
+            scroll_pos = self.pdf_scroll.verticalScrollBar().value() - page_height
+            # Update current page
             self.current_page -= 1
             self.pdf_viewer.current_page = self.current_page
-            self.pdf_viewer.display_all_pages()
-            
-            # Get the current scroll position
-            scroll_bar = self.pdf_scroll.verticalScrollBar()
-            current_pos = scroll_bar.value()
-            
-            # Calculate the height of one page
-            page_height = self.pdf_viewer.page_pixmaps[str(self.current_page)]['height']
-            
-            # Scroll up by one page height
-            scroll_bar.setValue(current_pos - page_height)
+            # Scroll to new position
+            self.pdf_scroll.verticalScrollBar().setValue(scroll_pos)
+            # Update navigation
             self.update_navigation()
             logger.debug(f"Navigated to previous page: {self.current_page + 1}")
             
@@ -4144,10 +4166,10 @@ class MainWindow(QMainWindow):
             self.ensure_normal_cursor()
 
     def handle_scroll(self, value):
-        """Handle scroll events from the scroll area"""
+        """Handle scroll events from the PDF viewer"""
         logger.debug(f"[MainWindow] handle_scroll: value={value}")
         # Update current page in PDF viewer
-        self.pdf_viewer.update_current_page_from_scroll(value)
+        self.pdf_viewer.update_current_page(value)
         logger.debug(f"[MainWindow] handle_scroll: current_page={self.pdf_viewer.current_page} {self.current_page}")
         
         # Update current page in main window to match PDF viewer
