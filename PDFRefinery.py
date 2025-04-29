@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem,
                            QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox, QToolTip)
 from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor, QBrush
 import fitz  # PyMuPDF
 import datetime
 import os
@@ -172,6 +172,23 @@ class PDFViewer(QWidget):
     # Add signal for wheel events
     wheel_scrolled = pyqtSignal(int)  # Signal to emit the scroll amount
     
+    # Define element types and their colors as class variables
+    ELEMENT_TYPES = ['text', 'figure', 'table', 'picture', 'caption', 'footnote', 'page header', 'page footer', 'section header', 'list item']
+    
+    # Define colors for each element type with alpha
+    ELEMENT_COLORS = {
+        'text': QColor(0, 0, 255, 64),         # blue with alpha
+        'figure': QColor(255, 0, 0, 64),       # red with alpha
+        'table': QColor(0, 255, 0, 64),        # green with alpha
+        'picture': QColor(255, 255, 0, 64),    # yellow with alpha
+        'caption': QColor(139, 139, 0, 64),    # darkYellow with alpha
+        'footnote': QColor(139, 0, 139, 64),   # magenta with alpha
+        'page header': QColor(0, 0, 139, 64),  # darkBlue with alpha
+        'page footer': QColor(0, 139, 139, 64), # darkCyan with alpha
+        'section header': QColor(0, 128, 0, 64), # green with alpha
+        'list item': QColor(139, 0, 139, 64)   # magenta with alpha
+    }
+    
     def __init__(self):
         super().__init__()
         self.pixmap = None
@@ -197,7 +214,6 @@ class PDFViewer(QWidget):
         self.dragging_box = None  # Currently dragged box
         self.drag_start_pos = None  # Mouse position when drag started
         self.original_box_coords = None  # Original coordinates of the box being dragged
-        self.current_box_page = None  # Page number of the box being dragged
         self.resize_edges = None  # Which edges are being resized (e.g., 'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw')
         self.edge_threshold = 10  # Pixels from edge to trigger resize cursor
         
@@ -243,16 +259,22 @@ class PDFViewer(QWidget):
             change_type_menu = menu.addMenu("Change Block Type")
             
             # Add block type actions
-            block_types = ['text', 'figure', 'table', 'picture', 'caption']
-            for block_type in block_types:
-                action = change_type_menu.addAction(block_type.capitalize())
-                action.triggered.connect(lambda checked, t=block_type: self._change_block_type(clicked_box_id, self.hovered_box_page, t))
+            for element_type in self.ELEMENT_TYPES:
+                action = change_type_menu.addAction(element_type.capitalize())
+                action.triggered.connect(lambda checked, t=element_type: self._change_element_type(clicked_box_id, self.hovered_box_page, t))
+            
+            # Add separator
+            menu.addSeparator()
+            
+            # Add delete action
+            delete_action = menu.addAction("Delete")
+            delete_action.triggered.connect(lambda: self._delete_element(clicked_box_id, self.hovered_box_page))
             
             # Show menu at cursor position
             menu.exec(event.globalPos())
     
-    def _change_block_type(self, box_id, page_num, new_type):
-        """Change the type of a block"""
+    def _change_element_type(self, box_id, page_num, new_type):
+        """Change the type of a element"""
         # Get the main window instance
         main_window = self.window()
         if not main_window or not hasattr(main_window, 'document_data'):
@@ -279,6 +301,75 @@ class PDFViewer(QWidget):
                             main_window.structured_view.update_content(main_window.document_data['page_structures'])
                             #main_window.save_session()
                         break
+
+    def _delete_element(self, box_id, page_num):
+        """Delete an element from the document and update database"""
+        # Get the main window instance
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'document_data'):
+            return
+            
+        # Remove the element from document_data
+        page_key = str(page_num)
+        if page_key in main_window.document_data['page_structures']:
+            page_structure = main_window.document_data['page_structures'][page_key]
+            if 'structure' in page_structure and 'elements' in page_structure['structure']:
+                elements = page_structure['structure']['elements']
+                deleted_index = None
+                
+                # Find and remove the element
+                for i, element in enumerate(elements):
+                    if element.get('id') == box_id:
+                        deleted_index = i
+                        elements.pop(i)
+                        logger.info(f"Deleted element {box_id} from page {page_num}")
+                        break
+                
+                if deleted_index is not None:
+                    # Adjust element IDs for remaining elements
+                    for i in range(deleted_index, len(elements)):
+                        elements[i]['id'] = str(i)
+                        logger.info(f"Adjusted element ID from {i+1} to {i}")
+                    
+                    # Update the structured content view
+                    if hasattr(main_window, 'structured_view'):
+                        main_window.structured_view.update_content(main_window.document_data['page_structures'])
+                    
+                    # Update database
+                    try:
+                        # Get the document from the database
+                        zotero_key = main_window.get_zotero_key_for_current_file()
+                        file_hash = None
+                        if not zotero_key:
+                            file_hash = main_window.calculate_file_hash(main_window.current_file_path)
+                        document = main_window.load_document_from_database(main_window.current_file_path, zotero_key, file_hash)
+                        
+                        if document:
+                            # Delete the element from StructuredElement table
+                            StructuredElement.delete().where(
+                                (StructuredElement.document == document) &
+                                (StructuredElement.page_number == page_num) &
+                                (StructuredElement.element_id == box_id)
+                            ).execute()
+                            
+                            # Update remaining elements in StructuredElement table
+                            for i in range(deleted_index, len(elements)):
+                                element = elements[i]
+                                StructuredElement.update(
+                                    element_id=str(i)
+                                ).where(
+                                    (StructuredElement.document == document) &
+                                    (StructuredElement.page_number == page_num) &
+                                    (StructuredElement.element_id == str(i+1))
+                                ).execute()
+                            
+                            # Save session to update session data
+                            main_window.save_session()
+                            logger.info("Updated database after element deletion")
+                    except Exception as e:
+                        logger.error(f"Error updating database after element deletion: {str(e)}")
+                        QMessageBox.warning(self, "Database Error", 
+                            f"Error updating database after element deletion: {str(e)}")
 
     def create_zoom_buttons(self):
         """Create zoom control buttons"""
@@ -439,32 +530,6 @@ class PDFViewer(QWidget):
             self.update_current_page()
             self.update()
 
-    def update_current_page_from_scroll(self, scroll_value):
-        """Update current page based on scroll position"""
-        if not self.pdf_document:
-            return
-            
-        # Calculate viewport center
-        viewport_height = self.height()
-        viewport_center = scroll_value + viewport_height / 2
-        
-        # Get page heights from loaded pages
-        page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
-        logger.debug(f"Page heights: {page_heights}")
-        
-        # Find the page that contains the viewport center
-        current_height = 0
-        for i, height in enumerate(page_heights):
-            page_bottom = current_height + height
-            logger.debug(f"Page {i} range: {current_height} to {page_bottom}")
-            
-            if current_height <= viewport_center < page_bottom:
-                if self.current_page != i:
-                    self.current_page = i
-                    logger.debug(f"Current page updated to {i + 1}")
-                break
-            current_height = page_bottom
-
     def paintEvent(self, event):
         """Handle painting of the widget"""
         if not self.page_pixmaps:
@@ -472,18 +537,6 @@ class PDFViewer(QWidget):
             
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Define category colors with alpha
-        category_colors = {
-            'page header': QColor(0, 0, 139, 64),  # darkBlue with alpha
-            'title': QColor(0, 100, 0, 64),        # darkGreen with alpha
-            'section header': QColor(0, 128, 0, 64),  # green with alpha
-            'text': QColor(0, 0, 255, 64),         # blue with alpha
-            'picture': QColor(255, 255, 0, 64),    # yellow with alpha
-            'caption': QColor(139, 139, 0, 64),    # darkYellow with alpha
-            'page footer': QColor(0, 139, 139, 64),  # darkCyan with alpha
-            'list item': QColor(139, 0, 139, 64)   # magenta with alpha
-        }
         
         # Draw pages
         current_y = 0
@@ -497,8 +550,8 @@ class PDFViewer(QWidget):
             
             # Draw the page
             painter.drawPixmap(0, int(current_y), pixmap.scaled(self.width(), scaled_height, 
-                                                         Qt.AspectRatioMode.KeepAspectRatio,
-                                                         Qt.TransformationMode.SmoothTransformation))
+                                                          Qt.AspectRatioMode.KeepAspectRatio,
+                                                          Qt.TransformationMode.SmoothTransformation))
             
             # Draw bounding boxes if enabled
             if self.show_bounding_boxes and self.bounding_boxes:
@@ -515,8 +568,9 @@ class PDFViewer(QWidget):
                             y2 = int(coords[2]['y'] * scaled_height + current_y)
                             
                             # Get category and corresponding color
-                            category = element.get('category', 'text').lower()
-                            color = category_colors.get(category, QColor(255, 0, 0, 64))  # red with alpha as default
+                            category = element.get('category', 'text').lower() 
+                            category_text = category+ " " + str(page_num) + "-" + str(element.get('id', ''))
+                            color = self.ELEMENT_COLORS.get(category, QColor(255, 0, 0, 64))  # red with alpha as default
                             
                             # Draw the rectangle with 2-pixel width and semi-transparent fill
                             pen = QPen(color, 2)
@@ -533,9 +587,9 @@ class PDFViewer(QWidget):
                             # Draw a small rectangle for the label background
                             label_rect = painter.boundingRect(x1, y1 - 20, 100, 20, 
                                                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                                                            category)
+                                                            category_text)
                             painter.drawRect(label_rect)
-                            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, category)
+                            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, category_text)
             
             current_y += scaled_height
             
@@ -569,9 +623,40 @@ class PDFViewer(QWidget):
             page_boxes = structure.get('structure', {}).get('elements', [])
             if page_boxes:
                 self.bounding_boxes[int(page_num)] = page_boxes
-                logger.debug(f"Set {len(page_boxes)} bounding boxes for page {int(page_num) + 1}")
+                #logger.debug(f"Set {len(page_boxes)} bounding boxes for page {int(page_num) + 1}")
         
         self.update()
+
+    def reset_page(self):
+        """Reset the current page's boxes to their initial state"""
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'document_data'):
+            return
+            
+        # Get initial page structure for current page
+        initial_structure = main_window.document_data.get('initial_page_structures', {}).get(str(self.current_page))
+        if not initial_structure:
+            logger.warning(f"No initial structure found for page {self.current_page}")
+            return
+            
+        # Get current page structure
+        current_structure = main_window.document_data.get('page_structures', {}).get(str(self.current_page))
+        if not current_structure:
+            logger.warning(f"No current structure found for page {self.current_page}")
+            return
+            
+        # Update current page structure with initial elements
+        current_structure['structure']['elements'] = initial_structure['structure']['elements'].copy()
+        
+        # Update bounding boxes
+        self.bounding_boxes[self.current_page] = initial_structure['structure']['elements']
+        
+        # Update structured content view
+        if hasattr(main_window, 'structured_view'):
+            main_window.structured_view.update_content(main_window.document_data['page_structures'])
+        
+        self.update()
+        logger.info(f"Reset page {self.current_page} to initial state")
 
     def toggle_bounding_boxes(self, show):
         """Toggle bounding box display"""
@@ -937,10 +1022,18 @@ class PDFViewer(QWidget):
         """Update current page based on visible area"""
         if not self.page_pixmaps:
             return
+        logger.debug(f"Updating current page from pan_offset: {self.pan_offset.y()}")
+            
+        # Get the actual viewport height from the parent QScrollArea
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'pdf_scroll'):
+            return
+        viewport_height = main_window.pdf_scroll.viewport().height()
             
         # Calculate which page is most visible in the viewport
-        viewport_center = -self.pan_offset.y() + self.height() / 2
+        viewport_center = -self.pan_offset.y() + viewport_height / 2
         current_y = 0
+        logger.debug(f"Viewport center: {viewport_center}, current_page: {self.current_page}")
         
         # Get page heights from loaded pages
         page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
@@ -1017,14 +1110,21 @@ class PDFViewer(QWidget):
         """Update current page based on scroll position"""
         if not self.bounding_boxes:
             return
+        logger.debug(f"Updating current page from scroll: {scroll_value}")
+            
+        # Get the actual viewport height from the parent QScrollArea
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'pdf_scroll'):
+            return
+        viewport_height = main_window.pdf_scroll.viewport().height()
             
         # Calculate viewport center
-        viewport_height = self.height()
         viewport_center = scroll_value + viewport_height / 2
         
         # Get page heights from loaded pages
         page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
         logger.debug(f"Page heights: {page_heights}")
+        logger.debug(f"Viewport center: {viewport_center}, current_page: {self.current_page}")
         
         # Find the page that contains the viewport center
         current_height = 0
@@ -1291,7 +1391,7 @@ class PDFViewer(QWidget):
                             f"Box: ({x1:.2f}, {y1:.2f}) to ({x2:.2f}, {y2:.2f}) | "
                             f"Viewport: ({viewport_x}, {viewport_y}) | "
                             f"PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | "
-                            f"Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f}")
+                            f"Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f} | current_page: {self.current_page}")
                 self.current_cursor_page = current_page
                 main_window.status_label.showMessage(status_msg, 0)
                 return
@@ -1322,8 +1422,7 @@ class PDFViewer(QWidget):
         
         # Create radio buttons for element types
         button_group = QButtonGroup()
-        types = ['text', 'figure', 'table', 'picture', 'caption']
-        for element_type in types:
+        for element_type in self.ELEMENT_TYPES:
             radio = QRadioButton(element_type.capitalize())
             radio.setChecked(element_type == 'text')
             button_group.addButton(radio)
@@ -2264,7 +2363,7 @@ class MainWindow(QMainWindow):
                     'structure': structure,
                     'coordinates': page_boxes
                 })
-                logger.debug(f"Set {len(page_boxes)} bounding boxes for page {int(page_num) + 1}")
+                #logger.debug(f"Set {len(page_boxes)} bounding boxes for page {int(page_num) + 1}")
         
         self.update()
 
@@ -2432,6 +2531,14 @@ class MainWindow(QMainWindow):
         self.next_button.triggered.connect(self.next_page)
         self.next_button.setEnabled(False)
         toolbar.addAction(self.next_button)
+        
+        # Add separator
+        toolbar.addSeparator()
+        
+        # Reset Page button
+        reset_page_action = QAction("Reset Page", self)
+        reset_page_action.triggered.connect(self.pdf_viewer.reset_page)
+        toolbar.addAction(reset_page_action)
         
         # Add separator
         toolbar.addSeparator()
@@ -3127,6 +3234,7 @@ class MainWindow(QMainWindow):
             # Update PDF display
             self.pdf_viewer.current_page = self.current_page
             self.pdf_viewer.display_all_pages()
+            logger.debug(f"Displaying page {self.current_page}")
 
             # Get the page structure if it exists
             if str(self.current_page) in self.document_data['page_structures']:
@@ -3167,7 +3275,7 @@ class MainWindow(QMainWindow):
             current_pos = scroll_bar.value()
             
             # Calculate the height of one page
-            page_height = self.pdf_viewer.page_pixmaps[self.current_page]['height']
+            page_height = self.pdf_viewer.page_pixmaps[str(self.current_page)]['height']
             
             # Scroll up by one page height
             scroll_bar.setValue(current_pos - page_height)
@@ -3185,7 +3293,7 @@ class MainWindow(QMainWindow):
             current_pos = scroll_bar.value()
             
             # Calculate the height of one page
-            page_height = self.pdf_viewer.page_pixmaps[self.current_page]['height']
+            page_height = self.pdf_viewer.page_pixmaps[str(self.current_page)]['height']
             
             # Scroll down by one page height
             scroll_bar.setValue(current_pos + page_height)
@@ -3976,8 +4084,16 @@ class MainWindow(QMainWindow):
 
     def handle_scroll(self, value):
         """Handle scroll events from the scroll area"""
+        # Update current page in PDF viewer
         self.pdf_viewer.update_current_page_from_scroll(value)
-        self.update_navigation()
+        
+        # Update current page in main window to match PDF viewer
+        if self.pdf_viewer.current_page != self.current_page:
+            self.current_page = self.pdf_viewer.current_page
+            # Update page display in toolbar
+            self.current_page_input.setText(str(self.current_page + 1))
+            self.update_navigation()
+            logger.debug(f"Page updated to {self.current_page + 1} from scroll")
 
 def main():
     try:
