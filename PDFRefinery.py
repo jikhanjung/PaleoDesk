@@ -9,8 +9,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QGridLayout, QStackedWidget, QFormLayout, QTextEdit,
                            QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem,
                            QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox, QToolTip)
-from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor, QBrush
+from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer, QEvent
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor, QBrush, QWheelEvent
 import fitz  # PyMuPDF
 import datetime
 import os
@@ -255,12 +255,13 @@ class PDFViewer(QWidget):
             # Create context menu
             menu = QMenu(self)
             
-            # Add "Change Block Type" submenu
-            change_type_menu = menu.addMenu("Change Block Type")
+            # Add "Change Block Type" as an enabled menu item without action
+            change_type_action = menu.addAction("Change Block Type")
+            change_type_action.triggered.connect(lambda: None)  # Connect to empty lambda
             
-            # Add block type actions
+            # Add category actions with indentation
             for element_type in self.ELEMENT_TYPES:
-                action = change_type_menu.addAction(element_type.capitalize())
+                action = menu.addAction("    " + element_type.capitalize())  # Add indentation
                 action.triggered.connect(lambda checked, t=element_type: self._change_element_type(clicked_box_id, self.hovered_box_page, t))
             
             # Add separator
@@ -276,6 +277,7 @@ class PDFViewer(QWidget):
     def _change_element_type(self, box_id, page_num, new_type):
         """Change the type of a element"""
         # Get the main window instance
+        logger.info(f"Changing element type to {new_type}")
         main_window = self.window()
         if not main_window or not hasattr(main_window, 'document_data'):
             return
@@ -301,6 +303,7 @@ class PDFViewer(QWidget):
                             main_window.structured_view.update_content(main_window.document_data['page_structures'])
                             #main_window.save_session()
                         break
+        logger.info(f"Changing element type to {new_type} finished")
 
     def _delete_element(self, box_id, page_num):
         """Delete an element from the document and update database"""
@@ -1503,10 +1506,29 @@ class ElementInfoDialog(QDialog):
 class StructuredContentView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.init_ui()
         self.current_doc = None  # Store current PDF document
+        self.pixmap_cache = {}  # Cache for item pixmaps
         logger.debug("StructuredContentView initialized")
+        self.init_ui()
         
+        # Install event filter for smooth scrolling
+        self.content_list.viewport().installEventFilter(self)
+        
+    def eventFilter(self, obj, event):
+        """Handle wheel events for smooth scrolling"""
+        if obj == self.content_list.viewport() and event.type() == QEvent.Type.Wheel:
+            # Reduce scroll speed by adjusting delta
+            scroll_factor = 0.4  # Adjust this value to control scroll speed (smaller = slower)
+            delta = event.angleDelta().y()
+            reduced_delta = int(delta * scroll_factor)
+            
+            # Scroll the viewport directly
+            scrollbar = self.content_list.verticalScrollBar()
+            scrollbar.setValue(scrollbar.value() - reduced_delta)
+            return True
+            
+        return super().eventFilter(obj, event)
+
     def init_ui(self):
         """Initialize the UI"""
         # Create main layout
@@ -1547,17 +1569,141 @@ class StructuredContentView(QWidget):
         self.content_list.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.content_list.setWrapping(False)  # Single column
         self.content_list.setFlow(QListWidget.Flow.TopToBottom)  # Vertical flow
+        
+        # Enable smooth pixel-based scrolling
+        self.content_list.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self.content_list.setHorizontalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        
         self.content_list.itemClicked.connect(self._handle_item_click)
         self.content_list.itemDoubleClicked.connect(self._show_element_info)
         
         layout.addWidget(self.content_list)
-        
         self.setLayout(layout)
         
         # Initialize with icon view
         self.current_view_mode = 'icon'
         self.switch_view_mode('icon')
         
+    def _get_cached_pixmap(self, item):
+        """Get or create a cached pixmap for an item"""
+        # Create a unique cache key using page number, id, and coordinates
+        coords = item.get('coordinates', [])
+        coord_str = ''
+        if coords and len(coords) >= 4:
+            coord_str = f"_{coords[0]['x']}_{coords[0]['y']}_{coords[2]['x']}_{coords[2]['y']}"
+        cache_key = f"{item['page']}_{item.get('id', '')}{coord_str}"
+        
+        if cache_key in self.pixmap_cache:
+            return self.pixmap_cache[cache_key]
+            
+        try:
+            page = self.current_doc[item['page'] - 1]  # Convert to 0-based index
+            zoom = 2  # Reduced zoom for better performance
+            matrix = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=matrix)
+            
+            # Convert to QImage
+            img = QImage(pix.samples, pix.width, pix.height, 
+                       pix.stride, QImage.Format.Format_RGB888)
+            
+            # Get coordinates
+            if coords and len(coords) >= 4:
+                # Convert relative coordinates to absolute
+                x1 = int(coords[0]['x'] * pix.width)
+                y1 = int(coords[0]['y'] * pix.height)
+                x2 = int(coords[2]['x'] * pix.width)
+                y2 = int(coords[2]['y'] * pix.height)
+                
+                # Clip the region
+                clipped_img = img.copy(x1, y1, x2 - x1, y2 - y1)
+                
+                # Create QPixmap and scale to reasonable size
+                pixmap = QPixmap.fromImage(clipped_img)
+                max_size = 400
+                pixmap = pixmap.scaled(max_size, max_size, 
+                                     Qt.AspectRatioMode.KeepAspectRatio,
+                                     Qt.TransformationMode.SmoothTransformation)
+                
+                # Cache the pixmap
+                self.pixmap_cache[cache_key] = pixmap
+                return pixmap
+        except Exception as e:
+            logger.error(f"Error creating image for item on page {item['page']}: {str(e)}")
+        
+        return None
+
+    def _update_icon_view(self, content_by_type):
+        """Update the icon view with content"""
+        self.content_list.clear()
+        
+        if not self.current_doc:
+            logger.warning("No PDF document available for icon view")
+            return
+            
+        # Flatten all items into a single list
+        all_items = []
+        for items in content_by_type.values():
+            all_items.extend(items)
+            
+        # Sort items by page number and position
+        all_items = self._sort_elements_by_position(all_items)
+        
+        # Add items in chronological order
+        for item in all_items:
+            # Create item widget
+            item_widget = QWidget()
+            item_layout = QVBoxLayout()
+            item_layout.setContentsMargins(5, 5, 5, 5)
+            
+            # Get cached pixmap
+            item_pixmap = self._get_cached_pixmap(item)
+            
+            if item_pixmap:
+                # Create image label
+                image_label = QLabel()
+                image_label.setPixmap(item_pixmap)
+                image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                item_layout.addWidget(image_label)
+            
+            # Add page number and type label
+            header_label = QLabel(f"Page {item['page']} - {item.get('type', 'Unknown')}")
+            header_label.setStyleSheet("font-weight: bold;")
+            item_layout.addWidget(header_label)
+            
+            # Show caption if available
+            if item['caption']:
+                caption_label = QLabel(item['caption'])
+                caption_label.setWordWrap(True)
+                caption_label.setStyleSheet("font-style: italic;")
+                item_layout.addWidget(caption_label)
+            
+            item_widget.setLayout(item_layout)
+            item_widget.setStyleSheet("border: 1px solid #ccc; padding: 5px;")
+            
+            # Store element data for double-click
+            item_widget.element_data = {
+                'type': item.get('type', 'Unknown'),
+                'page': item['page'],
+                'caption': item['caption'],
+                'content': item['content'],
+                'pixmap': item_pixmap
+            }
+            
+            # Create list item
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(item_widget.sizeHint())
+            self.content_list.addItem(list_item)
+            self.content_list.setItemWidget(list_item, item_widget)
+            
+            # Add spacing between items
+            spacer = QListWidgetItem()
+            spacer.setSizeHint(QSize(0, 10))
+            spacer.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.content_list.addItem(spacer)
+            
+            # Process events to keep UI responsive
+            QApplication.processEvents()
+    
     def _handle_item_click(self, item):
         """Handle single click on an item to scroll to the corresponding page"""
         # Get the main window instance
@@ -1764,7 +1910,7 @@ class StructuredContentView(QWidget):
                 if element_type in content_by_type:
                     # Find nearest caption
                     caption_element = self._find_nearest_caption(element, elements)
-                    logger.debug(f"Caption element: {caption_element}")
+                    #logger.debug(f"Caption element: {caption_element}")
                     caption = caption_element.get('content', {}).get('text', '') if caption_element else None
                     
                     # Try to get category from caption
@@ -1857,109 +2003,6 @@ class StructuredContentView(QWidget):
                 spacer.setSizeHint(QSize(0, 10))
                 spacer.setFlags(Qt.ItemFlag.NoItemFlags)
                 self.content_list.addItem(spacer)
-    
-    def _update_icon_view(self, content_by_type):
-        """Update the icon view with content"""
-        self.content_list.clear()
-        
-        if not self.current_doc:
-            logger.warning("No PDF document available for icon view")
-            return
-            
-        # Flatten all items into a single list
-        all_items = []
-        for items in content_by_type.values():
-            all_items.extend(items)
-            
-        # Sort items by page number and position
-        all_items = self._sort_elements_by_position(all_items)
-        
-        # Add items in chronological order
-        for item in all_items:
-            # Create item widget
-            item_widget = QWidget()
-            item_layout = QVBoxLayout()
-            item_layout.setContentsMargins(5, 5, 5, 5)
-            
-            # Get page pixmap
-            try:
-                page = self.current_doc[item['page'] - 1]  # Convert to 0-based index
-                zoom = 4  # Higher zoom for better quality (4x)
-                matrix = fitz.Matrix(zoom, zoom)
-                pix = page.get_pixmap(matrix=matrix)
-                
-                # Convert to QImage
-                img = QImage(pix.samples, pix.width, pix.height, 
-                           pix.stride, QImage.Format.Format_RGB888)
-                
-                # Get coordinates
-                coords = item['coordinates']
-                if coords and len(coords) >= 4:
-                    # Convert relative coordinates to absolute
-                    x1 = int(coords[0]['x'] * pix.width)
-                    y1 = int(coords[0]['y'] * pix.height)
-                    x2 = int(coords[2]['x'] * pix.width)
-                    y2 = int(coords[2]['y'] * pix.height)
-                    
-                    # Clip the region
-                    clipped_img = img.copy(x1, y1, x2 - x1, y2 - y1)
-                    
-                    # Create QPixmap and scale to reasonable size
-                    pixmap = QPixmap.fromImage(clipped_img)
-                    max_size = 400  # Increased maximum size for the image
-                    pixmap = pixmap.scaled(max_size, max_size, 
-                                         Qt.AspectRatioMode.KeepAspectRatio,
-                                         Qt.TransformationMode.SmoothTransformation)
-                    
-                    # Create image label
-                    image_label = QLabel()
-                    image_label.setPixmap(pixmap)
-                    image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    item_layout.addWidget(image_label)
-                    
-                    # Store pixmap for dialog
-                    item_pixmap = pixmap
-                else:
-                    item_pixmap = None
-            except Exception as e:
-                logger.error(f"Error creating image for item on page {item['page']}: {str(e)}")
-                item_pixmap = None
-            
-            # Add page number and type label
-            header_label = QLabel(f"Page {item['page']} - {item.get('type', 'Unknown')}")
-            header_label.setStyleSheet("font-weight: bold;")
-            item_layout.addWidget(header_label)
-            
-            # Show caption if available
-            if item['caption']:
-                caption_label = QLabel(item['caption'])
-                caption_label.setWordWrap(True)
-                caption_label.setStyleSheet("font-style: italic;")
-                item_layout.addWidget(caption_label)
-            
-            item_widget.setLayout(item_layout)
-            item_widget.setStyleSheet("border: 1px solid #ccc; padding: 5px;")
-            
-            # Store element data for double-click
-            item_widget.element_data = {
-                'type': item.get('type', 'Unknown'),
-                'page': item['page'],
-                'caption': item['caption'],
-                'content': item['content'],
-                'pixmap': item_pixmap
-            }
-            
-            # Create list item
-            list_item = QListWidgetItem()
-            list_item.setSizeHint(item_widget.sizeHint())
-            self.content_list.addItem(list_item)
-            self.content_list.setItemWidget(list_item, item_widget)
-            
-            # Add spacing between items
-            spacer = QListWidgetItem()
-            spacer.setSizeHint(QSize(0, 10))
-            spacer.setFlags(Qt.ItemFlag.NoItemFlags)
-            self.content_list.addItem(spacer)
     
     def _clear_grid(self):
         """Clear the grid layout"""
@@ -3137,7 +3180,7 @@ class MainWindow(QMainWindow):
             
             # Load page structures
             page_structures = dict(self.document_data.get('page_structures', {}))
-            logger.debug(f"Loaded page structures: {page_structures}")
+            #logger.debug(f"Loaded page structures: {page_structures}")
             
             # Load and merge structured elements
             elements = (StructuredElement
