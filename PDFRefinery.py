@@ -3324,19 +3324,20 @@ class MainWindow(QMainWindow):
             self.pdf_viewer.display_all_pages()
             logger.debug(f"Displaying page {self.current_page}")
 
-            # Get the page structure if it exists
-            if str(self.current_page) in self.document_data['page_structures']:
-                structure = self.document_data['page_structures'][str(self.current_page)]
-                # Extract bounding boxes from structure
-                boxes = structure.get('structure', {}).get('elements', [])
-                self.pdf_viewer.set_bounding_boxes(boxes)
-                logger.debug(f"Setting bounding boxes for page {self.current_page}: {len(boxes)} boxes")
+            # Set bounding boxes for all pages
+            if 'page_structures' in self.document_data:
+                all_boxes = {}
+                for page_num, structure in self.document_data['page_structures'].items():
+                    boxes = structure.get('structure', {}).get('elements', [])
+                    all_boxes[int(page_num)] = boxes
+                self.pdf_viewer.set_bounding_boxes(all_boxes)
+                logger.debug(f"Setting bounding boxes for all pages: {len(all_boxes)} pages")
                 
                 # Update structured content view
                 self.structured_view.update_content(self.document_data['page_structures'])
             else:
-                self.pdf_viewer.set_bounding_boxes([])
-                logger.debug(f"No structure found for page {self.current_page}")
+                self.pdf_viewer.set_bounding_boxes({})
+                logger.debug("No page structures found")
             
             # Update page number display
             self.current_page_input.setText(str(self.current_page + 1))
