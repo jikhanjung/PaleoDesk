@@ -171,6 +171,7 @@ class PreferencesDialog(QDialog):
 class PDFViewer(QWidget):
     # Add signal for wheel events
     wheel_scrolled = pyqtSignal(int)  # Signal to emit the scroll amount
+    currentPageChanged = pyqtSignal(int)  # Signal to emit the new current page (0-based)
     
     # Define element types and their colors as class variables
     ELEMENT_TYPES = ['text', 'figure', 'table', 'picture', 'caption', 'footnote', 'page header', 'page footer', 'section header', 'list item']
@@ -493,31 +494,31 @@ class PDFViewer(QWidget):
             self.page_loading = False
 
     def update_current_page(self):
-        """Update the current page display"""
-        if not self.pdf_documentor or self.current_page >= self.total_pages:
-            self.pixmap = None
-            self.current_page_width = 0
-            self.current_page_height = 0
+        """Update current page based on visible area"""
+        if not self.page_pixmaps:
             return
-        
-        # Load the page if not already loaded
-        if self.current_page not in self.loaded_pages:
-            self.load_page(self.current_page)
-        
-        # Get the page pixmap from cache
-        if self.current_page in self.page_pixmaps:
-            page_data = self.page_pixmaps[self.current_page]
-            self.pixmap = page_data['pixmap']
-            self.current_page_width = page_data['width']
-            self.current_page_height = page_data['height']
-            
-            # Start loading next pages if we're near the end of loaded pages
-            if self.current_page >= max(self.loaded_pages) - 1:
-                self.load_next_pages()
-        else:
-            self.pixmap = None
-            self.current_page_width = 0
-            self.current_page_height = 0
+        logger.debug(f"[PDFViewer] update_current_page: pan_offset={self.pan_offset.y()}")
+        # Get the actual viewport height from the parent QScrollArea
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'pdf_scroll'):
+            return
+        viewport_height = main_window.pdf_scroll.viewport().height()
+        # Calculate which page is most visible in the viewport
+        viewport_center = -self.pan_offset.y() + viewport_height / 2
+        current_y = 0
+        logger.debug(f"[PDFViewer] update_current_page: viewport_center={viewport_center}, current_page={self.current_page}")
+        # Get page heights from loaded pages
+        page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
+        # Find the page that contains the viewport center
+        for i, height in enumerate(page_heights):
+            page_bottom = current_y + height
+            if current_y <= viewport_center < page_bottom:
+                if self.current_page != i:
+                    logger.info(f"[PDFViewer] Changing current_page from {self.current_page} to {i} (emitting currentPageChanged)")
+                    self.current_page = i
+                    self.currentPageChanged.emit(self.current_page)
+                break
+            current_y = page_bottom
 
     def scroll_to_page(self, page_num):
         """Scroll to a specific page"""
@@ -527,11 +528,14 @@ class PDFViewer(QWidget):
             self.update()
 
     def set_current_page(self, page_num):
-        """Set the current page number"""
-        if 0 <= page_num < self.total_pages:
+        """Set the current page and scroll to it"""
+        if self.pdf_document and 0 <= page_num < len(self.pdf_document):
+            logger.info(f"[PDFViewer] set_current_page: {page_num}")
             self.current_page = page_num
-            self.update_current_page()
-            self.update()
+            self.display_all_pages()
+            self.scroll_to_page(page_num)
+            logger.debug(f"Set current page to {page_num + 1}")
+            self.currentPageChanged.emit(self.current_page)
 
     def paintEvent(self, event):
         """Handle painting of the widget"""
@@ -1025,29 +1029,26 @@ class PDFViewer(QWidget):
         """Update current page based on visible area"""
         if not self.page_pixmaps:
             return
-        logger.debug(f"Updating current page from pan_offset: {self.pan_offset.y()}")
-            
+        logger.debug(f"[PDFViewer] update_current_page: pan_offset={self.pan_offset.y()}")
         # Get the actual viewport height from the parent QScrollArea
         main_window = self.window()
         if not main_window or not hasattr(main_window, 'pdf_scroll'):
             return
         viewport_height = main_window.pdf_scroll.viewport().height()
-            
         # Calculate which page is most visible in the viewport
         viewport_center = -self.pan_offset.y() + viewport_height / 2
         current_y = 0
-        logger.debug(f"Viewport center: {viewport_center}, current_page: {self.current_page}")
-        
+        logger.debug(f"[PDFViewer] update_current_page: viewport_center={viewport_center}, current_page={self.current_page}")
         # Get page heights from loaded pages
         page_heights = [page_data['height'] for page_data in self.page_pixmaps.values()]
-        
         # Find the page that contains the viewport center
         for i, height in enumerate(page_heights):
             page_bottom = current_y + height
             if current_y <= viewport_center < page_bottom:
                 if self.current_page != i:
+                    logger.info(f"[PDFViewer] Changing current_page from {self.current_page} to {i} (emitting currentPageChanged)")
                     self.current_page = i
-                    logger.debug(f"Current page updated to {i + 1}")
+                    self.currentPageChanged.emit(self.current_page)
                 break
             current_y = page_bottom
 
@@ -1104,10 +1105,12 @@ class PDFViewer(QWidget):
     def set_current_page(self, page_num):
         """Set the current page and scroll to it"""
         if self.pdf_document and 0 <= page_num < len(self.pdf_document):
+            logger.info(f"[PDFViewer] set_current_page: {page_num}")
             self.current_page = page_num
             self.display_all_pages()
             self.scroll_to_page(page_num)
             logger.debug(f"Set current page to {page_num + 1}")
+            self.currentPageChanged.emit(self.current_page)
 
     def update_current_page_from_scroll(self, scroll_value):
         """Update current page based on scroll position"""
@@ -1137,8 +1140,9 @@ class PDFViewer(QWidget):
             
             if current_height <= viewport_center < page_bottom:
                 if self.current_page != i:
+                    logger.info(f"[PDFViewer] Changing current_page from {self.current_page} to {i} (emitting currentPageChanged)")
                     self.current_page = i
-                    logger.debug(f"Current page updated to {i + 1}")
+                    self.currentPageChanged.emit(self.current_page)
                 break
             current_height = page_bottom
 
@@ -2066,6 +2070,20 @@ class StructuredContentView(QWidget):
         dialog = ElementInfoDialog(widget.element_data, self)
         dialog.exec()
 
+    def scroll_to_page_element(self, page_num):
+        """Scroll to the first element for the given 0-based page number (page_num)"""
+        # Elements in content_list are added in _update_icon_view/_update_list_view
+        # We need to find the first item whose element_data['page'] == page_num+1
+        for i in range(self.content_list.count()):
+            item = self.content_list.item(i)
+            widget = self.content_list.itemWidget(item)
+            if widget and hasattr(widget, 'element_data'):
+                element_page = widget.element_data.get('page')
+                if element_page == page_num + 1:
+                    self.content_list.scrollToItem(item, QListWidget.ScrollHint.PositionAtCenter)
+                    self.content_list.setCurrentItem(item)
+                    break
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -2163,6 +2181,9 @@ class MainWindow(QMainWindow):
 
         # Initialize collection items cache
         self.collection_items_cache = {}
+
+        # Connect PDFViewer page change to StructuredContentView scroll
+        self.pdf_viewer.currentPageChanged.connect(self.structured_view.scroll_to_page_element)
 
     def init_database(self):
         """Initialize the database"""
