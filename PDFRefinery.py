@@ -538,68 +538,67 @@ class PDFViewer(QWidget):
             self.currentPageChanged.emit(self.current_page)
 
     def paintEvent(self, event):
-        """Handle painting of the widget"""
+        """Handle painting of the widget (optimized: only paint current_page-1, current_page, current_page+1)"""
         if not self.page_pixmaps:
             return
-            
+        
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Draw pages
+        # Only paint current_page-1, current_page, current_page+1
+        pages_to_paint = [self.current_page - 1, self.current_page, self.current_page + 1]
         current_y = 0
-        for page_num, page_data in self.page_pixmaps.items():
-            pixmap = page_data['pixmap']
-            height = page_data['height']
-            
-            # Calculate scaling to fit width while maintaining aspect ratio
+        for page_num in sorted(self.page_pixmaps.keys()):
+            if page_num not in pages_to_paint:
+                # Calculate height for skipped pages to keep layout
+                pixmap = self.page_pixmaps[page_num]['pixmap']
+                height = self.page_pixmaps[page_num]['height']
+                scale = self.width() / pixmap.width()
+                scaled_height = int(height * scale)
+                current_y += scaled_height
+                continue
+            # Ensure the page is loaded
+            if page_num not in self.page_pixmaps:
+                self.load_page(page_num)
+                if page_num not in self.page_pixmaps:
+                    continue  # Still not loaded, skip
+            pixmap = self.page_pixmaps[page_num]['pixmap']
+            height = self.page_pixmaps[page_num]['height']
             scale = self.width() / pixmap.width()
-            scaled_height = int(height * scale)  # Convert to int
-            
+            scaled_height = int(height * scale)
             # Draw the page
             painter.drawPixmap(0, int(current_y), pixmap.scaled(self.width(), scaled_height, 
-                                                          Qt.AspectRatioMode.KeepAspectRatio,
-                                                          Qt.TransformationMode.SmoothTransformation))
-            
+                                                      Qt.AspectRatioMode.KeepAspectRatio,
+                                                      Qt.TransformationMode.SmoothTransformation))
             # Draw bounding boxes if enabled
             if self.show_bounding_boxes and self.bounding_boxes:
-                # Get boxes for current page
                 page_boxes = self.bounding_boxes.get(page_num, [])
                 for element in page_boxes:
                     if 'coordinates' in element:
                         coords = element['coordinates']
-                        if len(coords) == 4:  # Ensure we have all 4 corners
-                            # Scale coordinates to match displayed page
+                        if len(coords) == 4:
                             x1 = int(coords[0]['x'] * self.width())
                             y1 = int(coords[0]['y'] * scaled_height + current_y)
                             x2 = int(coords[2]['x'] * self.width())
                             y2 = int(coords[2]['y'] * scaled_height + current_y)
-                            
-                            # Get category and corresponding color
                             category = element.get('category', 'text').lower() 
                             category_text = category+ " " + str(page_num) + "-" + str(element.get('id', ''))
-                            color = self.ELEMENT_COLORS.get(category, QColor(255, 0, 0, 64))  # red with alpha as default
-                            
-                            # Draw the rectangle with 2-pixel width and semi-transparent fill
+                            color = self.ELEMENT_COLORS.get(category, QColor(255, 0, 0, 64))
                             pen = QPen(color, 2)
                             painter.setPen(pen)
                             color.setAlpha(64)
                             painter.setBrush(color)
                             painter.drawRect(x1, y1, x2 - x1, y2 - y1)
-                            
-                            # Draw category label with semi-transparent background
                             label_color = color
-                            label_color.setAlpha(128)  # Slightly more opaque for better text readability
+                            label_color.setAlpha(128)
                             painter.setPen(Qt.GlobalColor.black)
                             painter.setBrush(label_color)
-                            # Draw a small rectangle for the label background
                             label_rect = painter.boundingRect(x1, y1 - 20, 100, 20, 
                                                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                                                             category_text)
                             painter.drawRect(label_rect)
                             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, category_text)
-            
             current_y += scaled_height
-            
         # Draw element creation rectangle if in progress
         if self.creating_element and self.element_start_pos is not None and self.element_current_pos is not None:
             painter.setPen(QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.DashLine))
@@ -1114,8 +1113,8 @@ class PDFViewer(QWidget):
 
     def update_current_page_from_scroll(self, scroll_value):
         """Update current page based on scroll position"""
-        if not self.bounding_boxes:
-            return
+        #if not self.bounding_boxes:
+        #    return
         logger.debug(f"Updating current page from scroll: {scroll_value}")
             
         # Get the actual viewport height from the parent QScrollArea
@@ -1220,6 +1219,7 @@ class PDFViewer(QWidget):
 
     def load_page(self, page_num):
         """Load a single page and cache its pixmap"""
+        logger.debug(f"[PDFViewer] load_page: {page_num}")
         if page_num in self.loaded_pages or page_num >= len(self.pdf_document):
             return
         
@@ -3351,14 +3351,11 @@ class MainWindow(QMainWindow):
             self.current_page += 1
             self.pdf_viewer.current_page = self.current_page
             self.pdf_viewer.display_all_pages()
-            
             # Get the current scroll position
             scroll_bar = self.pdf_scroll.verticalScrollBar()
             current_pos = scroll_bar.value()
-            
             # Calculate the height of one page
-            page_height = self.pdf_viewer.page_pixmaps[str(self.current_page)]['height']
-            
+            page_height = self.pdf_viewer.page_pixmaps[self.current_page]['height']
             # Scroll down by one page height
             scroll_bar.setValue(current_pos + page_height)
             self.update_navigation()
@@ -4148,8 +4145,10 @@ class MainWindow(QMainWindow):
 
     def handle_scroll(self, value):
         """Handle scroll events from the scroll area"""
+        logger.debug(f"[MainWindow] handle_scroll: value={value}")
         # Update current page in PDF viewer
         self.pdf_viewer.update_current_page_from_scroll(value)
+        logger.debug(f"[MainWindow] handle_scroll: current_page={self.pdf_viewer.current_page} {self.current_page}")
         
         # Update current page in main window to match PDF viewer
         if self.pdf_viewer.current_page != self.current_page:
