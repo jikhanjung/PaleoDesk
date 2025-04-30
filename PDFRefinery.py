@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QComboBox, QRadioButton, QButtonGroup, QTabWidget,
                            QGridLayout, QStackedWidget, QFormLayout, QTextEdit,
                            QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem,
-                           QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox, QToolTip)
+                           QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox, QToolTip,
+                           QStyle)
 from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer, QEvent
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor, QBrush, QWheelEvent
 import fitz  # PyMuPDF
@@ -2761,7 +2762,6 @@ class MainWindow(QMainWindow):
     def analyze_pdf(self, file_path, force_analysis=False):
         """Analyze the PDF file and store results in the database."""
         try:
-
             file_hash = None
             zotero_key = None
             zotero_key = self.get_zotero_key_for_current_file()
@@ -2965,6 +2965,24 @@ class MainWindow(QMainWindow):
                             
                             # Auto-save session after analysis
                             self.save_session()
+                            
+                            # Update document in database with analysis timestamp
+                            with db:
+                                document.last_analyzed = datetime.datetime.now()
+                                document.save()
+                            
+                            # Update icon in tree
+                            current_item = self.items_tree.currentItem()
+                            if current_item and hasattr(current_item, 'zotero_key'):
+                                icon = self.get_analysis_status_icon(current_item.zotero_key)
+                                if icon:  # Only set icon if not None
+                                    current_item.setIcon(0, icon)
+                                # If item has a parent, update parent icon too
+                                parent = current_item.parent()
+                                if parent and hasattr(parent, 'zotero_key'):
+                                    icon = self.get_analysis_status_icon(parent.zotero_key)
+                                    if icon:  # Only set icon if not None
+                                        parent.setIcon(0, icon)
                             
                             # Show completion message
                             analyzed_pages = len(page_elements)
@@ -3700,6 +3718,16 @@ class MainWindow(QMainWindow):
                         if parent_key:
                             pdf_item.parent_zotero_key = parent_key
                         
+                        # Set the analysis status icon for the PDF item
+                        icon = self.get_analysis_status_icon(zotero_key)
+                        if icon:  # Only set icon if not None
+                            pdf_item.setIcon(0, icon)
+                        
+                        # If there's a parent item, update its icon based on all child PDFs
+                        if parent_item is not None:
+                            # Don't set parent icon here - it will be handled by the cache display
+                            pass
+ 
                         # Save document to database only if it doesn't exist
                         try:
                             with db:
@@ -3773,6 +3801,9 @@ class MainWindow(QMainWindow):
                         'children': []
                     }
                     
+                    # Track if any child has been analyzed
+                    any_child_analyzed = False
+                    
                     # Add PDF attachments as children
                     for attachment in attachments_by_parent[item_id]:
                         try:
@@ -3792,8 +3823,17 @@ class MainWindow(QMainWindow):
                                 }
                                 parent_item_data['children'].append(child_item_data)
                                 
+                                # Check if this child is analyzed
+                                icon = self.get_analysis_status_icon(zotero_key)
+                                if icon:
+                                    any_child_analyzed = True
+                                
                         except Exception as e:
                             logger.error(f"Error processing attachment {zotero_key}: {str(e)}")
+                    
+                    # Set parent icon if any child is analyzed
+                    if any_child_analyzed:
+                        parent_item.setIcon(0, self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
                     
                     collection_items.append(parent_item_data)
             
@@ -3859,6 +3899,7 @@ class MainWindow(QMainWindow):
                 self.items_tree.addTopLevelItem(parent_item)
                 
                 # Add children if any
+                any_child_analyzed = False
                 for child_data in item_data.get('children', []):
                     child_item = QTreeWidgetItem(parent_item)
                     child_item.setText(0, child_data['text'])
@@ -3867,6 +3908,15 @@ class MainWindow(QMainWindow):
                         child_item.parent_zotero_key = child_data['parent_zotero_key']
                     if 'file_path' in child_data:
                         child_item.file_path = child_data['file_path']
+                    # Set child icon based on analysis status
+                    icon = self.get_analysis_status_icon(child_data['zotero_key'])
+                    if icon:  # Only set icon if not None
+                        child_item.setIcon(0, icon)
+                        any_child_analyzed = True
+                
+                # Set parent icon if any child is analyzed
+                if any_child_analyzed and 'zotero_key' in item_data:
+                    parent_item.setIcon(0, self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
             
             self.status_label.showMessage("Loaded collection items from cache", 3000)
             logger.debug(f"Displayed cached items for collection {collection_id}")
@@ -4172,6 +4222,35 @@ class MainWindow(QMainWindow):
             self.current_page_input.setText(str(self.current_page + 1))
             self.update_navigation()
             logger.debug(f"Page updated to {self.current_page + 1} from scroll")
+
+    def get_analysis_status_icon(self, zotero_key):
+        """Get the appropriate icon for the document's analysis status"""
+        try:
+            with db:
+                try:
+                    document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                    
+                    # Check if document has been analyzed
+                    if document.last_analyzed:
+                        return self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
+                    
+                    # Check if document has session data
+                    session = (SessionData
+                             .select()
+                             .where(SessionData.document == document)
+                             .order_by(SessionData.last_accessed.desc())
+                             .first())
+                    
+                    if session:
+                        return self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
+                    
+                    return None  # No icon for unanalyzed documents
+                except DoesNotExist:
+                    return None  # No icon for documents not in database
+        except Exception as e:
+            logger.error(f"Error getting analysis status icon: {str(e)}")
+            return None  # No icon on error
+
 
 def main():
     try:
