@@ -2156,12 +2156,9 @@ class MainWindow(QMainWindow):
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.setCentralWidget(main_splitter)
         
-        # Add library dock to main splitter
-        main_splitter.addWidget(self.library_dock)
-        
         # Create right panel splitter
-        right_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_splitter.addWidget(right_splitter)
+        self.right_splitter = QSplitter(Qt.Orientation.Horizontal)  # Made it a member variable
+        main_splitter.addWidget(self.right_splitter)
         
         # Create PDF viewer with scroll area
         self.pdf_scroll = QScrollArea()
@@ -2184,18 +2181,49 @@ class MainWindow(QMainWindow):
         pdf_layout.addWidget(self.pdf_viewer)
         
         self.pdf_scroll.setWidget(pdf_container)
-        right_splitter.addWidget(self.pdf_scroll)
+        self.right_splitter.addWidget(self.pdf_scroll)
         
         # Create structured content view with scroll area
-        content_scroll = QScrollArea()
-        content_scroll.setWidgetResizable(True)
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setWidgetResizable(True)
         self.structured_view = StructuredContentView()
-        content_scroll.setWidget(self.structured_view)
-        right_splitter.addWidget(content_scroll)
+        self.content_scroll.setWidget(self.structured_view)
+        self.right_splitter.addWidget(self.content_scroll)
+        
+        # Create dummy widget
+        self.dummy_widget = QWidget()
+        dummy_layout = QVBoxLayout(self.dummy_widget)
+        dummy_label = QLabel("Dummy Content")
+        dummy_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        dummy_layout.addWidget(dummy_label)
+        self.right_splitter.addWidget(self.dummy_widget)
+        self.dummy_widget.hide()
+        
+        # Create toggle button for dummy widget
+        self.dummy_toggle_btn = QPushButton("◀", self)
+        self.dummy_toggle_btn.setFixedSize(20, 200)  # Tall and narrow button
+        self.dummy_toggle_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 2px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        self.dummy_toggle_btn.clicked.connect(self.toggle_dummy_widget)
+        self.dummy_toggle_btn.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)  # Keep button on top
+        self.dummy_toggle_btn.raise_()  # Ensure button is on top
+        self.dummy_toggle_btn.show()
+        logger.debug("Created dummy toggle button")
         
         # Set initial splitter sizes (40% for library, 30% for PDF, 30% for content)
         main_splitter.setSizes([400, 800])
-        right_splitter.setSizes([400, 400])
+        # Set right splitter sizes to give more space to PDF viewer and content view
+        self.right_splitter.setSizes([400, 400, 400])  # Adjusted sizes for better proportions
         
         self.create_toolbar()
         self.create_menu()
@@ -2209,6 +2237,12 @@ class MainWindow(QMainWindow):
 
         # Connect PDFViewer page change to StructuredContentView scroll
         self.pdf_viewer.currentPageChanged.connect(self.structured_view.scroll_to_page_element)
+
+        # Show the toggle buttons
+        self.library_toggle_btn.show()
+        self.update_library_toggle_button_position()
+        self.update_dummy_toggle_button_position()
+        logger.debug("Initialized toggle buttons")
 
     def init_database(self):
         """Initialize the database"""
@@ -2267,7 +2301,85 @@ class MainWindow(QMainWindow):
         # Add the dock widget to the main window
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.library_dock)
         
+        # Create toggle button for library dock
+        self.library_toggle_btn = QPushButton("◀", self)
+        self.library_toggle_btn.setFixedSize(20, 200)  # Tall and narrow button
+        self.library_toggle_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 2px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        self.library_toggle_btn.clicked.connect(self.toggle_library_dock)
+        self.library_toggle_btn.raise_()  # Ensure button is on top
+        self.library_toggle_btn.show()
+        
+        # Position the buttons
+        self.update_library_toggle_button_position()
+        
         logger.info("Directory tree widgets created with splitter")
+
+    def toggle_library_dock(self):
+        """Toggle the visibility of the library dock"""
+        if self.library_dock.isVisible():
+            self.library_dock.hide()
+            self.library_toggle_btn.setText("▶")
+        else:
+            self.library_dock.show()
+            self.library_toggle_btn.setText("◀")
+        self.update_library_toggle_button_position()
+
+    def update_library_toggle_button_position(self):
+        """Update the position of the library toggle button"""
+        if not hasattr(self, 'library_toggle_btn') or not self.library_toggle_btn:
+            return
+            
+        # Always position at the left edge of the window
+        x = 0
+        y = (self.height() - self.library_toggle_btn.height()) // 2
+            
+        self.library_toggle_btn.move(x, y)
+        self.library_toggle_btn.raise_()  # Ensure button is on top
+        self.library_toggle_btn.show()
+
+    def update_dummy_toggle_button_position(self):
+        """Update the position of the dummy toggle button"""
+        logger.debug("Updating dummy toggle button position")
+        if not hasattr(self, 'dummy_toggle_btn') or not self.dummy_toggle_btn:
+            logger.debug("Dummy toggle button not initialized")
+            return
+            
+        # Always position at the right edge of the window
+        x = self.width() - self.dummy_toggle_btn.width()
+        y = (self.height() - self.dummy_toggle_btn.height()) // 2
+        logger.debug(f"Window size: {self.width()}x{self.height()}")
+            
+        self.dummy_toggle_btn.move(x, y)
+        self.dummy_toggle_btn.raise_()  # Ensure button is on top
+        self.dummy_toggle_btn.show()
+        logger.debug(f"Moved dummy toggle button to MainWindow position ({x}, {y})")
+
+    def toggle_dummy_widget(self):
+        """Toggle the visibility of the dummy widget"""
+        if self.dummy_widget.isVisible():
+            self.dummy_widget.hide()
+            self.dummy_toggle_btn.setText("◀")
+        else:
+            self.dummy_widget.show()
+            self.dummy_toggle_btn.setText("▶")
+        self.update_dummy_toggle_button_position()
+
+    def resizeEvent(self, event):
+        """Handle window resize events"""
+        super().resizeEvent(event)
+        self.update_library_toggle_button_position()
+        self.update_dummy_toggle_button_position()
 
     def collection_clicked(self, item, column):
         """Handle click on collection item"""
