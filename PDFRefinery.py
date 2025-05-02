@@ -2530,14 +2530,6 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logger.error(f"Error loading session data: {str(e)}")
 
-    def load_document_from_database(self, file_path, zotero_key):
-        """Load a PDF file and try to load its analysis from database"""
-        self.current_file_path = file_path
-        self.current_file_directory = os.path.dirname(file_path)
-        self.pdf_document= fitz.open(file_path)
-        self.current_page = 0
-        self.pdf_viewer.current_page = 0
-        
 
     def set_bounding_boxes(self, boxes):
         """Set bounding boxes for all pages"""
@@ -2883,13 +2875,16 @@ class MainWindow(QMainWindow):
             else:
                 file_hash = None
 
+            session = False
             document = self.load_document_from_database(self.current_file_path, zotero_key, file_hash)
+            logger.info(f"document {document}")
 
-            session = (SessionData
-                        .select()
-                        .where(SessionData.document == document)
-                        .order_by(SessionData.last_accessed.desc())
-                        .first())
+            if document:
+                session = (SessionData
+                            .select()
+                            .where(SessionData.document == document)
+                            .order_by(SessionData.last_accessed.desc())
+                            .first())
             
             if session and not force_analysis:
                 # Load session data
@@ -2948,7 +2943,9 @@ class MainWindow(QMainWindow):
                 low_text_pages = sum(1 for count in page_char_counts.values() if count < 50)
                 need_ocr = (avg_chars_per_page < 100 or 
                            (low_text_pages / len(page_char_counts) > 0.5))
-                
+
+                logger.info(f"need_ocr {need_ocr} document {document}")
+
                 if need_ocr:
                     logger.info(f"Low text content detected in PyMuPDF extraction (avg {avg_chars_per_page:.1f} chars/page), proceeding with OCR")
                     
@@ -2991,6 +2988,8 @@ class MainWindow(QMainWindow):
                 else:
                     logger.info("Sufficient text content found in PDF, proceeding with layout analysis")
                     analysis_file = file_path
+
+                logger.info(f"Going to do layout analysis for document {document}")
                 
                 # Perform layout analysis
                 with open(analysis_file, 'rb') as pdf_file:
@@ -3079,6 +3078,7 @@ class MainWindow(QMainWindow):
                             self.save_session()
                             
                             # Update document in database with analysis timestamp
+                            logger.info(f"Updating document {document} in database with analysis timestamp")
                             with db:
                                 document.last_analyzed = datetime.datetime.now()
                                 document.save()
@@ -3173,6 +3173,7 @@ class MainWindow(QMainWindow):
 
     def load_document_from_database(self, file_path, zotero_key=None, file_hash=None):
         """Load document from database for a given file"""
+        logger.info(f"Loading document from database for {file_path} zotero_key {zotero_key} file_hash {file_hash}")
         try:
 
             with db:
@@ -3200,11 +3201,15 @@ class MainWindow(QMainWindow):
 
     def get_zotero_key_for_current_file(self):
         """Get Zotero key for the current file"""
+        logger.info(f"Getting Zotero key for current file")
         try:
             current_item = self.items_tree.currentItem()
+            logger.info(f"Current item: {current_item}")
             if current_item and hasattr(current_item, 'zotero_key'):
+                logger.info(f"Found Zotero key for current file: {current_item.zotero_key}")
                 return current_item.zotero_key
             else:
+                logger.info(f"No Zotero key found for current file")
                 return None
         except Exception as e:
             logger.error(f"Error getting Zotero key for current file: {str(e)}")
