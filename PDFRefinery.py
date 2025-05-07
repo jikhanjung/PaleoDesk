@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QGridLayout, QStackedWidget, QFormLayout, QTextEdit,
                            QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem,
                            QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox, QToolTip,
-                           QStyle)
+                           QStyle, QColorDialog)
 from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer, QEvent
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor, QBrush, QWheelEvent
 import fitz  # PyMuPDF
@@ -188,6 +188,7 @@ class PDFViewer(QWidget):
         self.current_page_height = 0  # Add current page height
         self.hovered_box = None  # Track currently hovered bounding box
         self.hovered_box_page = None  # Track page number of hovered box
+        self.selected_boxes = set()  # Track selected boxes (set of (page_num, box_id) tuples)
         # Add these new instance variables
         self.dragging_box = None  # Currently dragged box
         self.drag_start_pos = None  # Mouse position when drag started
@@ -216,142 +217,7 @@ class PDFViewer(QWidget):
         palette = self.palette()
         palette.setColor(self.backgroundRole(), Qt.GlobalColor.white)
         self.setPalette(palette)
-        
-    def contextMenuEvent(self, event):
-        """Handle right-click context menu"""
-        # Get the main window instance
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'document_data'):
-            return
-            
-        # Use the hovered box information from mouseMoveEvent
-        if self.hovered_box and self.hovered_box_page is not None:
-            clicked_box = self.hovered_box
-            clicked_box_id = clicked_box.get('id')
-            logger.info(f"clicked_box: {clicked_box}, clicked_box_id: {clicked_box_id}, clicked_box_page: {self.hovered_box_page}")
-            
-            # Create context menu
-            menu = QMenu(self)
-            
-            # Add "Change Block Type" as an enabled menu item without action
-            change_type_action = menu.addAction("Change Block Type")
-            change_type_action.triggered.connect(lambda: None)  # Connect to empty lambda
-            
-            # Add category actions with indentation
-            for element_type in self.ELEMENT_TYPES:
-                action = menu.addAction("    " + element_type.capitalize())  # Add indentation
-                action.triggered.connect(lambda checked, t=element_type: self._change_element_type(clicked_box_id, self.hovered_box_page, t))
-            
-            # Add separator
-            menu.addSeparator()
-            
-            # Add delete action
-            delete_action = menu.addAction("Delete")
-            delete_action.triggered.connect(lambda: self._delete_element(clicked_box_id, self.hovered_box_page))
-            
-            # Show menu at cursor position
-            menu.exec(event.globalPos())
     
-    def _change_element_type(self, box_id, page_num, new_type):
-        """Change the type of a element"""
-        # Get the main window instance
-        logger.info(f"Changing element type to {new_type}")
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'document_data'):
-            return
-            
-        # Update the element type in document_data
-        page_key = str(page_num)
-        if page_key in main_window.document_data['page_structures']:
-            page_structure = main_window.document_data['page_structures'][page_key]
-            if 'structure' in page_structure and 'elements' in page_structure['structure']:
-                elements = page_structure['structure']['elements']
-                for element in elements:
-                    logger.info(f"page: {page_num}, element_id: {element.get('id')}, box_id: {box_id}")
-                    if element.get('id') == box_id:
-                        old_type = element.get('category', '')
-                        element['category'] = new_type
-                        logger.info(f"Changed element {box_id} type from {old_type} to {new_type}")
-                        
-                        # Save the element to database
-                        self.save_element(page_num, box_id)
-                        
-                        # Update the structured content view
-                        if hasattr(main_window, 'structured_view'):
-                            main_window.structured_view.update_content(main_window.document_data['page_structures'])
-                            #main_window.save_session()
-                        break
-        logger.info(f"Changing element type to {new_type} finished")
-
-    def _delete_element(self, box_id, page_num):
-        """Delete an element from the document and update database"""
-        # Get the main window instance
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'document_data'):
-            return
-            
-        # Remove the element from document_data
-        page_key = str(page_num)
-        if page_key in main_window.document_data['page_structures']:
-            page_structure = main_window.document_data['page_structures'][page_key]
-            if 'structure' in page_structure and 'elements' in page_structure['structure']:
-                elements = page_structure['structure']['elements']
-                deleted_index = None
-                
-                # Find and remove the element
-                for i, element in enumerate(elements):
-                    if element.get('id') == box_id:
-                        deleted_index = i
-                        elements.pop(i)
-                        logger.info(f"Deleted element {box_id} from page {page_num}")
-                        break
-                
-                if deleted_index is not None:
-                    # Adjust element IDs for remaining elements
-                    for i in range(deleted_index, len(elements)):
-                        elements[i]['id'] = str(i)
-                        logger.info(f"Adjusted element ID from {i+1} to {i}")
-                    
-                    # Update the structured content view
-                    if hasattr(main_window, 'structured_view'):
-                        main_window.structured_view.update_content(main_window.document_data['page_structures'])
-                    
-                    # Update database
-                    try:
-                        # Get the document from the database
-                        zotero_key = main_window.get_zotero_key_for_current_file()
-                        file_hash = None
-                        if not zotero_key:
-                            file_hash = main_window.calculate_file_hash(main_window.current_file_path)
-                        document = main_window.load_document_from_database(main_window.current_file_path, zotero_key, file_hash)
-                        
-                        if document:
-                            # Delete the element from StructuredElement table
-                            StructuredElement.delete().where(
-                                (StructuredElement.document == document) &
-                                (StructuredElement.page_number == page_num) &
-                                (StructuredElement.element_id == box_id)
-                            ).execute()
-                            
-                            # Update remaining elements in StructuredElement table
-                            for i in range(deleted_index, len(elements)):
-                                element = elements[i]
-                                StructuredElement.update(
-                                    element_id=str(i)
-                                ).where(
-                                    (StructuredElement.document == document) &
-                                    (StructuredElement.page_number == page_num) &
-                                    (StructuredElement.element_id == str(i+1))
-                                ).execute()
-                            
-                            # Save session to update session data
-                            main_window.save_session()
-                            logger.info("Updated database after element deletion")
-                    except Exception as e:
-                        logger.error(f"Error updating database after element deletion: {str(e)}")
-                        QMessageBox.warning(self, "Database Error", 
-                            f"Error updating database after element deletion: {str(e)}")
-
     def create_zoom_buttons(self):
         """Create zoom control buttons"""
         # Create container widget for buttons
@@ -477,7 +343,6 @@ class PDFViewer(QWidget):
             scale = self.width() / pixmap.width()
             scaled_height = int(height * scale)
             total_height += scaled_height
-            #logger.debug(f"Page {page_num + 1} - height: {height}, scaled_height: {scaled_height}")
             
         # Set widget size to match total height
         self.setMinimumHeight(total_height)
@@ -517,7 +382,6 @@ class PDFViewer(QWidget):
                                                       Qt.TransformationMode.SmoothTransformation))
             
             # Draw bounding boxes if enabled
-            logger.debug(f"show_bounding_boxes: {self.show_bounding_boxes}, bounding_boxes: {self.bounding_boxes}")
             if self.show_bounding_boxes and self.bounding_boxes:
                 page_boxes = self.bounding_boxes.get(page_num, [])
                 for element in page_boxes:
@@ -530,12 +394,26 @@ class PDFViewer(QWidget):
                             y2 = int(coords[2]['y'] * scaled_height + current_y)
                             category = element.get('category', 'text').lower() 
                             category_text = category+ " " + str(int(page_num)+1) + "-" + str(int(element.get('id', ''))+1)
+                            
+                            # Check if box is selected
+                            box_id = element.get('id')
+                            is_selected = (page_num, box_id) in self.selected_boxes
+                            
+                            # Get color based on selection state
                             color = self.ELEMENT_COLORS.get(category, QColor(255, 0, 0, 64))
+                            if is_selected:
+                                # Make selected boxes more opaque and slightly brighter
+                                color.setAlpha(128)
+                                color = color.lighter(120)
+                            else:
+                                color.setAlpha(64)
+                            
                             pen = QPen(color, 2)
                             painter.setPen(pen)
-                            color.setAlpha(64)
                             painter.setBrush(color)
                             painter.drawRect(x1, y1, x2 - x1, y2 - y1)
+                            
+                            # Draw label with appropriate color
                             label_color = color
                             label_color.setAlpha(128)
                             painter.setPen(Qt.GlobalColor.black)
@@ -636,15 +514,43 @@ class PDFViewer(QWidget):
             return
             
         if event.button() == Qt.MouseButton.LeftButton:
-            # If we're over a box, start dragging or resizing
-            if self.dragging_box is not None:
-                self.drag_start_pos = event.pos()
-                # Store original coordinates and element id
-                self.original_box_coords = self.dragging_box['coordinates'].copy()
-                self.dragging_box_id = self.dragging_box.get('id')  # Store the element id
+            # Check if we're over a box
+            pos = event.pos()
+            box_info = self._check_bounding_box_hover(pos)
+            
+            if box_info:
+                page_num, box = box_info
+                box_id = box.get('id')
+                
+                # Handle selection
+                if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                    # Toggle selection with Ctrl
+                    if (page_num, box_id) in self.selected_boxes:
+                        self.selected_boxes.remove((page_num, box_id))
+                    else:
+                        self.selected_boxes.add((page_num, box_id))
+                else:
+                    # Single selection without Ctrl
+                    if (page_num, box_id) not in self.selected_boxes:
+                        self.selected_boxes.clear()
+                        self.selected_boxes.add((page_num, box_id))
+                
+                # If we're over a box, start dragging or resizing
+                if self.dragging_box is not None:
+                    self.drag_start_pos = event.pos()
+                    # Store original coordinates and element id
+                    self.original_box_coords = self.dragging_box['coordinates'].copy()
+                    self.dragging_box_id = self.dragging_box.get('id')  # Store the element id
+                else:
+                    # Normal panning behavior
+                    self.last_pan_pos = event.pos()
             else:
+                # Clicked outside any box, clear selection
+                self.selected_boxes.clear()
                 # Normal panning behavior
                 self.last_pan_pos = event.pos()
+            
+            self.update()  # Update to show selection changes
 
     def mouseMoveEvent(self, event):
         """Handle mouse move events"""
@@ -717,6 +623,7 @@ class PDFViewer(QWidget):
             self._check_bounding_box_hover(event.pos())
 
     def mouseReleaseEvent(self, event):
+        logger.info(f"Mouse release event: {event}, {event.button()}")
         """Handle mouse release events"""
         if self.creating_element and event.button() == Qt.MouseButton.LeftButton and self.element_start_pos is not None:
             # Get the main window instance
@@ -732,8 +639,8 @@ class PDFViewer(QWidget):
             y2 = max(self.element_start_pos.y(), self.element_current_pos.y())
             
             # Get current page height from page_pixmaps
-            if self.current_cursor_page in self.page_pixmaps:
-                page_height = self.page_pixmaps[self.current_cursor_page]['height']
+            if self.current_box_page in self.page_pixmaps:
+                page_height = self.page_pixmaps[self.current_box_page]['height']
                 
                 # Calculate total height of pages before current page
                 total_height_before = 0
@@ -742,7 +649,7 @@ class PDFViewer(QWidget):
                         total_height_before += self.page_pixmaps[i]['height']
                 
                 # Calculate scaling to fit width while maintaining aspect ratio
-                scale = self.width() / self.page_pixmaps[self.current_cursor_page]['width']
+                scale = self.width() / self.page_pixmaps[self.current_box_page]['width']
                 scaled_height = int(page_height * scale)  # Convert to int
                 
                 # Adjust y coordinates by subtracting the height of previous pages and accounting for scaling
@@ -755,7 +662,7 @@ class PDFViewer(QWidget):
                 rel_x2 = x2 / (self.width() * self.zoom)
                 rel_y2 = y2_adjusted / page_height
                 
-                logger.info(f"Creating new element on page {self.current_cursor_page}")
+                logger.info(f"Creating new element on page {self.current_box_page}")
                 logger.info(f"Screen coordinates: ({x1}, {y1}) to ({x2}, {y2})")
                 logger.info(f"Page height: {page_height}")
                 logger.info(f"Total height before current page: {total_height_before}")
@@ -764,7 +671,7 @@ class PDFViewer(QWidget):
                 logger.info(f"Relative coordinates: ({rel_x1:.3f}, {rel_y1:.3f}) to ({rel_x2:.3f}, {rel_y2:.3f})")
                 
                 # Get current page elements to determine new element ID
-                page_key = str(self.current_cursor_page)
+                page_key = str(self.current_box_page)
                 if page_key in main_window.document_data['page_structures']:
                     page_structure = main_window.document_data['page_structures'][page_key]
                     if 'structure' in page_structure and 'elements' in page_structure['structure']:
@@ -798,11 +705,11 @@ class PDFViewer(QWidget):
                         logger.info(f"Added element to page structure, now has {len(elements)} elements")
                         
                         # Save the new element to database
-                        self.save_element(self.current_cursor_page, new_id)
+                        self.save_element(self.current_box_page, new_id)
                         
                         # Update bounding boxes
-                        if self.current_cursor_page not in self.bounding_boxes:
-                            self.bounding_boxes[self.current_cursor_page] = []
+                        if self.current_box_page not in self.bounding_boxes:
+                            self.bounding_boxes[self.current_box_page] = []
                         #self.bounding_boxes[self.current_cursor_page].append(new_element)
                         #logger.info(f"Added element to bounding boxes for page {self.current_cursor_page}")
                         
@@ -817,7 +724,7 @@ class PDFViewer(QWidget):
                 else:
                     logger.error(f"Page {page_key} not found in page structures")
             else:
-                logger.error(f"Page {self.current_cursor_page} not found in page_pixmaps")
+                logger.error(f"Page {self.current_box_page} not found in page_pixmaps")
             
             # Reset element creation state
             self.creating_element = False
@@ -825,13 +732,13 @@ class PDFViewer(QWidget):
             self.element_current_pos = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
             return
-            
+        logger.info(f"Mouse release event: {event}, {event.button()}, selected_boxes: {self.selected_boxes}")
         if event.button() == Qt.MouseButton.LeftButton:
             self.last_pan_pos = None
             if self.dragging_box:
                 logger.debug(f"Box release - Page: {self.current_box_page}, Box ID: {self.dragging_box_id}")
                 logger.debug(f"New coordinates: {self.dragging_box['coordinates']}")
-                
+
                 # Update the page structure with new box coordinates
                 if self.current_box_page is not None and self.current_box_page in self.bounding_boxes:
                     # Find and update the box in the page structure
@@ -1217,23 +1124,22 @@ class PDFViewer(QWidget):
             logger.debug("Mouse left widget, hiding tooltip")
 
     def _check_bounding_box_hover(self, pos):
-        """Check if mouse is over a bounding box"""
-        # Reset hover state
-        self.hovered_box = None
-        self.hovered_box_page = None
-        
-        main_window = self.window()
-        if not main_window or not self.bounding_boxes:
-            return
+        """Check if mouse is over a bounding box and return (page_num, box) if found"""
+        if not self.bounding_boxes:
+            return None
             
         # Get scroll position for PDF coordinate calculation only
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'pdf_scroll'):
+            return None
+            
         scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
         
         # Calculate widget to pixmap ratio for proper scaling
         widget_width = self.width()
         first_page_width = next((self.page_pixmaps[i]['width'] for i in range(len(self.page_pixmaps)) if i in self.page_pixmaps), None)
         if not first_page_width:
-            return
+            return None
             
         # This ratio accounts for how much the PDF is scaled to fit the widget width
         width_ratio = widget_width / (first_page_width * self.zoom)
@@ -1242,9 +1148,6 @@ class PDFViewer(QWidget):
         viewport_x = pos.x()
         viewport_y = pos.y()
         
-        # Calculate absolute y position in document (scaled) - only used for status bar display
-        absolute_y = (viewport_y + scroll_value) / self.zoom
-
         # Find current page based on viewport position
         current_y = 0
         current_page = None
@@ -1264,7 +1167,7 @@ class PDFViewer(QWidget):
             self.current_box_page = None
             self.resize_edges = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
-            return
+            return None
 
         # Check boxes on current page
         page_boxes = self.bounding_boxes.get(current_page, [])
@@ -1298,75 +1201,60 @@ class PDFViewer(QWidget):
             if (screen_x1 - self.edge_threshold <= viewport_x <= screen_x2 + self.edge_threshold and 
                 screen_y1 - self.edge_threshold <= viewport_y <= screen_y2 + self.edge_threshold):
                 
-                # Determine which edges the cursor is near
-                near_left = abs(viewport_x - screen_x1) <= self.edge_threshold
-                near_right = abs(viewport_x - screen_x2) <= self.edge_threshold
-                near_top = abs(viewport_y - screen_y1) <= self.edge_threshold
-                near_bottom = abs(viewport_y - screen_y2) <= self.edge_threshold
-                
                 self.dragging_box = box
                 self.current_box_page = current_page
-                self.hovered_box = box
-                self.hovered_box_page = current_page
                 
-                # Set resize edges and cursor based on position
-                if near_top and near_left:
-                    self.resize_edges = 'nw'
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                elif near_top and near_right:
-                    self.resize_edges = 'ne'
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                elif near_bottom and near_left:
-                    self.resize_edges = 'sw'
-                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
-                elif near_bottom and near_right:
-                    self.resize_edges = 'se'
-                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-                elif near_left:
-                    self.resize_edges = 'w'
-                    self.setCursor(Qt.CursorShape.SizeHorCursor)
-                elif near_right:
-                    self.resize_edges = 'e'
-                    self.setCursor(Qt.CursorShape.SizeHorCursor)
-                elif near_top:
-                    self.resize_edges = 'n'
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
-                elif near_bottom:
-                    self.resize_edges = 's'
-                    self.setCursor(Qt.CursorShape.SizeVerCursor)
+                # Only enable resize for single selected box
+                box_id = box.get('id')
+                is_selected = (current_page, box_id) in self.selected_boxes
+                is_only_selected = len(self.selected_boxes) == 1 and is_selected
+                
+                if is_only_selected:
+                    # Determine which edges the cursor is near
+                    near_left = abs(viewport_x - screen_x1) <= self.edge_threshold
+                    near_right = abs(viewport_x - screen_x2) <= self.edge_threshold
+                    near_top = abs(viewport_y - screen_y1) <= self.edge_threshold
+                    near_bottom = abs(viewport_y - screen_y2) <= self.edge_threshold
+                    
+                    # Set resize edges and cursor based on position
+                    if near_top and near_left:
+                        self.resize_edges = 'nw'
+                        self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+                    elif near_top and near_right:
+                        self.resize_edges = 'ne'
+                        self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+                    elif near_bottom and near_left:
+                        self.resize_edges = 'sw'
+                        self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+                    elif near_bottom and near_right:
+                        self.resize_edges = 'se'
+                        self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+                    elif near_left:
+                        self.resize_edges = 'w'
+                        self.setCursor(Qt.CursorShape.SizeHorCursor)
+                    elif near_right:
+                        self.resize_edges = 'e'
+                        self.setCursor(Qt.CursorShape.SizeHorCursor)
+                    elif near_top:
+                        self.resize_edges = 'n'
+                        self.setCursor(Qt.CursorShape.SizeVerCursor)
+                    elif near_bottom:
+                        self.resize_edges = 's'
+                        self.setCursor(Qt.CursorShape.SizeVerCursor)
+                    else:
+                        self.resize_edges = None
+                        self.setCursor(Qt.CursorShape.OpenHandCursor if not self.drag_start_pos else Qt.CursorShape.ClosedHandCursor)
                 else:
                     self.resize_edges = None
-                    self.setCursor(Qt.CursorShape.OpenHandCursor if not self.drag_start_pos else Qt.CursorShape.ClosedHandCursor)
+                    self.setCursor(Qt.CursorShape.SizeAllCursor)
                 
-                # Show box information in status bar
-                category = box.get('category', 'Unknown').capitalize()
-                # Convert viewport coordinates to PDF coordinates for display
-                pdf_x = viewport_x / (self.zoom * width_ratio)
-                pdf_y = absolute_y
-                status_msg = (f"Page {current_page + 1} | "
-                            f"Category: {category} | "
-                            f"Box: ({x1:.2f}, {y1:.2f}) to ({x2:.2f}, {y2:.2f}) | "
-                            f"Viewport: ({viewport_x}, {viewport_y}) | "
-                            f"PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | "
-                            f"Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f} | current_page: {self.current_page}")
-                self.current_cursor_page = current_page
-                main_window.status_label.showMessage(status_msg, 0)
-                return
-
-        # If we get here, mouse is not over any box
+                return (current_page, box)
+                
         self.dragging_box = None
         self.current_box_page = None
         self.resize_edges = None
         self.setCursor(Qt.CursorShape.ArrowCursor)
-        # Reset status bar to default coordinate display
-        # Convert viewport coordinates to PDF coordinates for display
-        pdf_x = viewport_x / (self.zoom * width_ratio)
-        pdf_y = absolute_y
-        if hasattr(main_window, 'status_label'):
-            main_window.status_label.showMessage(
-                f"Page {current_page + 1} | Viewport: ({viewport_x}, {viewport_y}) | PDF: ({pdf_x:.1f}, {pdf_y:.1f}) | Zoom: {self.zoom:.1f}x | Ratio: {width_ratio:.2f}", 
-                0
-            )
+        return None
 
     def start_element_creation(self):
         """Start the element creation process"""
@@ -1402,6 +1290,221 @@ class PDFViewer(QWidget):
         else:
             self.creating_element = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def keyPressEvent(self, event):
+        """Handle keyboard shortcuts for selection"""
+        if event.key() == Qt.Key.Key_A and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            # Ctrl+A: Select all boxes on current page
+            if self.current_page in self.bounding_boxes:
+                for box in self.bounding_boxes[self.current_page]:
+                    if 'id' in box:
+                        self.selected_boxes.add((self.current_page, box['id']))
+                self.update()
+        elif event.key() == Qt.Key.Key_Escape:
+            # Escape: Clear all selections
+            self.selected_boxes.clear()
+            self.update()
+        elif event.key() == Qt.Key.Key_Delete:
+            # Delete: Remove selected boxes
+            if self.selected_boxes:
+                for page_num, box_id in list(self.selected_boxes):
+                    if page_num in self.bounding_boxes:
+                        self.bounding_boxes[page_num] = [b for b in self.bounding_boxes[page_num] 
+                                                       if b.get('id') != box_id]
+                self.selected_boxes.clear()
+                self.update()
+        else:
+            super().keyPressEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Show context menu for boxes"""
+        # Check if we're over a box
+        result = self._check_bounding_box_hover(event.pos())
+        if not result:
+            return
+            
+        page_num, box = result
+        if not box or 'id' not in box:
+            return
+            
+        # Only show menu if the box is selected
+        if (page_num, box['id']) not in self.selected_boxes:
+            return
+            
+        menu = QMenu(self)
+
+        # Add "Change Block Type" as an enabled menu item without action
+        change_type_action = menu.addAction("Change Block Type")
+        change_type_action.triggered.connect(lambda: None)  # Connect to empty lambda
+
+        # Add element type actions with indentation
+        for element_type in self.ELEMENT_TYPES:
+            action = menu.addAction(f"    {element_type}")  # 4 spaces for indentation
+            # Create a partial function to avoid lambda capture issues
+            action.triggered.connect(lambda checked, t=element_type: self._change_selected_boxes_type(t))
+        
+        menu.addSeparator()
+        
+        # Add delete action
+        delete_action = menu.addAction("Delete")
+        delete_action.triggered.connect(self._delete_selected_boxes)
+        
+        # Show menu
+        menu.exec(event.globalPos())
+        
+    def _change_selected_boxes_type(self, new_type):
+        """Change type for all selected boxes"""
+        # Get the main window instance
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'document_data'):
+            return
+            
+        logger.debug(f"Changing type to {new_type} for {len(self.selected_boxes)} boxes")
+        
+        # Get the document from the database
+        zotero_key = main_window.get_zotero_key_for_current_file()
+        file_hash = None
+        if not zotero_key:
+            file_hash = main_window.calculate_file_hash(main_window.current_file_path)
+        document = main_window.load_document_from_database(main_window.current_file_path, zotero_key, file_hash)
+        if not document:
+            logger.error("No document found in database")
+            return
+
+        try:
+            for page_num, box_id in self.selected_boxes:
+                if page_num in self.bounding_boxes:
+                    for box in self.bounding_boxes[page_num]:
+                        if box.get('id') == box_id:
+                            # Update UI
+                            box['category'] = new_type
+                            logger.debug(f"Changed type of box {box_id} on page {page_num} to {new_type}")
+                            
+                            # Update document_data
+                            page_key = str(page_num)
+                            if page_key in main_window.document_data['page_structures']:
+                                page_structure = main_window.document_data['page_structures'][page_key]
+                                if 'structure' in page_structure and 'elements' in page_structure['structure']:
+                                    elements = page_structure['structure']['elements']
+                                    for element in elements:
+                                        if element.get('id') == box_id:
+                                            element['category'] = new_type
+                                            break
+                            
+                            # Update database if element exists
+                            try:
+                                element = StructuredElement.get(
+                                    (StructuredElement.document == document) &
+                                    (StructuredElement.page_number == page_num) &
+                                    (StructuredElement.element_id == box_id)
+                                )
+                                element.element_type = new_type
+                                element.updated_at = datetime.datetime.now()
+                                element.save()
+                                logger.debug(f"Updated database for element {box_id} on page {page_num} to type {new_type}")
+                            except DoesNotExist:
+                                logger.debug(f"No database entry found for element {box_id} on page {page_num}")
+                                continue
+            
+            # Update UI
+            self.update()
+            
+            # Update structured content view
+            if hasattr(main_window, 'structured_view'):
+                main_window.structured_view.update_content(main_window.document_data['page_structures'])
+                
+            # Save session to ensure changes are persisted
+            main_window.save_session()
+                
+        except Exception as e:
+            logger.error(f"Error updating element type in database: {str(e)}")
+            logger.error("Full error details:", exc_info=True)
+            QMessageBox.warning(self, "Update Error", 
+                f"Error updating element type in database: {str(e)}")
+
+    def _delete_selected_boxes(self):
+        """Delete all selected boxes"""
+        # Get the main window instance
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'document_data'):
+            return
+            
+        # Get the document from the database
+        zotero_key = main_window.get_zotero_key_for_current_file()
+        file_hash = None
+        if not zotero_key:
+            file_hash = main_window.calculate_file_hash(main_window.current_file_path)
+        document = main_window.load_document_from_database(main_window.current_file_path, zotero_key, file_hash)
+        if not document:
+            logger.error("No document found in database")
+            return
+
+        try:
+            # Process each selected box
+            for page_num, box_id in list(self.selected_boxes):
+                # Remove the element from document_data
+                page_key = str(page_num)
+                if page_key in main_window.document_data['page_structures']:
+                    page_structure = main_window.document_data['page_structures'][page_key]
+                    if 'structure' in page_structure and 'elements' in page_structure['structure']:
+                        elements = page_structure['structure']['elements']
+                        deleted_index = None
+                        
+                        # Find and remove the element
+                        for i, element in enumerate(elements):
+                            if element.get('id') == box_id:
+                                deleted_index = i
+                                elements.pop(i)
+                                logger.info(f"Deleted element {box_id} from page {page_num}")
+                                break
+                        
+                        if deleted_index is not None:
+                            # Adjust element IDs for remaining elements
+                            for i in range(deleted_index, len(elements)):
+                                elements[i]['id'] = str(i)
+                                logger.info(f"Adjusted element ID from {i+1} to {i}")
+                            
+                            # Delete the element from StructuredElement table
+                            StructuredElement.delete().where(
+                                (StructuredElement.document == document) &
+                                (StructuredElement.page_number == page_num) &
+                                (StructuredElement.element_id == box_id)
+                            ).execute()
+                            
+                            # Update remaining elements in StructuredElement table
+                            for i in range(deleted_index, len(elements)):
+                                element = elements[i]
+                                StructuredElement.update(
+                                    element_id=str(i)
+                                ).where(
+                                    (StructuredElement.document == document) &
+                                    (StructuredElement.page_number == page_num) &
+                                    (StructuredElement.element_id == str(i+1))
+                                ).execute()
+                
+                # Remove from UI
+                if page_num in self.bounding_boxes:
+                    self.bounding_boxes[page_num] = [b for b in self.bounding_boxes[page_num] 
+                                                   if b.get('id') != box_id]
+            
+            # Clear selection
+            self.selected_boxes.clear()
+            
+            # Update UI
+            self.update()
+            
+            # Update structured content view
+            if hasattr(main_window, 'structured_view'):
+                main_window.structured_view.update_content(main_window.document_data['page_structures'])
+            
+            # Save session to update session data
+            main_window.save_session()
+            logger.info("Updated database after element deletion")
+                
+        except Exception as e:
+            logger.error(f"Error updating database after element deletion: {str(e)}")
+            QMessageBox.warning(self, "Database Error", 
+                f"Error updating database after element deletion: {str(e)}")
 
 class ElementInfoDialog(QDialog):
     def __init__(self, element_data, parent=None):
