@@ -175,7 +175,7 @@ class PDFViewer(QWidget):
         self.drag_start = None
         self.drag_pos = None
         self.bounding_boxes = {}
-        self.show_bounding_boxes = False
+        self.show_bounding_boxes = True
         self.pdf_document= None
         self.total_pages = 0
         self.initial_load_pages = 3  # Number of pages to load initially
@@ -441,7 +441,7 @@ class PDFViewer(QWidget):
         if self.pdf_document and 0 <= page_num < len(self.pdf_document):
             logger.info(f"[PDFViewer] set_current_page: {page_num}")
             self.current_page = page_num
-            self.display_all_pages()
+            #self.display_all_pages()
             self.scroll_to_page(page_num)
             logger.debug(f"Set current page to {page_num + 1}")
             self.currentPageChanged.emit(self.current_page)
@@ -477,6 +477,7 @@ class PDFViewer(QWidget):
             scale = self.width() / pixmap.width()
             scaled_height = int(height * scale)
             total_height += scaled_height
+            #logger.debug(f"Page {page_num + 1} - height: {height}, scaled_height: {scaled_height}")
             
         # Set widget size to match total height
         self.setMinimumHeight(total_height)
@@ -516,6 +517,7 @@ class PDFViewer(QWidget):
                                                       Qt.TransformationMode.SmoothTransformation))
             
             # Draw bounding boxes if enabled
+            logger.debug(f"show_bounding_boxes: {self.show_bounding_boxes}, bounding_boxes: {self.bounding_boxes}")
             if self.show_bounding_boxes and self.bounding_boxes:
                 page_boxes = self.bounding_boxes.get(page_num, [])
                 for element in page_boxes:
@@ -1079,7 +1081,7 @@ class PDFViewer(QWidget):
         if self.pdf_document and 0 <= page_num < len(self.pdf_document):
             logger.info(f"[PDFViewer] set_current_page: {page_num}")
             self.current_page = page_num
-            self.display_all_pages()
+            #self.display_all_pages()
             self.scroll_to_page(page_num)
             logger.debug(f"Set current page to {page_num + 1}")
             self.currentPageChanged.emit(self.current_page)
@@ -1175,6 +1177,7 @@ class PDFViewer(QWidget):
             render_zoom = display_zoom * 2  # Double the zoom for rendering
             matrix = fitz.Matrix(render_zoom, render_zoom)
             pix = page.get_pixmap(matrix=matrix)
+            logger.debug(f"Page {page_num + 1} - pixmap size: {pix.width}, {pix.height}")
             
             # Convert to QImage
             img = QImage(pix.samples, pix.width, pix.height, 
@@ -1189,18 +1192,20 @@ class PDFViewer(QWidget):
             aspect_ratio = pixmap.height() / pixmap.width()
             display_height = int(display_width * aspect_ratio)
             
-            pixmap = pixmap.scaled(display_width, display_height,
-                                 Qt.AspectRatioMode.KeepAspectRatio,
-                                 Qt.TransformationMode.SmoothTransformation)
+            #pixmap = pixmap.scaled(display_width, display_height,
+            #                     Qt.AspectRatioMode.KeepAspectRatio,
+            #                     Qt.TransformationMode.SmoothTransformation)
+            # show pixmap size and display size
+            #logger.debug(f"Pixmap size: {pixmap.size()}, display size: {display_width}, {display_height}")
             
             # Store page data
             self.page_pixmaps[page_num] = {
                 'pixmap': pixmap,
-                'width': display_width,
-                'height': display_height
+                'width': pixmap.width(),
+                'height': pixmap.height()
             }
             self.loaded_pages.add(page_num)
-            logger.debug(f"Loaded page {page_num + 1} - width: {display_width}, height: {display_height}, zoom: {self.zoom}, render_zoom: {render_zoom}")
+            logger.debug(f"Loaded page {page_num + 1} - width: {pixmap.width()}, height: {pixmap.height()}")
         except Exception as e:
             logger.error(f"Error loading page {page_num}: {str(e)}")
 
@@ -1672,7 +1677,7 @@ class StructuredContentView(QWidget):
             # Update current page in PDF viewer
             main_window.current_page = page_num - 1  # Convert to 0-based index
             main_window.pdf_viewer.current_page = page_num - 1
-            main_window.pdf_viewer.display_all_pages()
+            #main_window.pdf_viewer.display_all_pages()
             
             # Calculate the scroll position for the target page
             scroll_bar = main_window.pdf_scroll.verticalScrollBar()
@@ -1996,7 +2001,7 @@ class StructuredContentView(QWidget):
             # Update current page in PDF viewer
             main_window.current_page = page_num - 1  # Convert to 0-based index
             main_window.pdf_viewer.current_page = page_num - 1
-            main_window.pdf_viewer.display_all_pages()
+            #main_window.pdf_viewer.display_all_pages()
             
             # Calculate the scroll position for the target page
             scroll_bar = main_window.pdf_scroll.verticalScrollBar()
@@ -3139,18 +3144,20 @@ class MainWindow(QMainWindow):
                         logger.debug(f"No document found with file path: {file_path}")
                         return False
                 
-                if document.last_analyzed:
-                    pages = (PageAnalysis
-                           .select()
-                           .where(PageAnalysis.document == document)
-                           .order_by(PageAnalysis.page_number))
-                    
-                    for page in pages:
-                        page_num = str(page.page_number)
-                        self.document_data['page_structures'][page_num] = json.loads(page.analysis_data)
-                    
-                    logger.info(f"Loaded analysis from database for {file_path}")
-                    return True
+                if document:
+                    logger.debug(f"Document found in database: {document}")
+                    session = document.sessions.order_by(SessionData.last_accessed.desc()).first()
+                    if session:
+                        self.document_data = json.loads(session.session_data)['document_data']
+                        self.current_page = session.current_page
+                        return True
+                    else:
+                        logger.debug(f"No session found for document: {document}")
+                        return False
+                else:
+                    logger.debug(f"No document found in database: {file_path}")
+                    return False
+
         except Exception as e:
             logger.error(f"Error loading analysis from database: {str(e)}")
         
@@ -3190,6 +3197,9 @@ class MainWindow(QMainWindow):
         try:
             current_item = self.items_tree.currentItem()
             logger.info(f"Current item: {current_item}")
+            # if item has children, get the first child
+            if current_item and current_item.childCount() > 0:
+                current_item = current_item.child(0)
             if current_item and hasattr(current_item, 'zotero_key'):
                 logger.info(f"Found Zotero key for current file: {current_item.zotero_key}")
                 return current_item.zotero_key
@@ -3433,11 +3443,12 @@ class MainWindow(QMainWindow):
             
             # Update PDF display
             self.pdf_viewer.current_page = self.current_page
-            self.pdf_viewer.display_all_pages()
-            logger.debug(f"Displaying page {self.current_page}")
+            #self.pdf_viewer.display_all_pages()
+            logger.debug(f"Displaying page {self.current_page}, {self.document_data}")
 
             # Set bounding boxes for all pages
             if 'page_structures' in self.document_data:
+                logger.debug(f"Page structures: {self.document_data['page_structures']}")
                 all_boxes = {}
                 for page_num, structure in self.document_data['page_structures'].items():
                     boxes = structure.get('structure', {}).get('elements', [])
@@ -3485,7 +3496,7 @@ class MainWindow(QMainWindow):
         if self.pdf_document and self.current_page < len(self.pdf_document) - 1:
             self.current_page += 1
             self.pdf_viewer.current_page = self.current_page
-            self.pdf_viewer.display_all_pages()
+            #self.pdf_viewer.display_all_pages()
             # Get the current scroll position
             scroll_bar = self.pdf_scroll.verticalScrollBar()
             current_pos = scroll_bar.value()
@@ -3521,7 +3532,7 @@ class MainWindow(QMainWindow):
             if 0 <= page_num < len(self.pdf_document):
                 self.current_page = page_num
                 self.pdf_viewer.current_page = self.current_page
-                self.pdf_viewer.display_all_pages()
+                #self.pdf_viewer.display_all_pages()
                 
                 # Calculate the scroll position for the target page
                 scroll_bar = self.pdf_scroll.verticalScrollBar()
