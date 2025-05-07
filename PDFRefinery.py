@@ -20,36 +20,12 @@ import json
 import sqlite3
 import shutil
 from peewee import DoesNotExist, chunked
-from PDFModels import (db, PDFDocument, PageAnalysis, SessionData, StructuredElement, init_database,
-                      calculate_file_hash, DEFAULT_LOG_DIRECTORY, COMPANY_NAME,
-                      PROGRAM_NAME, DEFAULT_DB_DIRECTORY, DB_PATH)
+from peewee_migrate import Router
+from PDFCommons import *
+from PDFModels import (db, PDFDocument, PageAnalysis, SessionData, StructuredElement, calculate_file_hash)                       
 import hashlib
 import uuid
 import copy
-
-PROGRAM_VERSION = "0.0.1"
-PROGRAM_AUTHOR = "Jikhan Jung"
-PROGRAM_COPYRIGHT = "©2025 Jikhan Jung"
-
-# Get user profile directory
-USER_PROFILE_DIRECTORY = os.path.expanduser('~')
-
-# Define directory structure
-DEFAULT_STORAGE_DIRECTORY = os.path.join(DEFAULT_DB_DIRECTORY, "data/")
-DB_BACKUP_DIRECTORY = os.path.join(DEFAULT_DB_DIRECTORY, "backups/")
-
-# Create necessary directories
-for directory in [DEFAULT_STORAGE_DIRECTORY, DB_BACKUP_DIRECTORY]:
-    os.makedirs(directory, exist_ok=True)
-
-# Get the path to the resource file
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-
-    return os.path.join(base_path, relative_path)
 
 # Configure logging
 def setup_logging():
@@ -421,6 +397,7 @@ class PDFViewer(QWidget):
     def open_pdf(self, file_path):
         """Open a PDF file and load initial pages"""
         try:
+            self.zoom = 1.0
             self.pdf_document= fitz.open(file_path)
             self.total_pages = len(self.pdf_document)
             self.current_page = 0
@@ -451,65 +428,6 @@ class PDFViewer(QWidget):
             self.load_next_pages()
         except Exception as e:
             logger.error(f"Error loading initial pages: {str(e)}")
-
-    def load_page(self, page_num):
-        """Load a single page and cache its pixmap"""
-        if page_num in self.loaded_pages or page_num >= self.total_pages:
-            return
-        
-        try:
-            page = self.pdf_document[page_num]
-            pix = page.get_pixmap(matrix=fitz.Matrix(self.zoom, self.zoom))
-            img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
-            pixmap = QPixmap.fromImage(img)
-            self.page_pixmaps[page_num] = {
-                'pixmap': pixmap,
-                'width': pix.width,
-                'height': pix.height
-            }
-            self.loaded_pages.add(page_num)
-            logger.debug(f"Loaded page {page_num}")
-        except Exception as e:
-            logger.error(f"Error loading page {page_num}: {str(e)}")
-
-    def load_next_pages(self):
-        """Load next set of pages in background"""
-        if self.page_loading or not self.pdf_document:
-            return
-            
-        self.page_loading = True
-        try:
-            # Store current pan offset
-            current_pan_offset = self.pan_offset.y()
-            
-            # Find the highest loaded page number
-            max_loaded = max(self.loaded_pages) if self.loaded_pages else -1
-            
-            # Load next set of pages
-            next_pages = range(max_loaded + 1, min(max_loaded + self.initial_load_pages + 1, len(self.pdf_document)))
-            for page_num in next_pages:
-                self.load_page(page_num)
-            
-            # Update display if current page was loaded
-            if self.current_page in self.loaded_pages:
-                self.update_current_page()
-                self.update()
-                
-            # Update total height
-            total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
-            self.setMinimumHeight(total_height)
-            self.updateGeometry()
-            self.adjustSize()
-            
-            # Restore pan offset
-            self.pan_offset.setY(current_pan_offset)
-            self.update()
-            
-            # If there are more pages to load, schedule next batch
-            if max_loaded + self.initial_load_pages < len(self.pdf_document):
-                QTimer.singleShot(100, self.load_next_pages)
-        finally:
-            self.page_loading = False
 
     def scroll_to_page(self, page_num):
         """Scroll to a specific page"""
@@ -609,7 +527,7 @@ class PDFViewer(QWidget):
                             x2 = int(coords[2]['x'] * self.width())
                             y2 = int(coords[2]['y'] * scaled_height + current_y)
                             category = element.get('category', 'text').lower() 
-                            category_text = category+ " " + str(page_num) + "-" + str(element.get('id', ''))
+                            category_text = category+ " " + str(int(page_num)+1) + "-" + str(int(element.get('id', ''))+1)
                             color = self.ELEMENT_COLORS.get(category, QColor(255, 0, 0, 64))
                             pen = QPen(color, 2)
                             painter.setPen(pen)
@@ -1073,7 +991,7 @@ class PDFViewer(QWidget):
             scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
             viewport_center = scroll_value + viewport_height / 2
             
-        logger.debug(f"[update_current_page] Viewport center: {viewport_center}, current_page: {self.current_page}")
+        logger.debug(f"[update_current_page] Viewport center: {viewport_center}, current_page: {self.current_page}, scroll_value: {scroll_value}")
         
         # If bounding boxes are enabled, ensure all pages are loaded
         if self.show_bounding_boxes and self.bounding_boxes:
@@ -1107,12 +1025,14 @@ class PDFViewer(QWidget):
     def resizeEvent(self, event):
         """Handle widget resize"""
         super().resizeEvent(event)
+        logger.debug("[PDFViewer::resizeEvent] Widget resize event triggered")
         # Reposition zoom widget
         if hasattr(self, 'zoom_widget'):
             self.zoom_widget.move(self.width() - 90, 10)
             
         # If we have pages, update their display without reloading
         if self.page_pixmaps:
+            logger.debug(f"[resizeEvent] Updating current page display")
             # Update current page display
             self.update_current_page()
             self.update()
@@ -1280,7 +1200,7 @@ class PDFViewer(QWidget):
                 'height': display_height
             }
             self.loaded_pages.add(page_num)
-            logger.debug(f"Loaded page {page_num + 1} - width: {display_width}, height: {display_height}")
+            logger.debug(f"Loaded page {page_num + 1} - width: {display_width}, height: {display_height}, zoom: {self.zoom}, render_zoom: {render_zoom}")
         except Exception as e:
             logger.error(f"Error loading page {page_num}: {str(e)}")
 
@@ -2115,7 +2035,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{PROGRAM_NAME} v{PROGRAM_VERSION}")
         
         # Initialize database
-        self.init_database()
+        self.prepare_database()
         
         # Load window geometry from settings
         self.settings = QSettings(COMPANY_NAME, PROGRAM_NAME)
@@ -2244,6 +2164,43 @@ class MainWindow(QMainWindow):
         self.update_dummy_toggle_button_position()
         logger.debug("Initialized toggle buttons")
 
+    def prepare_database(self):
+        try:
+
+            migrations_path = resource_path("migrations")
+            logger.info("migrations path: %s", migrations_path)
+            logger.info("database path: %s", DATABASE_PATH)
+            now = datetime.datetime.now()
+            date_str = now.strftime("%Y%m%d")
+
+            # backup database file to backup directory
+            backup_path = os.path.join( DB_BACKUP_DIRECTORY, DATABASE_FILENAME + '.' + date_str )
+            if not os.path.exists(backup_path) and os.path.exists(DATABASE_PATH):
+                shutil.copy2(DATABASE_PATH, backup_path)
+                logger.info("backup database to %s", backup_path)
+                # read backup directory and delete old backups
+                backup_list = os.listdir(DB_BACKUP_DIRECTORY)
+                # filter out non-backup files
+                backup_list = [f for f in backup_list if f.startswith(DATABASE_FILENAME)]
+                backup_list.sort()
+                if len(backup_list) > 10:
+                    for i in range(len(backup_list) - 10):
+                        os.remove(os.path.join(DB_BACKUP_DIRECTORY, backup_list[i]))                    
+            
+            #logger.info("database name: %s", mu.DEFAULT_DATABASE_NAME)
+            #print("migrations path:", migrations_path)
+            db.connect()
+            router = Router(db, migrate_dir=migrations_path)
+
+            # Auto-discover and run migrations
+            router.run()        
+            return
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", 
+                f"Error initializing database: {str(e)}")
+            logger.error(f"Database initialization error: {str(e)}")
+            self.close()
+
     def init_database(self):
         """Initialize the database"""
         try:
@@ -2277,6 +2234,19 @@ class MainWindow(QMainWindow):
         self.collections_tree.setColumnWidth(0, 200)
         self.collections_tree.setHeaderHidden(True)  # Hide header
         self.collections_tree.itemClicked.connect(self.collection_clicked)
+        self.collections_tree.setStyleSheet("""
+            QTreeWidget::item:selected {
+                background-color: #2196F3;
+                color: white;
+            }
+            QTreeWidget::item:selected:hover {
+                background-color: #2196F3;
+                color: white;
+            }
+            QTreeWidget::item:hover {
+                background-color: #E3F2FD;
+            }
+        """)
         
         # Create items tree widget
         self.items_tree = QTreeWidget()
@@ -2284,6 +2254,19 @@ class MainWindow(QMainWindow):
         self.items_tree.setColumnWidth(0, 300)
         self.items_tree.setHeaderHidden(True)  # Hide header
         self.items_tree.itemClicked.connect(self.item_clicked)
+        self.items_tree.setStyleSheet("""
+            QTreeWidget::item:selected {
+                background-color: #2196F3;
+                color: white;
+            }
+            QTreeWidget::item:selected:hover {
+                background-color: #2196F3;
+                color: white;
+            }
+            QTreeWidget::item:hover {
+                background-color: #E3F2FD;
+            }
+        """)
         
         # Add widgets to splitter
         splitter.addWidget(self.collections_tree)
@@ -2377,6 +2360,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         """Handle window resize events"""
+        logger.debug("[MainWindow::resizeEvent] Window resize event triggered")
         super().resizeEvent(event)
         self.update_library_toggle_button_position()
         self.update_dummy_toggle_button_position()
@@ -2407,6 +2391,7 @@ class MainWindow(QMainWindow):
     def item_clicked(self, item, column):
         """Handle click on item in items tree"""
         try:
+            logger.debug("[MainWindow::item_clicked] Item clicked: %s", item.text(0))
             # Set wait cursor
             QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             
@@ -2429,8 +2414,8 @@ class MainWindow(QMainWindow):
                     # Clear bounding boxes before loading new PDF
                     self.pdf_viewer.bounding_boxes.clear()
                     self.pdf_viewer.set_bounding_boxes([])
+                    logger.debug("[MainWindow::item_clicked] Loading PDF file: %s", item.file_path)
                     self.load_pdf_file(item.file_path)
-                    logger.debug(f"Loading PDF file: {item.file_path}")
             else:
                 # Click on a parent item - check for PDF attachments
                 pdf_items = []

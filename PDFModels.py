@@ -4,32 +4,14 @@ import os
 import logging
 import hashlib
 import shutil
-
-# Get user profile directory
-USER_PROFILE_DIRECTORY = os.path.expanduser('~')
-
-# Company and program info
-COMPANY_NAME = "PaleoBytes"
-PROGRAM_NAME = "PDFRefinery"
-
-# Define directory structure
-DEFAULT_DB_DIRECTORY = os.path.join(USER_PROFILE_DIRECTORY, COMPANY_NAME, PROGRAM_NAME)
-DEFAULT_STORAGE_DIRECTORY = os.path.join(DEFAULT_DB_DIRECTORY, "data/")
-DEFAULT_LOG_DIRECTORY = os.path.join(DEFAULT_DB_DIRECTORY, "logs/")
-DB_BACKUP_DIRECTORY = os.path.join(DEFAULT_DB_DIRECTORY, "backups/")
-
-# Create necessary directories
-for directory in [DEFAULT_DB_DIRECTORY, DEFAULT_STORAGE_DIRECTORY, DEFAULT_LOG_DIRECTORY, DB_BACKUP_DIRECTORY]:
-    os.makedirs(directory, exist_ok=True)
+from PDFCommons import *
 
 # Initialize logger
 logger = logging.getLogger(PROGRAM_NAME)
 
-# Database path
-DB_PATH = os.path.join(DEFAULT_DB_DIRECTORY, f"{PROGRAM_NAME.lower()}.db")
 
 # Database setup
-db = SqliteDatabase(DB_PATH)
+db = SqliteDatabase(DATABASE_PATH)
 
 class BaseModel(Model):
     class Meta:
