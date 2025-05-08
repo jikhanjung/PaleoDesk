@@ -291,7 +291,7 @@ class PDFViewer(QWidget):
                 self.load_page(page_num)
             
             # Start loading next set of pages in background
-            self.load_next_pages()
+            #self.load_next_pages()
         except Exception as e:
             logger.error(f"Error loading initial pages: {str(e)}")
 
@@ -903,10 +903,16 @@ class PDFViewer(QWidget):
         logger.debug(f"[update_current_page] Viewport center: {viewport_center}, current_page: {self.current_page}, scroll_value: {scroll_value}")
         
         # If bounding boxes are enabled, ensure all pages are loaded
-        if self.show_bounding_boxes and self.bounding_boxes:
-            for page_num in range(len(self.pdf_document)):
-                if page_num not in self.loaded_pages:
-                    self.load_page(page_num)
+        buffer = [ self.current_page - 1, self.current_page, self.current_page + 1 ]
+        for page_num in buffer:
+            if page_num not in self.loaded_pages and page_num >= 0 and page_num < len(self.pdf_document):
+                self.load_page(page_num)
+
+        if False:
+            if self.show_bounding_boxes and self.bounding_boxes:
+                for page_num in range(len(self.pdf_document)):
+                    if page_num not in self.loaded_pages:
+                        self.load_page(page_num)
         
         # Find the page that contains the viewport center
         current_height = 0
@@ -988,57 +994,12 @@ class PDFViewer(QWidget):
         if self.pdf_document and 0 <= page_num < len(self.pdf_document):
             logger.info(f"[PDFViewer] set_current_page: {page_num}")
             self.current_page = page_num
-            #self.display_all_pages()
             self.scroll_to_page(page_num)
             logger.debug(f"Set current page to {page_num + 1}")
             self.currentPageChanged.emit(self.current_page)
 
-    def display_all_pages(self):
-        """Display all pages vertically with lazy loading"""
-        if not self.pdf_document:
-            return
-            
-        try:
-            # Clear existing pixmaps and heights
-            self.page_pixmaps = {}
-            self.loaded_pages.clear()
-            
-            # Log initial dimensions
-            logger.debug(f"Initial dimensions - width: {self.width()}, height: {self.height()}")
-            
-            # Load initial set of pages
-            for page_num in range(min(self.initial_load_pages, len(self.pdf_document))):
-                self.load_page(page_num)
-            
-            # Calculate total height based on loaded pages
-            total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
-            
-            # Set the widget's size to be larger than the viewport
-            self.setMinimumHeight(total_height)
-            self.setMinimumWidth(self.width())
-            self.updateGeometry()
-            self.adjustSize()
-            self.update()
-            
-            # Reset pan offset if it would cause empty space at the top
-            if self.pan_offset.y() > 0:
-                self.pan_offset.setY(0)
-            
-            # Log final dimensions
-            logger.debug(f"Initial display - total height: {total_height}, "
-                       f"viewport height: {self.height()}, "
-                       f"zoom: {self.zoom}, "
-                       f"number of pages loaded: {len(self.page_pixmaps)}")
-            
-            # Start loading next set of pages in background
-            self.load_next_pages()
-            self.update()
-            
-        except Exception as e:
-            logger.error(f"Error displaying pages: {str(e)}")
-            raise
-
     def load_next_pages(self):
+        return
         """Load next set of pages in background"""
         if self.page_loading or not self.pdf_document:
             return
