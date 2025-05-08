@@ -3246,13 +3246,52 @@ class MainWindow(QMainWindow):
                     except DoesNotExist:
                         logger.debug(f"No document found with file path: {file_path}")
                         return False
-                
+
+
+                        if 'structure' in page_data and 'elements' in page_data['structure']:
+                            for element in page_data['structure']['elements']:
+                                logger.debug(f"Creating element: {element}")
+                                elements_to_create.append({
+                                    'document': document,
+                                    'page_number': int(page_num),
+                                    'element_id': str(element.get('id', '')),
+                                    'element_type': element.get('category', 'unknown'),
+                                    'coordinates': json.dumps(element.get('coordinates', [])),
+                                    'content': json.dumps(element.get('content', {})),
+                                    'caption': json.dumps(element.get('caption', {})),
+                                    'metadata': json.dumps(element.get('metadata', {})),
+                                    'created_at': datetime.datetime.now(),
+                                    'updated_at': datetime.datetime.now()
+                                })
+
+
                 if document:
                     logger.debug(f"Document found in database: {document}")
                     session = document.sessions.order_by(SessionData.last_accessed.desc()).first()
                     if session:
                         self.document_data = json.loads(session.session_data)['document_data']
                         self.current_page = session.current_page
+                        structured_elements = StructuredElement.select().where(StructuredElement.document == document).order_by(StructuredElement.page_number, StructuredElement.element_id)
+                        new_elements = []
+                        pg_num = -1
+                        el_id = -1
+                        for element in structured_elements:
+                            if element.id == 9:
+                                pg_num = element.page_number
+                                el_id = element.element_id
+                                logger.info(f"Structured element: {element.id} {element.page_number} {element.element_id} {element.coordinates}")
+                            element_dict = {    
+                                'id': element.element_id,
+                                'category': element.element_type,
+                                'coordinates': json.loads(element.coordinates),
+                                'content': json.loads(element.content),
+                                'caption': json.loads(element.caption),
+                                'metadata': json.loads(element.metadata)
+                            }
+                            new_elements.append(element_dict)
+                        self.document_data['page_structures'][str(element.page_number)]['structure']['elements'] = new_elements
+                        logger.info(f"Page structures: {self.document_data['page_structures'][str(pg_num)]['structure']['elements'][el_id]}")
+                        self.update_page_display()
                         return True
                     else:
                         logger.debug(f"No session found for document: {document}")
