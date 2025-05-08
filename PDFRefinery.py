@@ -289,6 +289,23 @@ class PDFViewer(QWidget):
             # Load first few pages
             for page_num in range(min(self.initial_load_pages, self.total_pages)):
                 self.load_page(page_num)
+
+            default_pixmap_width = self.page_pixmaps[0]['width']
+            default_pixmap_height = self.page_pixmaps[0]['height']
+            total_height = 0
+
+            for page_num in range(self.total_pages):
+                if page_num not in self.page_pixmaps:
+                    # Initialize pixmap for unloaded pages
+                    self.page_pixmaps[page_num] = {
+                        'pixmap': None,
+                        'width': default_pixmap_width,
+                        'height': default_pixmap_height
+                    }
+                    total_height += default_pixmap_height
+                else:
+                    # Update total height for loaded pages
+                    total_height += self.page_pixmaps[page_num]['height']
             
             # Start loading next set of pages in background
             #self.load_next_pages()
@@ -338,9 +355,9 @@ class PDFViewer(QWidget):
         # Calculate total height for all pages to maintain layout
         total_height = 0
         for page_num in sorted(self.page_pixmaps.keys()):
-            pixmap = self.page_pixmaps[page_num]['pixmap']
+            width = self.page_pixmaps[page_num]['width']
             height = self.page_pixmaps[page_num]['height']
-            scale = self.width() / pixmap.width()
+            scale = self.width() / width
             scaled_height = int(height * scale)
             total_height += scaled_height
             
@@ -351,22 +368,24 @@ class PDFViewer(QWidget):
         for page_num in sorted(self.page_pixmaps.keys()):
             if page_num not in pages_to_paint:
                 # Calculate height for skipped pages to keep layout
-                pixmap = self.page_pixmaps[page_num]['pixmap']
+                width = self.page_pixmaps[page_num]['width']
                 height = self.page_pixmaps[page_num]['height']
-                scale = self.width() / pixmap.width()
+                scale = self.width() / width
                 scaled_height = int(height * scale)
                 current_y += scaled_height
                 continue
                 
             # Ensure the page is loaded
-            if page_num not in self.page_pixmaps:
+            #if page_num not in self.page_pixmaps:
+            if self.page_pixmaps[page_num]['pixmap'] is None:
                 self.load_page(page_num)
                 if page_num not in self.page_pixmaps:
                     continue  # Still not loaded, skip
-                    
+
             pixmap = self.page_pixmaps[page_num]['pixmap']
+            width = self.page_pixmaps[page_num]['width']
             height = self.page_pixmaps[page_num]['height']
-            scale = self.width() / pixmap.width()
+            scale = self.width() / width
             scaled_height = int(height * scale)
             
             # Check if page is in viewport
@@ -918,9 +937,9 @@ class PDFViewer(QWidget):
         current_height = 0
         for i, page_data in self.page_pixmaps.items():
             # Calculate scaled height considering zoom rate
-            pixmap = page_data['pixmap']
+            width = page_data['width']
             height = page_data['height']
-            scale = self.width() / pixmap.width()
+            scale = self.width() / width
             scaled_height = int(height * scale)
             
             page_bottom = current_height + scaled_height
