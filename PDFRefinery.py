@@ -3978,9 +3978,11 @@ class MainWindow(QMainWindow):
                             with db:
                                 try:
                                     document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
-                                    if document.sessions > 0:
+                                    if len(document.sessions) > 0:
+                                        logger.info(f"Sessions: {document.sessions}")
                                         icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
                                         pdf_item.setIcon(0, icon)
+                                        logger.info(f"Session already exists in database: {zotero_key}")
 
                                     logger.debug(f"Document already exists in database: {zotero_key}")
                                 except DoesNotExist:
@@ -4078,6 +4080,7 @@ class MainWindow(QMainWindow):
                                 # Check if this child is analyzed
                                 if icon is not None:
                                     any_child_analyzed = True
+                                    logger.info(f"Child item data: {display_name} {zotero_key} {parent_key} {icon}")
                                 
                         except Exception as e:
                             logger.error(f"Error processing attachment {zotero_key}: {str(e)}")
@@ -4086,7 +4089,7 @@ class MainWindow(QMainWindow):
                     if any_child_analyzed:
                         parent_item.setIcon(0, self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
                         parent_item_data['icon'] = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
-                    
+                    #logger.info(f"Parent item data: {parent_item_data}")
                     collection_items.append(parent_item_data)
             
             # Process standalone PDF attachments
