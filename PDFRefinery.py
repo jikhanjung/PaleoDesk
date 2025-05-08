@@ -3858,6 +3858,7 @@ class MainWindow(QMainWindow):
             uri = f"file:{self.zotero_db_path}?mode=ro"
             conn = sqlite3.connect(uri, uri=True)
             cursor = conn.cursor()
+            logger.debug(f"Trying to find parent items for collection {collection_id}")
             
             # Get parent items and their collections
             cursor.execute("""
@@ -3950,6 +3951,7 @@ class MainWindow(QMainWindow):
             
             # Function to add PDF item to items tree and save to database
             def add_pdf_to_items_tree(zotero_key, display_name, parent_item=None, collection_id=None, parent_key=None):
+                icon = None
                 storage_dir = os.path.join(storage_base, zotero_key)
                 if os.path.exists(storage_dir):
                     # Look for PDF files in the key's directory
@@ -3973,11 +3975,6 @@ class MainWindow(QMainWindow):
                         if parent_key:
                             pdf_item.parent_zotero_key = parent_key
                         
-                        # Set the analysis status icon for the PDF item
-                        icon = self.get_analysis_status_icon(zotero_key)
-                        if icon:  # Only set icon if not None
-                            pdf_item.setIcon(0, icon)
-                        
                         # If there's a parent item, update its icon based on all child PDFs
                         if parent_item is not None:
                             # Don't set parent icon here - it will be handled by the cache display
@@ -3988,6 +3985,10 @@ class MainWindow(QMainWindow):
                             with db:
                                 try:
                                     document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
+                                    if document.sessions > 0:
+                                        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
+                                        pdf_item.setIcon(0, icon)
+
                                     logger.debug(f"Document already exists in database: {zotero_key}")
                                 except DoesNotExist:
                                     document = PDFDocument.create(
@@ -4000,12 +4001,12 @@ class MainWindow(QMainWindow):
                         except Exception as e:
                             logger.error(f"Error checking/saving document to database: {str(e)}")
                         
-                        return True
+                        return True, icon
                     else:
                         logger.warning(f"No PDF files found in directory: {storage_dir}")
                 else:
                     logger.warning(f"Storage directory not found: {storage_dir}")
-                return False
+                return False, icon
             
             # Clear existing items
             self.items_tree.clear()
@@ -4053,7 +4054,8 @@ class MainWindow(QMainWindow):
                         'text': display_text,
                         'item_id': item_id,
                         'zotero_key': key,
-                        'children': []
+                        'children': [],
+                        'icon': None
                     }
                     
                     # Track if any child has been analyzed
@@ -4068,19 +4070,20 @@ class MainWindow(QMainWindow):
                             if display_name.startswith('storage:'):
                                 display_name = os.path.basename(display_name)
                             
-                            if add_pdf_to_items_tree(zotero_key, display_name, parent_item, collection_id, parent_key):
+                            add_okay, icon = add_pdf_to_items_tree(zotero_key, display_name, parent_item, collection_id, parent_key)
+                            if add_okay:
                                 # Store child item in cache
                                 child_item_data = {
                                     'text': display_name,
                                     'zotero_key': zotero_key,
                                     'parent_zotero_key': parent_key,
-                                    'file_path': os.path.join(storage_base, zotero_key, [f for f in os.listdir(os.path.join(storage_base, zotero_key)) if f.lower().endswith('.pdf')][0])
+                                    'file_path': os.path.join(storage_base, zotero_key, [f for f in os.listdir(os.path.join(storage_base, zotero_key)) if f.lower().endswith('.pdf')][0]),
+                                    'icon': icon
                                 }
                                 parent_item_data['children'].append(child_item_data)
                                 
                                 # Check if this child is analyzed
-                                icon = self.get_analysis_status_icon(zotero_key)
-                                if icon:
+                                if icon is not None:
                                     any_child_analyzed = True
                                 
                         except Exception as e:
@@ -4089,6 +4092,7 @@ class MainWindow(QMainWindow):
                     # Set parent icon if any child is analyzed
                     if any_child_analyzed:
                         parent_item.setIcon(0, self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
+                        parent_item_data['icon'] = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
                     
                     collection_items.append(parent_item_data)
             
@@ -4106,12 +4110,14 @@ class MainWindow(QMainWindow):
                     if display_name.startswith('storage:'):
                         display_name = os.path.basename(display_name)
                     
-                    if add_pdf_to_items_tree(zotero_key, display_name, None, attachment[5]):  # attachment[5] is collectionID
+                    added_okay, icon = add_pdf_to_items_tree(zotero_key, display_name, None, attachment[5])
+                    if added_okay:  # attachment[5] is collectionID
                         # Store standalone item in cache
                         standalone_item_data = {
                             'text': display_name,
                             'zotero_key': zotero_key,
-                            'file_path': os.path.join(storage_base, zotero_key, [f for f in os.listdir(os.path.join(storage_base, zotero_key)) if f.lower().endswith('.pdf')][0])
+                            'file_path': os.path.join(storage_base, zotero_key, [f for f in os.listdir(os.path.join(storage_base, zotero_key)) if f.lower().endswith('.pdf')][0]), 
+                            'icon': icon
                         }
                         collection_items.append(standalone_item_data)
                     
@@ -4136,6 +4142,7 @@ class MainWindow(QMainWindow):
     def _display_cached_collection_items(self, collection_id):
         """Display items from cache for a collection"""
         try:
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             # Clear existing items
             self.items_tree.clear()
             
@@ -4164,21 +4171,27 @@ class MainWindow(QMainWindow):
                     if 'file_path' in child_data:
                         child_item.file_path = child_data['file_path']
                     # Set child icon based on analysis status
-                    icon = self.get_analysis_status_icon(child_data['zotero_key'])
-                    if icon:  # Only set icon if not None
+                    icon = child_data['icon']#self.get_analysis_status_icon(child_data['zotero_key'])
+                    if icon is not None:  # Only set icon if not None
                         child_item.setIcon(0, icon)
                         any_child_analyzed = True
                 
                 # Set parent icon if any child is analyzed
-                if any_child_analyzed and 'zotero_key' in item_data:
-                    parent_item.setIcon(0, self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
+                #if any_child_analyzed and 'zotero_key' in item_data:
+                if item_data['icon'] is not None:
+                    parent_item.setIcon(0, item_data['icon'])
             
             self.status_label.showMessage("Loaded collection items from cache", 3000)
             logger.debug(f"Displayed cached items for collection {collection_id}")
+            # restore cursor
+            QApplication.restoreOverrideCursor()
             
         except Exception as e:
             logger.error(f"Error displaying cached collection items: {str(e)}")
+            # restore cursor
+            QApplication.restoreOverrideCursor()
             QMessageBox.warning(self, "Error", f"Could not display cached collection items:\n{str(e)}")
+
 
     def batch_analyze(self):
         """Analyze all PDF files in the items tree"""
