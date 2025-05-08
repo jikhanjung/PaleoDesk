@@ -453,6 +453,18 @@ class PDFViewer(QWidget):
             y2 = max(self.element_start_pos.y(), self.element_current_pos.y())
             painter.drawRect(x1, y1, x2 - x1, y2 - y1)
 
+    def clearDocument(self):
+        """Clear the current PDF document and reset state"""
+        if self.pdf_document:
+            self.pdf_document.close()
+            self.pdf_document = None
+        self.current_page = 0
+        self.loaded_pages.clear()
+        self.page_pixmaps.clear()
+        self.bounding_boxes.clear()
+        self.show_bounding_boxes = True
+        self.update()
+
     def set_bounding_boxes(self, boxes):
         """Set bounding boxes for all pages"""
         if not boxes:
@@ -2461,7 +2473,8 @@ class MainWindow(QMainWindow):
             
             # Clear the PDF viewer
             self.pdf_viewer.set_bounding_boxes([])
-            self.pdf_viewer.pixmap = None
+            #self.pdf_viewer.pixmap = None
+            self.pdf_viewer.clearDocument()
             self.pdf_viewer.update()
             
             # Clear current document data
