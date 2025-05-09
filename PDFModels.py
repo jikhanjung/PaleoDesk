@@ -5,6 +5,7 @@ import logging
 import hashlib
 import shutil
 from PDFCommons import *
+import json
 
 # Initialize logger
 logger = logging.getLogger(PROGRAM_NAME)
@@ -76,6 +77,33 @@ class StructuredElement(BaseModel):
             (('document', 'page_number', 'element_id'), True),  # Unique together
             (('document', 'element_type'), False),  # Index for type-based queries
         )
+
+    def to_dict(self):
+        # Convert element to dictionary format
+        coords = json.loads(self.coordinates)
+        if len(coords) >= 4:
+            # Normalize coordinates to ensure x1 < x2 and y1 < y2
+            x1 = min(coords[0]['x'], coords[2]['x'])
+            y1 = min(coords[0]['y'], coords[2]['y'])
+            x2 = max(coords[0]['x'], coords[2]['x'])
+            y2 = max(coords[0]['y'], coords[2]['y'])
+            
+            normalized_coords = [
+                {'x': x1, 'y': y1},  # top-left
+                {'x': x2, 'y': y1},  # top-right
+                {'x': x2, 'y': y2},  # bottom-right
+                {'x': x1, 'y': y2}   # bottom-left
+            ]
+            
+        element_data = {
+            'id': self.element_id,
+            'category': self.element_type,
+            'coordinates': normalized_coords,
+            'content': json.loads(self.content) if self.content else {},
+            'caption': json.loads(self.caption) if self.caption else {},
+            'metadata': json.loads(self.metadata) if self.metadata else {}
+        }
+        return element_data
 
 def init_database(db_path):
     """Initialize the database with all required tables"""

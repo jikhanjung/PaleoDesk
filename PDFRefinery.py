@@ -174,13 +174,15 @@ class PDFViewer(QWidget):
         self.zoom = 1.0
         self.drag_start = None
         self.drag_pos = None
-        self.bounding_boxes = {}
         self.show_bounding_boxes = True
         self.pdf_document= None
         self.total_pages = 0
         self.initial_load_pages = 3  # Number of pages to load initially
+
         self.loaded_pages = set()  # Track which pages are loaded
         self.page_pixmaps = {}  # Cache for page pixmaps
+        self.bounding_boxes = {}
+
         self.page_loading = False  # Flag to prevent multiple simultaneous loads
         self.pan_offset = QPoint(0, 0)  # Add pan offset
         self.last_pan_pos = None  # Add last pan position
@@ -260,27 +262,50 @@ class PDFViewer(QWidget):
         self.zoom_widget.setFixedSize(80, 40)
         self.zoom_widget.move(self.width() - 90, 10)  # Position in top-right corner
 
-    def open_pdf(self, file_path):
-        """Open a PDF file and load initial pages"""
+    def clear_document(self):
+        """Clear the current PDF document and reset state"""
+        if self.pdf_document:
+            self.pdf_document = None
+        self.current_page = 0
+        self.loaded_pages.clear()
+        self.page_pixmaps.clear()
+        self.bounding_boxes.clear()
+        self.show_bounding_boxes = True
+        self.zoom = 1.0
+        # Scroll PDF view area to top
+        main_window = self.window()
+        if hasattr(main_window, 'pdf_scroll'):
+            main_window.pdf_scroll.verticalScrollBar().setValue(0)
+        self.update()
+
+    def _get_element_info(self, page_num, element_id):
+        """Get info for the selected box"""
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'document_data'):
+            return
+        
+        page_structures = main_window.document_data.get('page_structures', {})
+        page_structure = page_structures.get(str(page_num), {})
+        page_elements = page_structure.get('structure', {}).get('elements', [])
+        for element in page_elements:
+            if element.get('id') == element_id:
+                return element
+
+    def set_document(self, pdf_document):
         try:
-            self.zoom = 1.0
-            self.pdf_document= fitz.open(file_path)
+            """Set the PDF document and reset state"""
+            self.clear_document()
+            self.pdf_document = pdf_document
             self.total_pages = len(self.pdf_document)
-            self.current_page = 0
-            self.loaded_pages.clear()
-            self.page_pixmaps.clear()
-            
-            # Load initial pages
             self.load_initial_pages()
             
             # Update the display
             self.update_current_page()
             self.update()
-            
-            logger.info(f"Opened PDF with {self.total_pages} pages")
+            logger.info(f"Set PDF with {self.total_pages} pages")
             return True
         except Exception as e:
-            logger.error(f"Error opening PDF: {str(e)}")
+            logger.error(f"Error setting PDF: {str(e)}")
             return False
 
     def load_initial_pages(self):
@@ -426,6 +451,7 @@ class PDFViewer(QWidget):
                                 color = color.lighter(120)
                             else:
                                 color.setAlpha(64)
+                            logger.debug(f"Drawing bounding box for {category_text} at {x1}, {y1}, {x2}, {y2}, color: {color.getRgb()}")
                             
                             pen = QPen(color, 2)
                             painter.setPen(pen)
@@ -452,18 +478,6 @@ class PDFViewer(QWidget):
             x2 = max(self.element_start_pos.x(), self.element_current_pos.x())
             y2 = max(self.element_start_pos.y(), self.element_current_pos.y())
             painter.drawRect(x1, y1, x2 - x1, y2 - y1)
-
-    def clearDocument(self):
-        """Clear the current PDF document and reset state"""
-        if self.pdf_document:
-            self.pdf_document.close()
-            self.pdf_document = None
-        self.current_page = 0
-        self.loaded_pages.clear()
-        self.page_pixmaps.clear()
-        self.bounding_boxes.clear()
-        self.show_bounding_boxes = True
-        self.update()
 
     def set_bounding_boxes(self, boxes):
         """Set bounding boxes for all pages"""
@@ -853,23 +867,9 @@ class PDFViewer(QWidget):
         
         page_structure = main_window.document_data['page_structures'][str(page_num)]
         element = page_structure['structure']['elements'][int(element_id)]
-        logger.info(f"Saving element {element} from page {page_num}")
+        #logger.info(f"Saving element {element} from page {page_num}")
 
-        pdf_path = main_window.current_file_path
-        if not pdf_path:
-            logger.warning("No current document to save element to")
-            return
-        
-        # Get the document from the database
-        zotero_key = None
-        file_hash = None
-        zotero_key = main_window.get_zotero_key_for_current_file()
-        if not zotero_key:
-            logger.debug("No Zotero key found for current file, using file hash")
-            file_hash = main_window.calculate_file_hash(main_window.current_file_path)
-        else:
-            file_hash = None
-        document = main_window.load_document_from_database(main_window.current_file_path, zotero_key, file_hash)
+        document = main_window.document_record
         if not document:
             logger.error("No document found in database")
             return
@@ -1325,6 +1325,10 @@ class PDFViewer(QWidget):
             
         menu = QMenu(self)
 
+        # show_info
+        show_info_action = menu.addAction("Show Info")
+        show_info_action.triggered.connect(lambda: self._show_info(page_num, box))
+
         # Add "Change Block Type" as an enabled menu item without action
         change_type_action = menu.addAction("Change Block Type")
         change_type_action.triggered.connect(lambda: None)  # Connect to empty lambda
@@ -1343,7 +1347,13 @@ class PDFViewer(QWidget):
         
         # Show menu
         menu.exec(event.globalPos())
-        
+
+    def _show_info(self, page_num, box):
+        """Show info for the selected box"""
+        element_data = self._get_element_info(page_num, box['id'])
+        dialog = ElementInfoDialog(element_data)
+        dialog.exec()
+
     def _change_selected_boxes_type(self, new_type):
         """Change type for all selected boxes"""
         # Get the main window instance
@@ -1353,12 +1363,7 @@ class PDFViewer(QWidget):
             
         logger.debug(f"Changing type to {new_type} for {len(self.selected_boxes)} boxes")
         
-        # Get the document from the database
-        zotero_key = main_window.get_zotero_key_for_current_file()
-        file_hash = None
-        if not zotero_key:
-            file_hash = main_window.calculate_file_hash(main_window.current_file_path)
-        document = main_window.load_document_from_database(main_window.current_file_path, zotero_key, file_hash)
+        document = main_window.document_record
         if not document:
             logger.error("No document found in database")
             return
@@ -1421,12 +1426,7 @@ class PDFViewer(QWidget):
         if not main_window or not hasattr(main_window, 'document_data'):
             return
             
-        # Get the document from the database
-        zotero_key = main_window.get_zotero_key_for_current_file()
-        file_hash = None
-        if not zotero_key:
-            file_hash = main_window.calculate_file_hash(main_window.current_file_path)
-        document = main_window.load_document_from_database(main_window.current_file_path, zotero_key, file_hash)
+        document = main_window.document_record
         if not document:
             logger.error("No document found in database")
             return
@@ -1536,7 +1536,10 @@ class ElementInfoDialog(QDialog):
 
         caption_text = QTextEdit()
         caption_text.setReadOnly(True)
-        caption_text.setPlainText(self.element_data.get('caption', ''))
+        caption = self.element_data.get('caption', '')
+        print(caption)
+
+        caption_text.setPlainText(caption)
         caption_text.setMaximumHeight(100)  # Limit height for captions
         caption_text.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout.addWidget(caption_text)
@@ -2472,9 +2475,7 @@ class MainWindow(QMainWindow):
             self.items_tree.clear()
             
             # Clear the PDF viewer
-            self.pdf_viewer.set_bounding_boxes([])
-            #self.pdf_viewer.pixmap = None
-            self.pdf_viewer.clearDocument()
+            self.pdf_viewer.clear_document()
             self.pdf_viewer.update()
             
             # Clear current document data
@@ -2496,27 +2497,14 @@ class MainWindow(QMainWindow):
             # Set wait cursor
             QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             
-            # Clear existing document data and session information
-            self.document_data = {
-                'page_structures': {},
-                'initial_page_structures': {},
-                'metadata': {}
-            }
-            self.pdf_viewer.set_bounding_boxes([])
-            self.pdf_viewer.pixmap = None
-            self.pdf_viewer.update()
-            
-            # Scroll PDF view area to top
-            self.pdf_scroll.verticalScrollBar().setValue(0)
-            
+            zotero_key = None
             if hasattr(item, 'file_path') and item.file_path:
                 # Direct click on a PDF item
                 if item.file_path.lower().endswith('.pdf'):
-                    # Clear bounding boxes before loading new PDF
-                    self.pdf_viewer.bounding_boxes.clear()
-                    self.pdf_viewer.set_bounding_boxes([])
+                    if hasattr(item, 'zotero_key'):
+                        zotero_key = item.zotero_key
                     logger.debug("[MainWindow::item_clicked] Loading PDF file: %s", item.file_path)
-                    self.load_pdf_file(item.file_path)
+                    self.load_pdf_file(item.file_path, zotero_key)
             else:
                 # Click on a parent item - check for PDF attachments
                 pdf_items = []
@@ -2527,28 +2515,18 @@ class MainWindow(QMainWindow):
                         child.file_path.lower().endswith('.pdf')):
                         pdf_items.append(child)
                 
-                if len(pdf_items) == 1:
-                    # If there's exactly one PDF, load it
-                    pdf_item = pdf_items[0]
-                    # Clear bounding boxes before loading new PDF
-                    self.pdf_viewer.bounding_boxes.clear()
-                    self.pdf_viewer.set_bounding_boxes([])
-                    self.load_pdf_file(pdf_item.file_path)
-                    logger.debug(f"Loading single PDF attachment: {pdf_item.file_path}")
-                elif len(pdf_items) > 1:
-                    # If there are multiple PDFs, load the first one and log a message
-                    pdf_item = pdf_items[0]
-                    # Clear bounding boxes before loading new PDF
-                    self.pdf_viewer.bounding_boxes.clear()
-                    self.pdf_viewer.set_bounding_boxes([])
-                    self.load_pdf_file(pdf_item.file_path)
-                    logger.info(f"Loading first of {len(pdf_items)} PDF attachments: {pdf_item.file_path}")
+                pdf_item = pdf_items[0]
+                if hasattr(pdf_item, 'zotero_key'):
+                    zotero_key = pdf_item.zotero_key
+                self.load_pdf_file(pdf_item.file_path, zotero_key)
+                logger.debug(f"Loading single PDF attachment: {pdf_item.file_path}")
+
         finally:
             # Restore cursor
             QApplication.restoreOverrideCursor()
             self.ensure_normal_cursor()
 
-    def load_pdf_file(self, file_path):
+    def load_pdf_file(self, file_path, zotero_key=None):
         """Load a PDF file and try to load its analysis from database"""
         self.current_file_path = file_path
         self.current_file_directory = os.path.dirname(file_path)
@@ -2557,29 +2535,8 @@ class MainWindow(QMainWindow):
             'initial_page_structures': {},
             'metadata': {}
         }
-        
-        # Try to find the item in the items tree to get Zotero key
-        zotero_key = None
-        current_item = None
-        for i in range(self.items_tree.topLevelItemCount()):
-            item = self.items_tree.topLevelItem(i)
-            if hasattr(item, 'file_path') and item.file_path == file_path:
-                current_item = item
-                break
-            # Check child items if no match found
-            for j in range(item.childCount()):
-                child = item.child(j)
-                if hasattr(child, 'file_path') and child.file_path == file_path:
-                    current_item = child
-                    break
-            if current_item:
-                break
-        
-        # Get Zotero key from the item if available
-        if current_item and hasattr(current_item, 'zotero_key'):
-            zotero_key = current_item.zotero_key
-            logger.debug(f"Found Zotero key for file: {zotero_key}")
-        
+        self.pdf_viewer.clear_document()
+
         # If no Zotero key found in tree, try to extract from path
         if not zotero_key and 'storage' in file_path:
             storage_dir = os.path.dirname(file_path)
@@ -2587,34 +2544,32 @@ class MainWindow(QMainWindow):
             if len(potential_key) == 8:  # Zotero keys are 8 characters
                 zotero_key = potential_key
                 logger.debug(f"Extracted Zotero key from path: {zotero_key}")
+        self.current_zotero_key = zotero_key
         
-        self.pdf_document= fitz.open(file_path)
+        self.pdf_document = fitz.open(file_path)
         self.current_page = 0
-        self.pdf_viewer.current_page = 0
-        self.pdf_viewer.open_pdf(file_path)
+        self.pdf_viewer.set_document(self.pdf_document)
+        self.structured_view.set_document(self.pdf_document)
         self.update_navigation()
+
         self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
         logger.info(f"Opened PDF file: {self.current_file_path}")
-        
-        # Set document in structured view
-        self.structured_view.set_document(self.pdf_document)
-        
-        # Try to load analysis from database
-        if self.load_analysis_from_database(file_path, zotero_key):
+
+        try:
+            self.load_document_record()
+            logger.info(f"Loaded document data for {self.current_file_path}")
+            self.load_session_record()
+            logger.info(f"Loaded session data for {self.current_file_path}")
+        except Exception as e:
+            logger.error(f"Error loading document record: {str(e)}")
+
+        try:
             self.update_page_display()
             # Update structured content view with all page structures
             self.structured_view.update_content(self.document_data['page_structures'])
-            self.status_label.showMessage(f"Loaded analysis for {os.path.basename(file_path)}", 3000)
-        else:
-            # Try to load session from database
-            try:
-                self.load_session(file_path)
-                logger.info(f"Loaded session data for {file_path}")
-                # Update structured content view with all page structures
-                self.structured_view.update_content(self.document_data['page_structures'])
-                self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
-            except Exception as e:
-                logger.error(f"Error loading session data: {str(e)}")
+            self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
+        except Exception as e:
+            logger.error(f"Error loading session data: {str(e)}")
 
 
     def set_bounding_boxes(self, boxes):
@@ -2924,24 +2879,18 @@ class MainWindow(QMainWindow):
             }
             self.pdf_document= fitz.open(file_path)
             self.current_page = 0
-            self.pdf_viewer.current_page = 0
-            self.pdf_viewer.open_pdf(file_path)
+            self.pdf_viewer.set_document(self.pdf_document)
             self.update_navigation()
             self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
             logger.info(f"Opened PDF file: {self.current_file_path}")
             
-            # Try to load analysis from database
-            if self.load_analysis_from_database(file_path):
-                self.update_page_display()
-                self.status_label.showMessage(f"Loaded analysis for {os.path.basename(file_path)}", 3000)
-            else:
-                # Try to load session from database
-                try:
-                    self.load_session(file_path)
-                    logger.info(f"Loaded session data for {file_path}")
-                    self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
-                except Exception as e:
-                    logger.error(f"Error loading session data: {str(e)}")
+            # Try to load session from database
+            try:
+                self.load_session(file_path)
+                logger.info(f"Loaded session data for {file_path}")
+                self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
+            except Exception as e:
+                logger.error(f"Error loading session data: {str(e)}")
 
     def ensure_normal_cursor(self):
         """Make sure the cursor is restored to normal"""
@@ -2952,25 +2901,10 @@ class MainWindow(QMainWindow):
     def analyze_pdf(self, file_path, force_analysis=False):
         """Analyze the PDF file and store results in the database."""
         try:
-            file_hash = None
-            zotero_key = None
-            zotero_key = self.get_zotero_key_for_current_file()
-            if not zotero_key:
-                logger.debug("No Zotero key found for current file, using file hash")
-                file_hash = calculate_file_hash(self.current_file_path)
-            else:
-                file_hash = None
-
-            session = False
-            document = self.load_document_from_database(self.current_file_path, zotero_key, file_hash)
+            document = self.document_record
             logger.info(f"document {document}")
 
-            if document:
-                session = (SessionData
-                            .select()
-                            .where(SessionData.document == document)
-                            .order_by(SessionData.last_accessed.desc())
-                            .first())
+            session = document.sessions.order_by(SessionData.last_accessed.desc()).first()
             
             if session and not force_analysis:
                 # Load session data
@@ -3218,133 +3152,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error processing PDF: {str(e)}")
             return False
 
-    def load_analysis_from_database(self, file_path, zotero_key=None):
-        """Load analysis results from database for a given file"""
-        try:
-            with db:
-                # Try to find document by Zotero key first
-                document = None
-                if zotero_key:
-                    try:
-                        document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
-                        logger.debug(f"Found document by Zotero key: {zotero_key}")
-                    except DoesNotExist:
-                        logger.debug(f"No document found with Zotero key: {zotero_key}")
-                
-                # If no document found by Zotero key, try file path
-                if not document:
-                    try:
-                        document = PDFDocument.get(PDFDocument.file_path == file_path)
-                        logger.debug(f"Found document by file path: {file_path}")
-                    except DoesNotExist:
-                        logger.debug(f"No document found with file path: {file_path}")
-                        return False
-
-
-                        if 'structure' in page_data and 'elements' in page_data['structure']:
-                            for element in page_data['structure']['elements']:
-                                logger.debug(f"Creating element: {element}")
-                                elements_to_create.append({
-                                    'document': document,
-                                    'page_number': int(page_num),
-                                    'element_id': str(element.get('id', '')),
-                                    'element_type': element.get('category', 'unknown'),
-                                    'coordinates': json.dumps(element.get('coordinates', [])),
-                                    'content': json.dumps(element.get('content', {})),
-                                    'caption': json.dumps(element.get('caption', {})),
-                                    'metadata': json.dumps(element.get('metadata', {})),
-                                    'created_at': datetime.datetime.now(),
-                                    'updated_at': datetime.datetime.now()
-                                })
-
-
-                if document:
-                    logger.debug(f"Document found in database: {document}")
-                    session = document.sessions.order_by(SessionData.last_accessed.desc()).first()
-                    if session:
-                        self.document_data = json.loads(session.session_data)['document_data']
-                        self.current_page = session.current_page
-                        structured_elements = StructuredElement.select().where(StructuredElement.document == document).order_by(StructuredElement.page_number, StructuredElement.element_id)
-                        new_elements = []
-                        pg_num = -1
-                        el_id = -1
-                        for element in structured_elements:
-                            if element.id == 9:
-                                pg_num = element.page_number
-                                el_id = element.element_id
-                                logger.info(f"Structured element: {element.id} {element.page_number} {element.element_id} {element.coordinates}")
-                            element_dict = {    
-                                'id': element.element_id,
-                                'category': element.element_type,
-                                'coordinates': json.loads(element.coordinates),
-                                'content': json.loads(element.content),
-                                'caption': json.loads(element.caption),
-                                'metadata': json.loads(element.metadata)
-                            }
-                            new_elements.append(element_dict)
-                        self.document_data['page_structures'][str(element.page_number)]['structure']['elements'] = new_elements
-                        logger.info(f"Page structures: {self.document_data['page_structures'][str(pg_num)]['structure']['elements'][el_id]}")
-                        self.update_page_display()
-                        return True
-                    else:
-                        logger.debug(f"No session found for document: {document}")
-                        return False
-                else:
-                    logger.debug(f"No document found in database: {file_path}")
-                    return False
-
-        except Exception as e:
-            logger.error(f"Error loading analysis from database: {str(e)}")
-        
-        return False
-
-    def load_document_from_database(self, file_path, zotero_key=None, file_hash=None):
-        """Load document from database for a given file"""
-        logger.info(f"Loading document from database for {file_path} zotero_key {zotero_key} file_hash {file_hash}")
-        try:
-
-            with db:
-                # Try to find document by Zotero key first
-                document = None
-                if zotero_key:
-                    try:
-                        document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
-                        logger.debug(f"Found document by Zotero key: {zotero_key}")
-                    except DoesNotExist:
-                        logger.debug(f"No document found with Zotero key: {zotero_key}")
-                        
-                if not document:
-                    try:
-                        document = PDFDocument.get(PDFDocument.file_path == file_path)
-                        logger.debug(f"Found document by file path: {file_path}")
-                    except DoesNotExist:
-                        logger.debug(f"No document found with file path: {file_path}")
-                        return False
-                
-            return document
-        except Exception as e:
-            logger.error(f"Error loading document from database: {str(e)}")
-            return False
-
-    def get_zotero_key_for_current_file(self):
-        """Get Zotero key for the current file"""
-        logger.info(f"Getting Zotero key for current file")
-        try:
-            current_item = self.items_tree.currentItem()
-            logger.info(f"Current item: {current_item}")
-            # if item has children, get the first child
-            if current_item and current_item.childCount() > 0:
-                current_item = current_item.child(0)
-            if current_item and hasattr(current_item, 'zotero_key'):
-                logger.info(f"Found Zotero key for current file: {current_item.zotero_key}")
-                return current_item.zotero_key
-            else:
-                logger.info(f"No Zotero key found for current file")
-                return None
-        except Exception as e:
-            logger.error(f"Error getting Zotero key for current file: {str(e)}")
-            return None
-
     def save_session(self):
         """Save current session data to database"""
         try:
@@ -3352,24 +3159,11 @@ class MainWindow(QMainWindow):
                 logger.debug("No current file to save session for")
                 return
 
-            file_hash = None
-            zotero_key = None
-            zotero_key = self.get_zotero_key_for_current_file()
-            if not zotero_key:
-                logger.debug("No Zotero key found for current file, using file hash")
-                file_hash = calculate_file_hash(self.current_file_path)
-            else:
-                file_hash = None
-
-            document = self.load_document_from_database(self.current_file_path, zotero_key, file_hash)
+            document = self.document_record
 
             with db:
                 # Update document fields if needed
                 if document:
-                    if not document.file_hash and file_hash:
-                        document.file_hash = file_hash
-                    if not document.zotero_key and zotero_key:
-                        document.zotero_key = zotero_key
                     if not document.page_count and self.pdf_document:
                         document.page_count = len(self.pdf_document)
                     document.save()
@@ -3419,7 +3213,7 @@ class MainWindow(QMainWindow):
                     'session_info': {
                         'analyzed_pages': len(set(self.document_data['page_structures'].keys())),
                         'app_version': PROGRAM_VERSION,
-                        'zotero_key': zotero_key
+                        'zotero_key': self.current_zotero_key
                     }
                 }
                 
@@ -3431,138 +3225,74 @@ class MainWindow(QMainWindow):
                     last_accessed=datetime.datetime.now()
                 )
                 
-                logger.info(f"Session saved to database for {self.current_file_path} (Zotero key: {zotero_key})")
+                logger.info(f"Session saved to database for {self.current_file_path} (Zotero key: {self.current_zotero_key})")
                 logger.debug(f"Saved {len(self.document_data['page_structures'])} page structures")
                 
         except Exception as e:
             logger.error(f"Error saving session: {str(e)}")
             logger.error("Full error details:", exc_info=True)
 
-    def load_session(self, file_path=None):
+    def load_document_record(self):
+        """Load document record from database"""
+        self.document_record = None
+        try:
+            if self.current_zotero_key:
+                self.document_record = PDFDocument.get(PDFDocument.zotero_key == self.current_zotero_key)
+
+            if not self.document_record:
+                self.document_record = PDFDocument.get(PDFDocument.file_path == self.current_file_path)
+
+            logger.info(f"Loaded document record for {self.current_file_path}")
+        except Exception as e:
+            logger.error(f"Error loading document record: {str(e)}")
+
+    def load_session_record(self):
         """Load a previously saved session from database"""
         try:
-            if not file_path:
-                file_path, _ = QFileDialog.getOpenFileName(
-                    self, "Load Session", "", "PDF Files (*.pdf)"
-                )
-                if not file_path:
-                    return
+            logger.info(f"Loading session for {self.current_file_path}")
 
-            logger.info(f"Loading session for {file_path}")
+            self.session_record = None
+            if self.document_record:
+                self.session_record = self.document_record.sessions.order_by(SessionData.created_at.desc()).first()
 
-            zotero_key = None
-            file_hash = None
-            zotero_key = self.get_zotero_key_for_current_file()
-            if not zotero_key:
-                logger.debug("No Zotero key found for current file, using file hash")
-                file_hash = calculate_file_hash(self.current_file_path)
-            else:
-                file_hash = None
-            
-            document = self.load_document_from_database(file_path, zotero_key, file_hash)
-            if not document:
-                logger.error(f"No document found in database for {file_path}")
+            if not self.session_record:
+                logger.error(f"No session record found for {self.current_file_path}")
                 return
-            
-            # Get most recent session
-            session = (SessionData
-                     .select()
-                     .where(SessionData.document == document)
-                     .order_by(SessionData.created_at.desc())
-                     .first())
-            
-            if not session:
-                logger.error(f"No session data found for {file_path}")
-                return
-            
+
             # Load session data
-            session_data = json.loads(session.session_data)
+            session_data = json.loads(self.session_record.session_data)
             self.document_data = session_data.get('document_data', {})
             logger.debug(f"Loaded document data: {self.document_data.keys()}")
             
             # Load page structures
             page_structures = dict(self.document_data.get('page_structures', {}))
             #logger.debug(f"Loaded page structures: {page_structures}")
+
+            self.element_records = []
+
+            self.element_records = self.document_record.elements.order_by(StructuredElement.page_number, StructuredElement.element_id)
             
-            # Load and merge structured elements
-            elements = (StructuredElement
-                      .select()
-                      .where(StructuredElement.document == document)
-                      .order_by(StructuredElement.page_number))
-            
-            logger.debug(f"Loading {elements.count()} structured elements")
-            for element in elements:
+            logger.debug(f"Loading {len(self.element_records)} structured elements")
+            for element in self.element_records:
                 page_num = str(element.page_number)
                 if page_num not in page_structures:
                     page_structures[page_num] = {'structure': {'elements': []}}
+
+                element_data = element.to_dict()
                 
-                # Convert element to dictionary format
-                coords = json.loads(element.coordinates)
-                if len(coords) >= 4:
-                    # Normalize coordinates to ensure x1 < x2 and y1 < y2
-                    x1 = min(coords[0]['x'], coords[2]['x'])
-                    y1 = min(coords[0]['y'], coords[2]['y'])
-                    x2 = max(coords[0]['x'], coords[2]['x'])
-                    y2 = max(coords[0]['y'], coords[2]['y'])
-                    
-                    normalized_coords = [
-                        {'x': x1, 'y': y1},  # top-left
-                        {'x': x2, 'y': y1},  # top-right
-                        {'x': x2, 'y': y2},  # bottom-right
-                        {'x': x1, 'y': y2}   # bottom-left
-                    ]
-                    
-                    element_data = {
-                        'id': element.element_id,
-                        'category': element.element_type,
-                        'coordinates': normalized_coords,
-                        'content': json.loads(element.content) if element.content else {},
-                        'caption': json.loads(element.caption) if element.caption else {},
-                        'metadata': json.loads(element.metadata) if element.metadata else {}
-                    }
-                    
-                    # Update existing element or append new one
-                    elements_list = page_structures[page_num]['structure']['elements']
-                    for i, existing in enumerate(elements_list):
-                        if str(existing.get('id')) == str(element.element_id):
-                            elements_list[i] = element_data
-                            break
-                    else:
-                        elements_list.append(element_data)
+                # Update existing element or append new one
+                elements_list = page_structures[page_num]['structure']['elements']
+                for i, existing in enumerate(elements_list):
+                    if str(existing.get('id')) == str(element.element_id):
+                        elements_list[i] = element_data
+                        break
+                else:
+                    elements_list.append(element_data)
             
-            # Open the PDF file
-            try:
-                self.current_file_path = file_path
-                self.current_file_directory = os.path.dirname(file_path)
-                self.pdf_document= fitz.open(file_path)
-                self.current_page = session.current_page
-                self.pdf_viewer.current_page = self.current_page
-                self.pdf_viewer.open_pdf(file_path)
+            self.update_navigation()
                 
-                # Update UI
-                self.update_navigation()
-                
-                # Load page structures and show bounding boxes
-                for page_num, structure in page_structures.items():
-                    page_num = int(page_num)  # Convert string key to int
-                    self.document_data['page_structures'][str(page_num)] = structure
-                    logger.debug(f"Set structure for page {page_num}")
-                
-                # Enable bounding boxes if any page has structure
-                if page_structures:
-                    self.pdf_viewer.toggle_bounding_boxes(True)
-                    # Set bounding boxes for current page
-                    current_page_boxes = page_structures.get(str(self.current_page), [])
-                    if current_page_boxes:
-                        self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
-                
-                logger.info(f"Successfully loaded session with {len(self.pdf_document)} pages (Zotero key: {zotero_key})")
-                self.status_label.showMessage("Session loaded successfully", 3000)
-                
-            except Exception as e:
-                logger.error(f"Error opening PDF file: {str(e)}")
-                QMessageBox.warning(self, "Error", f"Failed to open PDF file: {str(e)}")
-                return
+            logger.info(f"Successfully loaded session with {len(self.pdf_document)} pages (Zotero key: {self.current_zotero_key})")
+            self.status_label.showMessage("Session loaded successfully", 3000)
             
         except Exception as e:
             logger.error(f"Error loading session: {str(e)}")
@@ -4323,8 +4053,7 @@ class MainWindow(QMainWindow):
                     self.current_file_directory = os.path.dirname(item.file_path)
                     self.pdf_document= fitz.open(item.file_path)
                     self.current_page = 0
-                    self.pdf_viewer.current_page = 0
-                    self.pdf_viewer.open_pdf(item.file_path)
+                    self.pdf_viewer.set_document(self.pdf_document)
                     self.update_navigation()
                     QApplication.processEvents()
 
@@ -4451,8 +4180,7 @@ class MainWindow(QMainWindow):
                     self.current_file_directory = os.path.dirname(previous_file)
                     self.pdf_document= previous_doc
                     self.current_page = 0
-                    self.pdf_viewer.current_page = 0
-                    self.pdf_viewer.open_pdf(previous_file)
+                    self.pdf_viewer.set_document(self.pdf_document)
                     self.update_navigation()
                 except Exception as e:
                     logger.error(f"Error restoring previous file: {str(e)}")
