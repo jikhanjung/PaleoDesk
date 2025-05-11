@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem,
                            QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox, QToolTip,
                            QStyle, QColorDialog)
-from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer, QEvent
+from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer, QEvent, QCoreApplication
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor, QBrush, QWheelEvent
 import fitz  # PyMuPDF
 import datetime
@@ -169,6 +169,7 @@ class PDFViewer(QWidget):
     
     def __init__(self):
         super().__init__()
+        self.dpr = self.devicePixelRatioF()
         self.pixmap = None
         self.current_page = 0
         self.zoom = 1.0
@@ -182,6 +183,7 @@ class PDFViewer(QWidget):
         self.loaded_pages = set()  # Track which pages are loaded
         self.page_pixmaps = {}  # Cache for page pixmaps
         self.bounding_boxes = {}
+        self.scaled_pixmaps = {}
 
         self.page_loading = False  # Flag to prevent multiple simultaneous loads
         self.pan_offset = QPoint(0, 0)  # Add pan offset
@@ -269,6 +271,7 @@ class PDFViewer(QWidget):
         self.current_page = 0
         self.loaded_pages.clear()
         self.page_pixmaps.clear()
+        self.scaled_pixmaps.clear()
         self.bounding_boxes.clear()
         self.show_bounding_boxes = True
         self.zoom = 1.0
@@ -420,10 +423,23 @@ class PDFViewer(QWidget):
             
             logger.debug(f"[paintEvent] Page {page_num}: y={current_y}, height={scaled_height}, in_viewport={is_in_viewport}")
             
+            #logger.info(f"Drawing page {page_num} at {current_y}, {scaled_height}, {self.width()}")
+            parent_window = self.window()
+            scroll_area = parent_window.pdf_scroll
+            scroll_area_height = scroll_area.viewport().height()
+            scroll_area_width = scroll_area.viewport().width()
+            #logger.info(f"Scroll area height: {scroll_area_height}, width: {scroll_area_width}")
             # Draw the page
-            painter.drawPixmap(0, int(current_y), pixmap.scaled(self.width(), scaled_height, 
-                                                      Qt.AspectRatioMode.KeepAspectRatio,
-                                                      Qt.TransformationMode.SmoothTransformation))
+
+            target_width = self.width()  # 논리 크기 그대로
+            target_height = scaled_height  # 원하는 비율 계산
+            target_rect = QRect(0, int(current_y), target_width, target_height)
+
+            painter.drawPixmap(target_rect, pixmap)  # 별도 scaled() 호출 없이
+
+            #painter.drawPixmap(0, int(current_y), pixmap.scaled(int(self.width() * self.dpr), int(scaled_height * self.dpr) , 
+            #                                          Qt.AspectRatioMode.KeepAspectRatio,
+            #                                          Qt.TransformationMode.SmoothTransformation))
             
             # Draw bounding boxes if enabled
             if self.show_bounding_boxes and self.bounding_boxes:
@@ -668,7 +684,7 @@ class PDFViewer(QWidget):
             self._check_bounding_box_hover(event.pos())
 
     def mouseReleaseEvent(self, event):
-        logger.info(f"Mouse release event: {event}, {event.button()}")
+        #logger.info(f"Mouse release event: {event}, {event.button()}")
         """Handle mouse release events"""
         if self.creating_element and event.button() == Qt.MouseButton.LeftButton and self.element_start_pos is not None:
             # Get the main window instance
@@ -777,7 +793,7 @@ class PDFViewer(QWidget):
             self.element_current_pos = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
             return
-        logger.info(f"Mouse release event: {event}, {event.button()}, selected_boxes: {self.selected_boxes}")
+        #logger.info(f"Mouse release event: {event}, {event.button()}, selected_boxes: {self.selected_boxes}")
         if event.button() == Qt.MouseButton.LeftButton:
             self.last_pan_pos = None
             if self.dragging_box:
@@ -1075,8 +1091,9 @@ class PDFViewer(QWidget):
             display_zoom = self.zoom
             render_zoom = display_zoom * 2  # Double the zoom for rendering
             matrix = fitz.Matrix(render_zoom, render_zoom)
+            #logger.info(f"Page {page_num + 1} - render_zoom: {render_zoom}, display_zoom: {display_zoom}")
             pix = page.get_pixmap(matrix=matrix)
-            logger.debug(f"Page {page_num + 1} - pixmap size: {pix.width}, {pix.height}")
+            #logger.info(f"Page {page_num + 1} - pixmap size: {pix.width}, {pix.height}")
             
             # Convert to QImage
             img = QImage(pix.samples, pix.width, pix.height, 
@@ -1539,7 +1556,7 @@ class ElementInfoDialog(QDialog):
         caption = self.element_data.get('caption', '')
         print(caption)
 
-        caption_text.setPlainText(caption)
+        #caption_text.setPlainText(caption)
         caption_text.setMaximumHeight(100)  # Limit height for captions
         caption_text.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout.addWidget(caption_text)
