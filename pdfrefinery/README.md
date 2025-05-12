@@ -68,7 +68,7 @@ PDFRefinery is a research assistant tool designed for paleontologists. It helps 
 - **LLM Quality/Cost:** Will use local LLMs where possible; commercial APIs as a backup.
 
 ## License
-[Specify your license here]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Appendix
 - For more details, see [prd.txt](./prd.txt)

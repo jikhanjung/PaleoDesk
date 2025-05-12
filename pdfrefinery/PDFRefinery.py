@@ -2321,18 +2321,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Database initialization error: {str(e)}")
             self.close()
 
-    def init_database(self):
-        """Initialize the database"""
-        try:
-            # Initialize database with migrations
-            init_database(DB_PATH)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Database Error", 
-                f"Error initializing database: {str(e)}")
-            logger.error(f"Database initialization error: {str(e)}")
-            self.close()
-
     def create_directory_tree(self):
         """Create and setup the directory tree widgets"""
         # Create main dock widget
