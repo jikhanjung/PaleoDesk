@@ -1,0 +1,27 @@
+# Task ID: 1
+# Title: Setup Project Structure and Dependencies
+# Status: pending
+# Dependencies: None
+# Priority: high
+# Description: Initialize the project repository with the required structure and install all necessary dependencies for the PyQt6-based desktop application.
+# Details:
+Create a Python project with the following structure:
+- src/
+  - models/ (for data models)
+  - ui/ (for PyQt6 UI components)
+  - services/ (for PDF processing, Zotero integration)
+  - utils/ (helper functions)
+- tests/
+- resources/
+
+Install required dependencies:
+- PyQt6 for UI
+- requests for HTTP communication with huridocs Docker service
+- sqlite3 for database operations
+- pdf parsing libraries (e.g., PyMuPDF)
+- Docker SDK for Python (to check Docker status)
+
+Create a requirements.txt file and a setup script.
+
+# Test Strategy:
+Verify project structure is correctly set up. Ensure all dependencies can be installed without conflicts. Test importing key libraries in a simple script.

@@ -1,0 +1,23 @@
+# Task ID: 15
+# Title: Implement End-to-End Workflow Integration and Testing
+# Status: pending
+# Dependencies: 3, 4, 6, 8, 9, 10, 11, 12, 13, 14
+# Priority: high
+# Description: Integrate all components into a complete workflow and perform comprehensive testing of the entire application.
+# Details:
+Complete the integration of all components:
+1. Connect UI components to backend services
+2. Implement workflow controllers to manage the process flow:
+   - Paper selection (from Zotero or file system)
+   - PDF processing with huridocs
+   - Review and adjustment of extracted elements
+   - Subfigure extraction and caption parsing
+   - Export of results
+3. Add progress reporting and error handling throughout the workflow
+4. Implement logging for debugging and troubleshooting
+5. Create user documentation and help resources
+
+Perform comprehensive testing of the entire application with real-world PDFs and workflows.
+
+# Test Strategy:
+Conduct end-to-end testing with various input sources and PDF types. Test complete workflows from paper selection to data export. Perform usability testing with target users (paleontologists). Test error recovery and edge cases.

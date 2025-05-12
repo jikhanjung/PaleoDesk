@@ -1,0 +1,211 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Setup Project Structure and Dependencies",
+      "description": "Initialize the project repository with the required structure and install all necessary dependencies for the PyQt6-based desktop application.",
+      "details": "Create a Python project with the following structure:\n- src/\n  - models/ (for data models)\n  - ui/ (for PyQt6 UI components)\n  - services/ (for PDF processing, Zotero integration)\n  - utils/ (helper functions)\n- tests/\n- resources/\n\nInstall required dependencies:\n- PyQt6 for UI\n- requests for HTTP communication with huridocs Docker service\n- sqlite3 for database operations\n- pdf parsing libraries (e.g., PyMuPDF)\n- Docker SDK for Python (to check Docker status)\n\nCreate a requirements.txt file and a setup script.",
+      "testStrategy": "Verify project structure is correctly set up. Ensure all dependencies can be installed without conflicts. Test importing key libraries in a simple script.",
+      "priority": "high",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 2,
+      "title": "Implement SQLite Database Schema",
+      "description": "Design and implement the SQLite database schema to store papers, figures, captions, and subfigures according to the data model requirements.",
+      "details": "Create a database module that handles:\n1. Database initialization\n2. Schema creation with tables for:\n   - Papers (id, title, authors, journal, year, source_type, source_path, etc.)\n   - Figures (id, paper_id, image_data, page_number, bounding_box_coords, etc.)\n   - Captions (id, figure_id, text, bounding_box_coords, etc.)\n   - Subfigures (id, parent_figure_id, image_data, caption_id, bounding_box_coords, etc.)\n\nImplement functions for:\n- Database connection management\n- CRUD operations for all entities\n- Transaction support for batch operations\n\nUse SQLAlchemy ORM for database interactions to provide a clean API for the rest of the application.",
+      "testStrategy": "Write unit tests for database operations including creating, reading, updating, and deleting records. Test database schema migrations. Verify referential integrity between related tables.",
+      "priority": "high",
+      "dependencies": [
+        1
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 3,
+      "title": "Implement Zotero Database Access",
+      "description": "Create a service to access the Zotero database file directly to retrieve collections and paper lists without using the API.",
+      "details": "Implement a ZoteroService class that:\n1. Locates the Zotero SQLite database file (typically in user's profile directory)\n2. Connects to the database and reads collection structure\n3. Retrieves paper metadata (title, authors, journal, year)\n4. Finds associated PDF attachments\n5. Provides methods to:\n   - List all collections\n   - Get papers in a collection\n   - Get PDF path for a paper\n\nHandle different Zotero database versions and structures. Implement proper error handling for missing or inaccessible databases.",
+      "testStrategy": "Test with sample Zotero databases of different versions. Verify correct extraction of collections, papers, and PDF paths. Test error handling with corrupted or inaccessible databases.",
+      "priority": "high",
+      "dependencies": [
+        1
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 4,
+      "title": "Implement PDF File System Access",
+      "description": "Create a service to access PDF files from folders or individual selections, providing an alternative to Zotero as an input source.",
+      "details": "Implement a PDFFileService class that:\n1. Allows browsing and selecting folders containing PDFs\n2. Scans folders recursively for PDF files\n3. Extracts basic metadata from PDFs (filename, size, creation date)\n4. Provides methods to:\n   - List PDFs in a folder\n   - Get file details\n   - Load PDF content for processing\n\nImplement file validation to ensure selected files are valid PDFs. Handle file system permissions and access errors gracefully.",
+      "testStrategy": "Test with folders containing various PDF files. Verify correct identification and loading of PDFs. Test with invalid files and ensure proper error handling. Test with large PDFs to ensure performance.",
+      "priority": "medium",
+      "dependencies": [
+        1
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 5,
+      "title": "Implement huridocs Docker Service Integration",
+      "description": "Create a service to communicate with the huridocs PDF layout analysis Docker container via HTTP requests.",
+      "details": "Implement a LayoutAnalysisService class that:\n1. Checks if the huridocs Docker container is running (using Docker SDK)\n2. Sends PDF files to the service via HTTP POST requests\n3. Receives and parses JSON responses containing layout analysis results\n4. Maps the response to internal data models\n5. Handles error cases (service unavailable, processing errors)\n\nThe service should:\n- Support configurable Docker container address/port\n- Implement retry logic for failed requests\n- Handle large PDFs by streaming content\n- Provide progress updates during processing\n\nExample request:\n```python\nresponse = requests.post(\n    'http://localhost:8080/api/process',\n    files={'file': open('paper.pdf', 'rb')},\n    timeout=300\n)\nresult = response.json()\n```",
+      "testStrategy": "Test with sample PDFs of varying complexity. Mock Docker service responses for unit testing. Verify correct handling of successful and error responses. Test with Docker container running and stopped to verify error handling.",
+      "priority": "high",
+      "dependencies": [
+        1
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 6,
+      "title": "Implement PDF Layout Analysis Processing",
+      "description": "Create a service to process the layout analysis results from huridocs, extracting figures, captions, and metadata.",
+      "details": "Implement a PDFProcessingService class that:\n1. Takes the JSON response from huridocs layout analysis\n2. Identifies and extracts figures based on element type and position\n3. Associates captions with figures based on proximity and content\n4. Extracts metadata (title, authors, journal, year) from appropriate text elements\n5. Stores extracted data in the SQLite database\n\nImplement algorithms for:\n- Figure detection and extraction (convert coordinates to image regions)\n- Caption-figure association (using spatial relationships)\n- Metadata extraction using pattern matching and position heuristics\n\nHandle edge cases like:\n- Figures split across pages\n- Captions not directly adjacent to figures\n- Complex page layouts with multiple columns",
+      "testStrategy": "Test with sample PDFs with known figures and captions. Verify correct extraction and association. Test with edge cases like multi-column layouts, figures spanning pages, and unusual caption placements.",
+      "priority": "high",
+      "dependencies": [
+        2,
+        5
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 7,
+      "title": "Implement Basic PyQt6 UI Framework",
+      "description": "Create the foundational UI framework using PyQt6, including the main window, navigation, and basic workflow.",
+      "details": "Implement the core UI components:\n1. Main application window with menu bar, toolbar, and status bar\n2. Navigation panel for browsing Zotero collections or file system\n3. Paper list view showing available papers\n4. PDF viewer panel with basic navigation controls\n5. Results panel for displaying extracted figures and captions\n\nUse Qt Designer to create UI layouts where appropriate. Implement a modular UI architecture with separate components for:\n- Navigation (collections/folders)\n- Paper selection and display\n- Extraction results view\n- Settings and configuration\n\nEnsure the UI is responsive and provides feedback during long operations.",
+      "testStrategy": "Test UI rendering on different platforms (Windows, macOS, Linux). Verify navigation between different views. Test UI responsiveness with large collections and PDFs. Conduct basic usability testing of the workflow.",
+      "priority": "high",
+      "dependencies": [
+        1
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 8,
+      "title": "Implement PDF Viewer Component",
+      "description": "Create a PDF viewer component that displays the PDF with overlays for detected figures, captions, and other elements.",
+      "details": "Implement a PDFViewerWidget class that:\n1. Renders PDF pages using a library like PyMuPDF\n2. Supports navigation (next/previous page, zoom, fit to width/page)\n3. Displays overlays for detected elements (figures, captions, etc.)\n4. Allows selection and interaction with elements\n5. Supports highlighting and annotation\n\nThe viewer should:\n- Render PDF pages efficiently, with caching for performance\n- Support different overlay types with distinct visual styles\n- Allow toggling visibility of different element types\n- Support selection and dragging of element boundaries for adjustment\n- Provide context menus for element operations\n\nImplement custom drawing code for overlays using QPainter.",
+      "testStrategy": "Test rendering of various PDF types and sizes. Verify overlay rendering accuracy. Test interaction with overlays (selection, dragging). Test navigation performance with large documents.",
+      "priority": "high",
+      "dependencies": [
+        7
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 9,
+      "title": "Implement Element Adjustment UI",
+      "description": "Create UI components for adjusting extracted elements, including merging split elements, associating figures with captions, and correcting misclassified elements.",
+      "details": "Implement UI components and interactions for:\n1. Merging split elements (e.g., figures or text blocks split across columns/pages)\n   - Allow multi-selection of elements\n   - Provide merge action in context menu or toolbar\n   - Update database with merged element\n\n2. Associating figures with captions\n   - Allow drag-and-drop or selection-based association\n   - Visualize associations with connecting lines or highlighting\n   - Update database with new associations\n\n3. Correcting element classifications\n   - Provide dropdown or context menu to change element type\n   - Re-extract content based on new classification (e.g., extract text from region now classified as caption)\n   - Update database with corrected classification\n\nImplement undo/redo functionality for all adjustment operations.",
+      "testStrategy": "Test all adjustment operations with various PDF layouts. Verify database updates after adjustments. Test undo/redo functionality. Conduct usability testing to ensure intuitive interaction.",
+      "priority": "high",
+      "dependencies": [
+        7,
+        8
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 10,
+      "title": "Implement Subfigure Detection and Extraction",
+      "description": "Create functionality to detect and extract subfigures from composite figures and associate them with individualized captions.",
+      "details": "Implement subfigure processing that:\n1. Analyzes figure images to detect potential subfigures using:\n   - Edge detection and contour analysis\n   - Grid-based division detection\n   - Label detection (a, b, c, etc.)\n\n2. Extracts individual subfigures as separate images\n\n3. Analyzes caption text to identify subfigure descriptions using pattern matching:\n   - Regular expressions for patterns like \"(a) description, (b) description\"\n   - More complex patterns like \"a-c: description\"\n\n4. Associates extracted subfigures with their specific caption segments\n\n5. Stores subfigures and their captions in the database\n\nProvide UI for reviewing and adjusting subfigure extraction results.",
+      "testStrategy": "Test with figures containing various subfigure arrangements. Verify correct detection of subfigures and parsing of captions. Test with edge cases like irregular layouts and complex caption formats.",
+      "priority": "high",
+      "dependencies": [
+        6,
+        9
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 11,
+      "title": "Implement LLM Integration for Caption Parsing",
+      "description": "Integrate local LLMs (via Ollama) for improved caption parsing, particularly for complex subfigure captions.",
+      "details": "Implement LLM-based caption parsing that:\n1. Sets up integration with Ollama for local LLM access (Llama 3.1)\n2. Creates prompt templates for caption parsing tasks\n3. Sends caption text to LLM with instructions to:\n   - Identify subfigure references (a, b, c, etc.)\n   - Extract description for each subfigure\n   - Handle complex patterns like ranges (a-c) or groups\n4. Parses LLM responses into structured caption data\n5. Falls back to rule-based parsing if LLM is unavailable or fails\n\nImplement configuration options for:\n- Enabling/disabling LLM usage\n- Selecting between local and commercial LLMs\n- Customizing prompts and parameters\n\nExample prompt:\n```\nParse the following figure caption into subfigure components:\n\"Figure 1. Fossil specimens from the Jurassic period. a: Ammonite shell showing growth patterns, b-d: Vertebrate remains including (b) skull fragment, (c) vertebra, and (d) limb bone.\"\n```",
+      "testStrategy": "Test with various caption formats of increasing complexity. Compare LLM parsing results with rule-based parsing. Test fallback mechanisms when LLM is unavailable. Measure performance and accuracy metrics.",
+      "priority": "medium",
+      "dependencies": [
+        10
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 12,
+      "title": "Implement Data Export Functionality",
+      "description": "Create functionality to export extracted data (figures, captions, metadata) to structured formats like CSV, JSON, or Excel.",
+      "details": "Implement export functionality that:\n1. Retrieves extracted data from the database\n2. Formats data according to selected export format\n3. Supports multiple export formats:\n   - CSV (with options for delimiter, quoting, etc.)\n   - JSON (with formatting options)\n   - Excel (using libraries like openpyxl)\n4. Allows selecting which data to export:\n   - Paper metadata only\n   - Figures and captions\n   - Subfigures and captions\n   - All data\n5. Provides options for file naming and location\n\nImplement a user interface for configuring export options and initiating export.",
+      "testStrategy": "Test export of various data combinations to all supported formats. Verify exported data matches database content. Test with large datasets to ensure performance. Verify exported files can be opened in appropriate applications.",
+      "priority": "medium",
+      "dependencies": [
+        2,
+        6
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 13,
+      "title": "Implement Search and Filter Functionality",
+      "description": "Create functionality to search within and filter the extracted figures, captions, and metadata.",
+      "details": "Implement search and filter functionality that:\n1. Indexes extracted text content for efficient searching\n2. Provides a search interface in the UI\n3. Supports searching by:\n   - Keywords in captions or metadata\n   - Figure attributes (size, position, etc.)\n   - Paper attributes (author, journal, year, etc.)\n4. Supports filtering by:\n   - Paper source (Zotero collection, folder)\n   - Figure type (main figure, subfigure)\n   - Date range (publication year)\n5. Highlights search matches in the UI\n\nImplement efficient search algorithms using SQLite's FTS (Full Text Search) capabilities for text content.",
+      "testStrategy": "Test search with various keywords and filters. Verify correct matching and highlighting. Test performance with large datasets. Test complex search queries combining multiple criteria.",
+      "priority": "low",
+      "dependencies": [
+        2,
+        7
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 14,
+      "title": "Implement Application Settings and Configuration",
+      "description": "Create functionality for managing application settings, including paths, Docker configuration, and processing options.",
+      "details": "Implement settings management that:\n1. Stores configuration in a user-specific location\n2. Provides default values for all settings\n3. Includes settings for:\n   - Zotero database path\n   - Default export location\n   - huridocs Docker container address/port\n   - LLM configuration (local vs. commercial, API keys if needed)\n   - UI preferences (theme, layout, etc.)\n4. Validates settings values\n5. Applies settings changes immediately where possible\n\nImplement a settings dialog in the UI for editing configuration.",
+      "testStrategy": "Test saving and loading settings. Verify settings persistence across application restarts. Test validation of settings values. Test application behavior with various settings combinations.",
+      "priority": "medium",
+      "dependencies": [
+        1
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 15,
+      "title": "Implement End-to-End Workflow Integration and Testing",
+      "description": "Integrate all components into a complete workflow and perform comprehensive testing of the entire application.",
+      "details": "Complete the integration of all components:\n1. Connect UI components to backend services\n2. Implement workflow controllers to manage the process flow:\n   - Paper selection (from Zotero or file system)\n   - PDF processing with huridocs\n   - Review and adjustment of extracted elements\n   - Subfigure extraction and caption parsing\n   - Export of results\n3. Add progress reporting and error handling throughout the workflow\n4. Implement logging for debugging and troubleshooting\n5. Create user documentation and help resources\n\nPerform comprehensive testing of the entire application with real-world PDFs and workflows.",
+      "testStrategy": "Conduct end-to-end testing with various input sources and PDF types. Test complete workflows from paper selection to data export. Perform usability testing with target users (paleontologists). Test error recovery and edge cases.",
+      "priority": "high",
+      "dependencies": [
+        3,
+        4,
+        6,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "status": "pending",
+      "subtasks": []
+    }
+  ]
+}

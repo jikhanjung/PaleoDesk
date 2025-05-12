@@ -1,0 +1,27 @@
+# Task ID: 10
+# Title: Implement Subfigure Detection and Extraction
+# Status: pending
+# Dependencies: 6, 9
+# Priority: high
+# Description: Create functionality to detect and extract subfigures from composite figures and associate them with individualized captions.
+# Details:
+Implement subfigure processing that:
+1. Analyzes figure images to detect potential subfigures using:
+   - Edge detection and contour analysis
+   - Grid-based division detection
+   - Label detection (a, b, c, etc.)
+
+2. Extracts individual subfigures as separate images
+
+3. Analyzes caption text to identify subfigure descriptions using pattern matching:
+   - Regular expressions for patterns like "(a) description, (b) description"
+   - More complex patterns like "a-c: description"
+
+4. Associates extracted subfigures with their specific caption segments
+
+5. Stores subfigures and their captions in the database
+
+Provide UI for reviewing and adjusting subfigure extraction results.
+
+# Test Strategy:
+Test with figures containing various subfigure arrangements. Verify correct detection of subfigures and parsing of captions. Test with edge cases like irregular layouts and complex caption formats.

@@ -1,0 +1,24 @@
+# Task ID: 7
+# Title: Implement Basic PyQt6 UI Framework
+# Status: pending
+# Dependencies: 1
+# Priority: high
+# Description: Create the foundational UI framework using PyQt6, including the main window, navigation, and basic workflow.
+# Details:
+Implement the core UI components:
+1. Main application window with menu bar, toolbar, and status bar
+2. Navigation panel for browsing Zotero collections or file system
+3. Paper list view showing available papers
+4. PDF viewer panel with basic navigation controls
+5. Results panel for displaying extracted figures and captions
+
+Use Qt Designer to create UI layouts where appropriate. Implement a modular UI architecture with separate components for:
+- Navigation (collections/folders)
+- Paper selection and display
+- Extraction results view
+- Settings and configuration
+
+Ensure the UI is responsive and provides feedback during long operations.
+
+# Test Strategy:
+Test UI rendering on different platforms (Windows, macOS, Linux). Verify navigation between different views. Test UI responsiveness with large collections and PDFs. Conduct basic usability testing of the workflow.

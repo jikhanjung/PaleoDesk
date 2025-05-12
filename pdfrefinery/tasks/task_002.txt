@@ -1,0 +1,24 @@
+# Task ID: 2
+# Title: Implement SQLite Database Schema
+# Status: pending
+# Dependencies: 1
+# Priority: high
+# Description: Design and implement the SQLite database schema to store papers, figures, captions, and subfigures according to the data model requirements.
+# Details:
+Create a database module that handles:
+1. Database initialization
+2. Schema creation with tables for:
+   - Papers (id, title, authors, journal, year, source_type, source_path, etc.)
+   - Figures (id, paper_id, image_data, page_number, bounding_box_coords, etc.)
+   - Captions (id, figure_id, text, bounding_box_coords, etc.)
+   - Subfigures (id, parent_figure_id, image_data, caption_id, bounding_box_coords, etc.)
+
+Implement functions for:
+- Database connection management
+- CRUD operations for all entities
+- Transaction support for batch operations
+
+Use SQLAlchemy ORM for database interactions to provide a clean API for the rest of the application.
+
+# Test Strategy:
+Write unit tests for database operations including creating, reading, updating, and deleting records. Test database schema migrations. Verify referential integrity between related tables.

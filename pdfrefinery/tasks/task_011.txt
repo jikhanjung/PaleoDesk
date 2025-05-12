@@ -1,0 +1,30 @@
+# Task ID: 11
+# Title: Implement LLM Integration for Caption Parsing
+# Status: pending
+# Dependencies: 10
+# Priority: medium
+# Description: Integrate local LLMs (via Ollama) for improved caption parsing, particularly for complex subfigure captions.
+# Details:
+Implement LLM-based caption parsing that:
+1. Sets up integration with Ollama for local LLM access (Llama 3.1)
+2. Creates prompt templates for caption parsing tasks
+3. Sends caption text to LLM with instructions to:
+   - Identify subfigure references (a, b, c, etc.)
+   - Extract description for each subfigure
+   - Handle complex patterns like ranges (a-c) or groups
+4. Parses LLM responses into structured caption data
+5. Falls back to rule-based parsing if LLM is unavailable or fails
+
+Implement configuration options for:
+- Enabling/disabling LLM usage
+- Selecting between local and commercial LLMs
+- Customizing prompts and parameters
+
+Example prompt:
+```
+Parse the following figure caption into subfigure components:
+"Figure 1. Fossil specimens from the Jurassic period. a: Ammonite shell showing growth patterns, b-d: Vertebrate remains including (b) skull fragment, (c) vertebra, and (d) limb bone."
+```
+
+# Test Strategy:
+Test with various caption formats of increasing complexity. Compare LLM parsing results with rule-based parsing. Test fallback mechanisms when LLM is unavailable. Measure performance and accuracy metrics.

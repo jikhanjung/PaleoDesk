@@ -1,0 +1,27 @@
+# Task ID: 9
+# Title: Implement Element Adjustment UI
+# Status: pending
+# Dependencies: 7, 8
+# Priority: high
+# Description: Create UI components for adjusting extracted elements, including merging split elements, associating figures with captions, and correcting misclassified elements.
+# Details:
+Implement UI components and interactions for:
+1. Merging split elements (e.g., figures or text blocks split across columns/pages)
+   - Allow multi-selection of elements
+   - Provide merge action in context menu or toolbar
+   - Update database with merged element
+
+2. Associating figures with captions
+   - Allow drag-and-drop or selection-based association
+   - Visualize associations with connecting lines or highlighting
+   - Update database with new associations
+
+3. Correcting element classifications
+   - Provide dropdown or context menu to change element type
+   - Re-extract content based on new classification (e.g., extract text from region now classified as caption)
+   - Update database with corrected classification
+
+Implement undo/redo functionality for all adjustment operations.
+
+# Test Strategy:
+Test all adjustment operations with various PDF layouts. Verify database updates after adjustments. Test undo/redo functionality. Conduct usability testing to ensure intuitive interaction.

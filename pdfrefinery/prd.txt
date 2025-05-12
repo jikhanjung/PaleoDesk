@@ -1,0 +1,123 @@
+<context>
+# Overview  
+PDFRefinery is a research assistant tool designed for paleontologists. It helps users read PDF research papers and automatically extract useful information, including figures and captions, title, author(s), journal, year, and more. This streamlines the process of gathering and organizing key data from scientific literature, saving researchers time and reducing manual effort. PDFRefinery is valuable because it targets the specific needs of paleontologists, enabling them to efficiently access and utilize critical information from academic papers.
+
+# Core Features  
+1. **Extract Figures and Captions from PDFs**
+   - **What it does:** Automatically identifies and extracts all figures and their associated captions from research paper PDFs.
+   - **Why it's important:** Figures often contain critical data and visual summaries that are essential for paleontological research. Manual extraction is tedious and error-prone.
+   - **How it works:** Uses PDF parsing and image detection algorithms to locate figures, then applies OCR and layout analysis to associate captions with the correct images.
+
+2. **Extract Metadata (Title, Authors, Journal, Year, etc.)**
+   - **What it does:** Gathers bibliographic information from the PDF, such as the paper's title, list of authors, journal name, publication year, and other relevant metadata.
+   - **Why it's important:** Accurate metadata is crucial for citation, organization, and further research.
+   - **How it works:** Parses the PDF's text layers and uses pattern recognition to extract structured metadata fields.
+
+3. **Export Extracted Data to Structured Formats**
+   - **What it does:** Allows users to export all extracted information (figures, captions, metadata) to formats like CSV, JSON, or Excel.
+   - **Why it's important:** Structured data enables easy integration with databases, spreadsheets, or other research tools.
+   - **How it works:** Maps extracted content to a standardized schema and provides export options in multiple formats.
+
+4. **Search and Filter Extracted Content**
+   - **What it does:** Enables users to search within and filter the extracted figures, captions, and metadata.
+   - **Why it's important:** Helps researchers quickly find relevant information within large or complex papers.
+   - **How it works:** Indexes extracted data and provides a user interface for keyword search and attribute-based filtering.
+
+5. **User-Friendly Interface for Reviewing and Editing Extracted Data**
+   - **What it does:** Presents all extracted information in an organized, editable view so users can review and correct any errors.
+   - **Why it's important:** Ensures data quality and allows for manual correction of edge cases where automated extraction may fail.
+   - **How it works:** Provides an interactive UI for browsing, editing, and confirming extracted content before export.
+
+# User Experience  
+**User Personas:**
+- Average paleontologists who are eager to systematically collect and compile knowledge from research papers.
+
+**Key User Flows:**
+1. Retrieve a collection and paper list from a Zotero database.
+2. Select a paper to analyze.
+3. Perform layout analysis on the selected PDF using the huridocs PDF layout analysis Docker service.
+4. Review and adjust the extracted layout information (figures, captions, metadata) within the app.
+5. Save or export the curated data for further use.
+
+**UI/UX Considerations:**
+- Desktop application built with PyQt6 for a native, responsive user experience.
+- Intuitive interface for browsing Zotero collections and papers.
+- Visual display of PDF pages with overlays for detected figures and captions.
+- Easy-to-use tools for editing and confirming extracted information.
+- Designed for efficiency and minimal manual steps, supporting the workflow of academic researchers.
+</context>
+<PRD>
+# Technical Architecture  
+- **System Components:**
+  - Input sources: Zotero database (direct file access), folders of PDF files, or individual PDF files selected by the user.
+  - PDF processing and layout analysis using huridocs' PDF layout analysis Docker service (accessed via HTTP requests, returns JSON).
+  - Data storage in a local SQLite database, structured to store papers, extracted figures, captions, and subfigures.
+  - PyQt6-based desktop user interface for managing workflow and reviewing results.
+
+- **Data Models:**
+  - Paper: metadata (title, authors, journal, year, etc.), source (Zotero, folder, manual upload).
+  - Figure: image, associated caption, page number, bounding box, parent paper reference.
+  - Subfigure: stored as separate entries linked to parent figure.
+
+- **APIs and Integrations:**
+  - Direct access to Zotero database file for retrieving collections and paper lists (no API for now due to performance and local access).
+  - HTTP requests to local huridocs Docker container for PDF layout analysis (expects Docker to be running on the local network).
+
+- **Infrastructure Requirements:**
+  - Local installation of Docker with huridocs PDF layout analysis container running and accessible via HTTP.
+  - Application runs as a desktop app (PyQt6), compatible with major desktop OSes (Windows, macOS, Linux).
+  - Local SQLite database file for persistent storage of extracted data.
+
+# Development Roadmap  
+**MVP Requirements (Current State):**
+- Zotero access for retrieving collections and paper lists (via direct DB file access).
+- PDF layout analysis using huridocs Docker container.
+- Saving extracted information (figures, captions, metadata) into a local SQLite database.
+- Basic PyQt6 desktop interface for workflow management and data review.
+- Manual adjustment of extracted layout information within the UI.
+
+**Remaining for MVP:**
+- Improved user interface and workflow refinement.
+- Enhanced tools for adjusting layout and extracted data.
+- Extraction of subfigures and association with individualized captions (highest priority for completion).
+
+**Future Enhancements:**
+- Server-based architecture for centralized storage and access.
+- Unique paper identification system to recognize the same paper across different PDF versions and prevent duplication.
+- Cloud or networked database for sharing and collaboration.
+- Optional integration with Zotero API for remote access.
+- Advanced search, filtering, and analytics features.
+
+# Logical Dependency Chain
+1. Foundation:
+   - Import papers from Zotero DB, folders, or individual PDFs
+   - PDF layout analysis via huridocs Docker
+   - Store extracted data in SQLite
+   - Basic UI for review and adjustment
+2. UI/Logic Improvements (current focus):
+   - Allow user to associate two elements (e.g., merge bounding boxes for text/figures split by page or column breaks; treat their contents as one for processing)
+   - Enable association of figures and their captions (treat as a single logical element)
+   - Provide a way to correct misclassified elements (e.g., if a text paragraph is misidentified as a figure, allow user to change type and re-extract text from the PDF for that region)
+3. Subfigure Extraction:
+   - Extract subfigures from figures and associate individualized captions
+4. First Release:
+   - All above features working reliably for end-to-end workflow
+
+# Risks and Mitigations  
+- **Layout Analysis Accuracy:**
+  - Risk: huridocs layout analysis is generally good but not perfect; errors in element detection or classification can occur.
+  - Mitigation: Continue using huridocs for now (free and effective), but provide an option to use Upstage's layout analysis API in the future. Will require mapping element types between systems. Allow user correction of errors in the UI.
+
+- **Caption and Subfigure Extraction Complexity:**
+  - Risk: Extracting individualized captions for subfigures is challenging due to varied caption styles and formatting (e.g., "Figure 1. ... a: ..., b: ..., d-f: ...").
+  - Mitigation: Leverage SOTA LLMs for caption parsing when possible. If local LLMs (e.g., Llama 3.1 via Ollama) are insufficient, consider using commercial APIs for higher accuracy. Allow user review and manual correction as a fallback.
+
+- **LLM Quality and Cost:**
+  - Risk: Free/open LLMs may not perform as well as commercial models for complex caption extraction; commercial APIs may incur costs.
+  - Mitigation: Test local LLMs first; only use paid APIs if necessary for production-level accuracy. Monitor improvements in open models and update as they become viable.
+
+# Appendix  
+[Include any additional information:
+- Research findings
+- Technical specifications]
+</PRD> 

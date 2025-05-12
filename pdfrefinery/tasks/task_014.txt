@@ -1,0 +1,23 @@
+# Task ID: 14
+# Title: Implement Application Settings and Configuration
+# Status: pending
+# Dependencies: 1
+# Priority: medium
+# Description: Create functionality for managing application settings, including paths, Docker configuration, and processing options.
+# Details:
+Implement settings management that:
+1. Stores configuration in a user-specific location
+2. Provides default values for all settings
+3. Includes settings for:
+   - Zotero database path
+   - Default export location
+   - huridocs Docker container address/port
+   - LLM configuration (local vs. commercial, API keys if needed)
+   - UI preferences (theme, layout, etc.)
+4. Validates settings values
+5. Applies settings changes immediately where possible
+
+Implement a settings dialog in the UI for editing configuration.
+
+# Test Strategy:
+Test saving and loading settings. Verify settings persistence across application restarts. Test validation of settings values. Test application behavior with various settings combinations.

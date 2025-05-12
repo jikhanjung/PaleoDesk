@@ -1,0 +1,21 @@
+# Task ID: 3
+# Title: Implement Zotero Database Access
+# Status: pending
+# Dependencies: 1
+# Priority: high
+# Description: Create a service to access the Zotero database file directly to retrieve collections and paper lists without using the API.
+# Details:
+Implement a ZoteroService class that:
+1. Locates the Zotero SQLite database file (typically in user's profile directory)
+2. Connects to the database and reads collection structure
+3. Retrieves paper metadata (title, authors, journal, year)
+4. Finds associated PDF attachments
+5. Provides methods to:
+   - List all collections
+   - Get papers in a collection
+   - Get PDF path for a paper
+
+Handle different Zotero database versions and structures. Implement proper error handling for missing or inaccessible databases.
+
+# Test Strategy:
+Test with sample Zotero databases of different versions. Verify correct extraction of collections, papers, and PDF paths. Test error handling with corrupted or inaccessible databases.

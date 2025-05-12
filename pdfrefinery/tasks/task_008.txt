@@ -1,0 +1,25 @@
+# Task ID: 8
+# Title: Implement PDF Viewer Component
+# Status: pending
+# Dependencies: 7
+# Priority: high
+# Description: Create a PDF viewer component that displays the PDF with overlays for detected figures, captions, and other elements.
+# Details:
+Implement a PDFViewerWidget class that:
+1. Renders PDF pages using a library like PyMuPDF
+2. Supports navigation (next/previous page, zoom, fit to width/page)
+3. Displays overlays for detected elements (figures, captions, etc.)
+4. Allows selection and interaction with elements
+5. Supports highlighting and annotation
+
+The viewer should:
+- Render PDF pages efficiently, with caching for performance
+- Support different overlay types with distinct visual styles
+- Allow toggling visibility of different element types
+- Support selection and dragging of element boundaries for adjustment
+- Provide context menus for element operations
+
+Implement custom drawing code for overlays using QPainter.
+
+# Test Strategy:
+Test rendering of various PDF types and sizes. Verify overlay rendering accuracy. Test interaction with overlays (selection, dragging). Test navigation performance with large documents.

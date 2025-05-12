@@ -1,0 +1,24 @@
+# Task ID: 13
+# Title: Implement Search and Filter Functionality
+# Status: pending
+# Dependencies: 2, 7
+# Priority: low
+# Description: Create functionality to search within and filter the extracted figures, captions, and metadata.
+# Details:
+Implement search and filter functionality that:
+1. Indexes extracted text content for efficient searching
+2. Provides a search interface in the UI
+3. Supports searching by:
+   - Keywords in captions or metadata
+   - Figure attributes (size, position, etc.)
+   - Paper attributes (author, journal, year, etc.)
+4. Supports filtering by:
+   - Paper source (Zotero collection, folder)
+   - Figure type (main figure, subfigure)
+   - Date range (publication year)
+5. Highlights search matches in the UI
+
+Implement efficient search algorithms using SQLite's FTS (Full Text Search) capabilities for text content.
+
+# Test Strategy:
+Test search with various keywords and filters. Verify correct matching and highlighting. Test performance with large datasets. Test complex search queries combining multiple criteria.

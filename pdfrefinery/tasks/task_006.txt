@@ -1,0 +1,26 @@
+# Task ID: 6
+# Title: Implement PDF Layout Analysis Processing
+# Status: pending
+# Dependencies: 2, 5
+# Priority: high
+# Description: Create a service to process the layout analysis results from huridocs, extracting figures, captions, and metadata.
+# Details:
+Implement a PDFProcessingService class that:
+1. Takes the JSON response from huridocs layout analysis
+2. Identifies and extracts figures based on element type and position
+3. Associates captions with figures based on proximity and content
+4. Extracts metadata (title, authors, journal, year) from appropriate text elements
+5. Stores extracted data in the SQLite database
+
+Implement algorithms for:
+- Figure detection and extraction (convert coordinates to image regions)
+- Caption-figure association (using spatial relationships)
+- Metadata extraction using pattern matching and position heuristics
+
+Handle edge cases like:
+- Figures split across pages
+- Captions not directly adjacent to figures
+- Complex page layouts with multiple columns
+
+# Test Strategy:
+Test with sample PDFs with known figures and captions. Verify correct extraction and association. Test with edge cases like multi-column layouts, figures spanning pages, and unusual caption placements.

@@ -1,0 +1,20 @@
+# Task ID: 4
+# Title: Implement PDF File System Access
+# Status: pending
+# Dependencies: 1
+# Priority: medium
+# Description: Create a service to access PDF files from folders or individual selections, providing an alternative to Zotero as an input source.
+# Details:
+Implement a PDFFileService class that:
+1. Allows browsing and selecting folders containing PDFs
+2. Scans folders recursively for PDF files
+3. Extracts basic metadata from PDFs (filename, size, creation date)
+4. Provides methods to:
+   - List PDFs in a folder
+   - Get file details
+   - Load PDF content for processing
+
+Implement file validation to ensure selected files are valid PDFs. Handle file system permissions and access errors gracefully.
+
+# Test Strategy:
+Test with folders containing various PDF files. Verify correct identification and loading of PDFs. Test with invalid files and ensure proper error handling. Test with large PDFs to ensure performance.
