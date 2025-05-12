@@ -1,0 +1,2981 @@
+{
+  "filename": "D:/projects/PaleoDesk/data/Weineretal2012.pdf",
+  "current_page": 0,
+  "document_data": {
+    "page_structures": {
+      "0": {
+        "timestamp": "2025-04-21T16:06:01.777126",
+        "structure": {
+          "elements": [
+            {
+              "category": "page header",
+              "content": {
+                "text": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012",
+                "html": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012"
+              },
+              "coordinates": [
+                {
+                  "x": 0.6935749588138386,
+                  "y": 0.03764705882352941
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.03764705882352941
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.04823529411764706
+                },
+                {
+                  "x": 0.6935749588138386,
+                  "y": 0.04823529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 39.863914,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 0
+            },
+            {
+              "category": "page header",
+              "content": {
+                "text": "P aleo z oikum",
+                "html": "P aleo z oikum"
+              },
+              "coordinates": [
+                {
+                  "x": 0.9670510708401977,
+                  "y": 0.46941176470588236
+                },
+                {
+                  "x": 0.9752883031301482,
+                  "y": 0.46941176470588236
+                },
+                {
+                  "x": 0.9752883031301482,
+                  "y": 0.5447058823529412
+                },
+                {
+                  "x": 0.9670510708401977,
+                  "y": 0.5447058823529412
+                }
+              ],
+              "relative_size": {
+                "width_mm": 1.76389,
+                "height_mm": 22.577792,
+                "point_size": 48.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 1
+            },
+            {
+              "category": "title",
+              "content": {
+                "text": "PRELIMINARY REPORT ON THE NEW FINDINGS OF MISSISSIPPIAN TRILOBITES IN THE BŘEZINA FORMATION (MORAVIAN KARST, CZECH  REPUBLIC)",
+                "html": "PRELIMINARY REPORT ON THE NEW FINDINGS OF MISSISSIPPIAN TRILOBITES IN THE BŘEZINA FORMATION (MORAVIAN KARST, CZECH  REPUBLIC)"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.08588235294117647
+                },
+                {
+                  "x": 0.8352553542009885,
+                  "y": 0.08588235294117647
+                },
+                {
+                  "x": 0.8352553542009885,
+                  "y": 0.1423529411764706
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.1423529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 154.163986,
+                "height_mm": 16.933343999999998,
+                "point_size": 36.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 2
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "Tomáš Weiner 1 , Carsten Brauckmann 2 , Hedvika Poukarová 1 , Štěpán Rak 3 , Jiří Kalvoda 1",
+                "html": "Tomáš Weiner 1 , Carsten Brauckmann 2 , Hedvika Poukarová 1 , Štěpán Rak 3 , Jiří Kalvoda 1"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.1564705882352941
+                },
+                {
+                  "x": 0.8253706754530478,
+                  "y": 0.1564705882352941
+                },
+                {
+                  "x": 0.8253706754530478,
+                  "y": 0.17058823529411765
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.17058823529411765
+                }
+              ],
+              "relative_size": {
+                "width_mm": 152.047318,
+                "height_mm": 4.2333359999999995,
+                "point_size": 9.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 3
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "1 Masaryk University, Department of Geological Sciences, Kotlářská 2, 611 37 Brno, Czech Republic; e-mail: tomasweiner@volny.cz 2 Clausthal University of Technology, Geology and Palaeontology, Leibnizstrasse 10, D-38678 Clausthal-Zellerfeld, Germany 3 Charles University, Institute of Geology and Palaeontology, Albertov 6, 128 43 Praha 2, Czech Republic",
+                "html": "1 Masaryk University, Department of Geological Sciences, Kotlářská 2, 611 37 Brno, Czech Republic; e-mail: tomasweiner@volny.cz 2 Clausthal University of Technology, Geology and Palaeontology, Leibnizstrasse 10, D-38678 Clausthal-Zellerfeld, Germany 3 Charles University, Institute of Geology and Palaeontology, Albertov 6, 128 43 Praha 2, Czech Republic"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.17294117647058824
+                },
+                {
+                  "x": 0.8731466227347611,
+                  "y": 0.17294117647058824
+                },
+                {
+                  "x": 0.8731466227347611,
+                  "y": 0.20823529411764705
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.20823529411764705
+                }
+              ],
+              "relative_size": {
+                "width_mm": 161.92510199999998,
+                "height_mm": 10.58334,
+                "point_size": 22.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 4
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "(24-41 Vyškov)",
+                "html": "(24-41 Vyškov)"
+              },
+              "coordinates": [
+                {
+                  "x": 0.7874794069192751,
+                  "y": 0.2223529411764706
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.2223529411764706
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.23411764705882354
+                },
+                {
+                  "x": 0.7874794069192751,
+                  "y": 0.23411764705882354
+                }
+              ],
+              "relative_size": {
+                "width_mm": 19.755568,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 5
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Key words: Moravian Karst, Březina Formation, Mississippian, Viséan, trilobites",
+                "html": "Key words: Moravian Karst, Březina Formation, Mississippian, Viséan, trilobites"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.29294117647058826
+                },
+                {
+                  "x": 0.6392092257001647,
+                  "y": 0.29294117647058826
+                },
+                {
+                  "x": 0.6392092257001647,
+                  "y": 0.30470588235294116
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.30470588235294116
+                }
+              ],
+              "relative_size": {
+                "width_mm": 112.183404,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 6
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "Abstract",
+                "html": "Abstract"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11367380560131796,
+                  "y": 0.31882352941176473
+                },
+                {
+                  "x": 0.16639209225700163,
+                  "y": 0.31882352941176473
+                },
+                {
+                  "x": 0.16639209225700163,
+                  "y": 0.3305882352941176
+                },
+                {
+                  "x": 0.11367380560131796,
+                  "y": 0.3305882352941176
+                }
+              ],
+              "relative_size": {
+                "width_mm": 11.288896,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 7
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "New fossiliferous layers of the Březina Formation were discovered in the valley of the Říčka Brook SSW of the village of Ochoz u Brna in 2011. Four taxa of trilobites were preliminary determined: Archegonus (Phillibole) cf. polleni (Woodward, 1894), Archegonus (Phillibole) cf. cauliquercus Brauckmann 1981, Liobole (Liobole) glabra proxima Chlupáč, 1966 and ?Spinibole sp. Th e newly dis- covered fossiliferous beds belong to the Viséan (Lower to ?Upper Viséan, approximately cu IIγ–cu IIδ). Th e occurrence of limestone pebbles and limestone cobbles in aleuropelitic shales was also recorded. Th e Late Tournaisian foraminifer Darjella monilis Malak- hova, 1964 was discovered in a dark grey limestone cobble derived from the Hády-Říčka limestone sequence of the Líšeň Formation.",
+                "html": "New fossiliferous layers of the Březina Formation were discovered in the valley of the Říčka Brook SSW of the village of Ochoz u Brna in 2011. Four taxa of trilobites were preliminary determined: Archegonus (Phillibole) cf. polleni (Woodward, 1894), Archegonus (Phillibole) cf. cauliquercus Brauckmann 1981, Liobole (Liobole) glabra proxima Chlupáč, 1966 and ?Spinibole sp. Th e newly dis- covered fossiliferous beds belong to the Viséan (Lower to ?Upper Viséan, approximately cu IIγ–cu IIδ). Th e occurrence of limestone pebbles and limestone cobbles in aleuropelitic shales was also recorded. Th e Late Tournaisian foraminifer Darjella monilis Malak- hova, 1964 was discovered in a dark grey limestone cobble derived from the Hády-Říčka limestone sequence of the Líšeň Formation."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.33176470588235296
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.33176470588235296
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.4082352941176471
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.4082352941176471
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.100104,
+                "height_mm": 22.93057,
+                "point_size": 48.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 8
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "Introduction",
+                "html": "Introduction"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.43176470588235294
+                },
+                {
+                  "x": 0.2042833607907743,
+                  "y": 0.43176470588235294
+                },
+                {
+                  "x": 0.2042833607907743,
+                  "y": 0.4447058823529412
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.4447058823529412
+                }
+              ],
+              "relative_size": {
+                "width_mm": 19.050012,
+                "height_mm": 3.8805579999999997,
+                "point_size": 8.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 9
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Trilobites from the Březina Formation were pre- viously reported from several localities: Zbrašov near Hranice (Chlupáč 1956, Chlupáč 1958), Březina (Chlupáč 1966, Rak – Viktorýn 2010), the valley of the Říčka Brook (Chlupáč 1966), Čelechovice (Chlupáč 1969) and the Mokrá quarry (Chlupáč 1966, Rak 2004, Rak – Lerosey- Aubril 2009, Kalvoda et al. 2010 , Rak et al. 2012).",
+                "html": "Trilobites from the Březina Formation were pre- viously reported from several localities: Zbrašov near Hranice (Chlupáč 1956, Chlupáč 1958), Březina (Chlupáč 1966, Rak – Viktorýn 2010), the valley of the Říčka Brook (Chlupáč 1966), Čelechovice (Chlupáč 1969) and the Mokrá quarry (Chlupáč 1966, Rak 2004, Rak – Lerosey- Aubril 2009, Kalvoda et al. 2010 , Rak et al. 2012)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.44588235294117645
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.44588235294117645
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.5423529411764706
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.5423529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 28.927795999999997,
+                "point_size": 61.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 10
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "New trilobite-bearing beds of the Březina Formation were discovered in the valley of the Říčka Brook near Brno in 2011. Th e new material was collected from an outcrop situated on the right bank of the Říčka Brook, approxi- mately 150 m NWW from the „Koupaliště“ (= “bathing place“) hiking signpost, approximately 2.5 km SSW of the village of Ochoz u Brna (fi g. 1). Aleuropelitic shales exposed therein are prevalently greenish, considerably",
+                "html": "New trilobite-bearing beds of the Březina Formation were discovered in the valley of the Říčka Brook near Brno in 2011. Th e new material was collected from an outcrop situated on the right bank of the Říčka Brook, approxi- mately 150 m NWW from the „Koupaliště“ (= “bathing place“) hiking signpost, approximately 2.5 km SSW of the village of Ochoz u Brna (fi g. 1). Aleuropelitic shales exposed therein are prevalently greenish, considerably"
+              },
+              "coordinates": [
+                {
+                  "x": 0.5090609555189456,
+                  "y": 0.43176470588235294
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.43176470588235294
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.5423529411764706
+                },
+                {
+                  "x": 0.5090609555189456,
+                  "y": 0.5423529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.78616199999999,
+                "height_mm": 33.161131999999995,
+                "point_size": 70.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 11
+            },
+            {
+              "category": "picture",
+              "content": {
+                "text": "",
+                "html": ""
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.5623529411764706
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.5623529411764706
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.8176470588235294
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.8176470588235294
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.04176999999999,
+                "height_mm": 76.552826,
+                "point_size": 162.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 12
+            },
+            {
+              "category": "caption",
+              "content": {
+                "text": "Fig. 1: A – Location of all known trilobite occurences of the Březina Formation in the southeast part of the Czech Republic (CR) and the Bohemian massif (BM). B – Localities of the Březina Formation with trilobite occurence: 1 – Březina, 2 – valley of the Říčka Brook, 3 – Mokrá quarry, 4 – Čelechovice, 5 – Zbrašov near Hranice. C – Geographic position of the new locality (marked by arrow) in the south part of the Moravian Karst. D – Schematic stratigraphical column of the Late Devonian and Early Carboniferous of the Moravian Karst; modifi ed aft er Kalvoda et al. (2010). E – Lithological symbols used in the stratigraphical column: I – limestones (commonly cherty) with thin intercalations of shales (Líšeň Fm.), II – limestones, commonly nodular (Líšeň Fm.), III – limestones (commonly cherty) with thin intercalations of shales; sandy limestones (Líšeň Fm.), IV – aleuropelitic shales and limestones (Březina Fm.), V – aleuropelitic shales (Rozstání Fm.), VI – conglomerates, greywackes, shales (Myslejovice Fm.).",
+                "html": "Fig. 1: A – Location of all known trilobite occurences of the Březina Formation in the southeast part of the Czech Republic (CR) and the Bohemian massif (BM). B – Localities of the Březina Formation with trilobite occurence: 1 – Březina, 2 – valley of the Říčka Brook, 3 – Mokrá quarry, 4 – Čelechovice, 5 – Zbrašov near Hranice. C – Geographic position of the new locality (marked by arrow) in the south part of the Moravian Karst. D – Schematic stratigraphical column of the Late Devonian and Early Carboniferous of the Moravian Karst; modifi ed aft er Kalvoda et al. (2010). E – Lithological symbols used in the stratigraphical column: I – limestones (commonly cherty) with thin intercalations of shales (Líšeň Fm.), II – limestones, commonly nodular (Líšeň Fm.), III – limestones (commonly cherty) with thin intercalations of shales; sandy limestones (Líšeň Fm.), IV – aleuropelitic shales and limestones (Březina Fm.), V – aleuropelitic shales (Rozstání Fm.), VI – conglomerates, greywackes, shales (Myslejovice Fm.)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.8247058823529412
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.8247058823529412
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.9247058823529412
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.9247058823529412
+                }
+              ],
+              "relative_size": {
+                "width_mm": 163.68899199999998,
+                "height_mm": 29.98613,
+                "point_size": 63.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 13
+            },
+            {
+              "category": "page footer",
+              "content": {
+                "text": "doi: 10.5817/GVMS2012-1-2-125",
+                "html": "doi: 10.5817/GVMS2012-1-2-125"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.3113673805601318,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.3113673805601318,
+                  "y": 0.9658823529411765
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.9658823529411765
+                }
+              ],
+              "relative_size": {
+                "width_mm": 41.980582,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 14
+            },
+            {
+              "category": "page footer",
+              "content": {
+                "text": "125",
+                "html": "125"
+              },
+              "coordinates": [
+                {
+                  "x": 0.8583196046128501,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.9670588235294117
+                },
+                {
+                  "x": 0.8583196046128501,
+                  "y": 0.9670588235294117
+                }
+              ],
+              "relative_size": {
+                "width_mm": 4.586113999999999,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 15
+            }
+          ],
+          "metadata": {
+            "page_number": 0,
+            "page_width": 607,
+            "page_height": 850
+          }
+        }
+      },
+      "1": {
+        "timestamp": "2025-04-21T16:06:01.777156",
+        "structure": {
+          "elements": [
+            {
+              "category": "page header",
+              "content": {
+                "text": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012",
+                "html": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.03764705882352941
+                },
+                {
+                  "x": 0.3014827018121911,
+                  "y": 0.03764705882352941
+                },
+                {
+                  "x": 0.3014827018121911,
+                  "y": 0.04823529411764706
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.04823529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 39.863914,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 0
+            },
+            {
+              "category": "page header",
+              "content": {
+                "text": "P aleo z oikum",
+                "html": "P aleo z oikum"
+              },
+              "coordinates": [
+                {
+                  "x": 0.023064250411861616,
+                  "y": 0.46705882352941175
+                },
+                {
+                  "x": 0.03789126853377265,
+                  "y": 0.46705882352941175
+                },
+                {
+                  "x": 0.03789126853377265,
+                  "y": 0.5470588235294118
+                },
+                {
+                  "x": 0.023064250411861616,
+                  "y": 0.5470588235294118
+                }
+              ],
+              "relative_size": {
+                "width_mm": 3.1750019999999997,
+                "height_mm": 23.988903999999998,
+                "point_size": 51.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 1
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "silicifi ed and poorly bedded. Trilobites, associated with brachiopods, bivalves, cephalopods, corals and crinoids, were obtained from an interval of approximately 0.5 m thickness. Several limestone pebbles and a limestone cobble were also found within these shales. More then 80 remnants of trilobites including about 20 almost complete specimens and about 60 isolated parts of exoskeletons were collected. Tectonic deformation complicates their determination. Several specimens from this locality were now preliminary studied and deposited in the palaeonto- logical collections of the Czech Geological Survey, Prague (inventory numbers TW1–TW4).",
+                "html": "silicifi ed and poorly bedded. Trilobites, associated with brachiopods, bivalves, cephalopods, corals and crinoids, were obtained from an interval of approximately 0.5 m thickness. Several limestone pebbles and a limestone cobble were also found within these shales. More then 80 remnants of trilobites including about 20 almost complete specimens and about 60 isolated parts of exoskeletons were collected. Tectonic deformation complicates their determination. Several specimens from this locality were now preliminary studied and deposited in the palaeonto- logical collections of the Czech Geological Survey, Prague (inventory numbers TW1–TW4)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.09294117647058824
+                },
+                {
+                  "x": 0.4925864909390445,
+                  "y": 0.09294117647058824
+                },
+                {
+                  "x": 0.4925864909390445,
+                  "y": 0.26
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.26
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 50.094476,
+                "point_size": 106.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 2
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "Systematic Part",
+                "html": "Systematic Part"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.2752941176470588
+                },
+                {
+                  "x": 0.22075782537067545,
+                  "y": 0.2752941176470588
+                },
+                {
+                  "x": 0.22075782537067545,
+                  "y": 0.28823529411764703
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.28823529411764703
+                }
+              ],
+              "relative_size": {
+                "width_mm": 22.577792,
+                "height_mm": 3.8805579999999997,
+                "point_size": 8.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 3
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Class Trilobita Walch, 1771 Order Proetida Fortey – Owens, 1975 Family Phillipsiidae Oehlert, 1886 Subfamily Archegoninae Hahn – Brauckmann, 1984 Genus Archegonus Burmeister, 1843 Subgenus Archegonus (Phillibole) Richter – Richter, 1937",
+                "html": "Class Trilobita Walch, 1771 Order Proetida Fortey – Owens, 1975 Family Phillipsiidae Oehlert, 1886 Subfamily Archegoninae Hahn – Brauckmann, 1984 Genus Archegonus Burmeister, 1843 Subgenus Archegonus (Phillibole) Richter – Richter, 1937"
+              },
+              "coordinates": [
+                {
+                  "x": 0.12355848434925865,
+                  "y": 0.28941176470588237
+                },
+                {
+                  "x": 0.4876441515650741,
+                  "y": 0.28941176470588237
+                },
+                {
+                  "x": 0.4876441515650741,
+                  "y": 0.37411764705882355
+                },
+                {
+                  "x": 0.12355848434925865,
+                  "y": 0.37411764705882355
+                }
+              ],
+              "relative_size": {
+                "width_mm": 77.963938,
+                "height_mm": 25.400015999999997,
+                "point_size": 54.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 4
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "",
+                "html": ""
+              },
+              "coordinates": [
+                {
+                  "x": 0.12191103789126853,
+                  "y": 0.38823529411764707
+                },
+                {
+                  "x": 0.4645799011532125,
+                  "y": 0.38823529411764707
+                },
+                {
+                  "x": 0.4645799011532125,
+                  "y": 0.4011764705882353
+                },
+                {
+                  "x": 0.12191103789126853,
+                  "y": 0.4011764705882353
+                }
+              ],
+              "relative_size": {
+                "width_mm": 73.37782399999999,
+                "height_mm": 3.8805579999999997,
+                "point_size": 8.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 5
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Archegonus (Phillibole) cf. polleni (Woodward, 1894) Remarks: Th e morphology of the complete specimen (TW1, fi g. 2A) is close to Archegonus (Phillibole) polleni chiefl y due to the short genal spine reaching approximately the fi rst thoracic segment and by the size of the eyes. Al- though the eyes were broken off , the shape of the fracture line suggests that they were large. As judged from poorly preserved material, the pygidial border seems to be very indistinct or rather absent in comparison with the lecto- type of A. (Ph.) polleni depicted by Woodward (1894) and Prentice (1967).",
+                "html": "Archegonus (Phillibole) cf. polleni (Woodward, 1894) Remarks: Th e morphology of the complete specimen (TW1, fi g. 2A) is close to Archegonus (Phillibole) polleni chiefl y due to the short genal spine reaching approximately the fi rst thoracic segment and by the size of the eyes. Al- though the eyes were broken off , the shape of the fracture line suggests that they were large. As judged from poorly preserved material, the pygidial border seems to be very indistinct or rather absent in comparison with the lecto- type of A. (Ph.) polleni depicted by Woodward (1894) and Prentice (1967)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.4023529411764706
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.4023529411764706
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.5423529411764706
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.5423529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.08060599999999,
+                "height_mm": 41.980582,
+                "point_size": 89.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 6
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "A. (Ph.) polleni occurs in Great Britain, Germany and very probably also in Ireland (see Archinal 1992, p. 21). In Germany (Rhenish Massif: Bergisches Land) A. (Ph.) pol- leni appears in two completely diff erent horizons (cu II?γ = ?Late Chadian and cu IIIα = Asbian; Brauckmann 1992, p. 126); both materials cannot yet be distinguished by the preserved characters. In Northern England (type region) the true A. (Ph.) polleni is restricted to the latter sequence. Th e species seems to cover a complete time interval from the Late Chadian to the Asbian (cu II?γ–cu IIIα, Lower to Upper Viséan).",
+                "html": "A. (Ph.) polleni occurs in Great Britain, Germany and very probably also in Ireland (see Archinal 1992, p. 21). In Germany (Rhenish Massif: Bergisches Land) A. (Ph.) pol- leni appears in two completely diff erent horizons (cu II?γ = ?Late Chadian and cu IIIα = Asbian; Brauckmann 1992, p. 126); both materials cannot yet be distinguished by the preserved characters. In Northern England (type region) the true A. (Ph.) polleni is restricted to the latter sequence. Th e species seems to cover a complete time interval from the Late Chadian to the Asbian (cu II?γ–cu IIIα, Lower to Upper Viséan)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.5447058823529412
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.5447058823529412
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.6988235294117647
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.6988235294117647
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 46.213918,
+                "point_size": 98.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 7
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "",
+                "html": ""
+              },
+              "coordinates": [
+                {
+                  "x": 0.12191103789126853,
+                  "y": 0.7141176470588235
+                },
+                {
+                  "x": 0.4876441515650741,
+                  "y": 0.7141176470588235
+                },
+                {
+                  "x": 0.4876441515650741,
+                  "y": 0.7270588235294118
+                },
+                {
+                  "x": 0.12191103789126853,
+                  "y": 0.7270588235294118
+                }
+              ],
+              "relative_size": {
+                "width_mm": 78.316716,
+                "height_mm": 3.8805579999999997,
+                "point_size": 8.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 8
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Archegonus (Phillibole) cf. cauliquercus Brauckmann, 1981 Remarks: Two almost complete specimens (TW2, fi g. 2B, C, E), probably belonging to the same species, are pre- served together in one piece of rock. In the fi rst specimen (fi g. 2C, E) the right genal spine was completely broken off . Th e mould of the fragmentary left  genal spine suggests its long and tubular shape (fi g. 2E). In the second, a markedly disarticulated specimen (fi g. 2B), the right librigena is com- pletely lacking, but the left  librigena reveals a long tubular genal spine. In both specimens the eyes are not preserved. Due to the considerably poor preservation, the course of the facial sutures can be only locally distinguished. As far as observable, the palpebral lobes seem to be rather large, which suggests the rather large size of the eyes (typical for Archegonus (Phillibole) aprathensis subgroup sensu Müller",
+                "html": "Archegonus (Phillibole) cf. cauliquercus Brauckmann, 1981 Remarks: Two almost complete specimens (TW2, fi g. 2B, C, E), probably belonging to the same species, are pre- served together in one piece of rock. In the fi rst specimen (fi g. 2C, E) the right genal spine was completely broken off . Th e mould of the fragmentary left  genal spine suggests its long and tubular shape (fi g. 2E). In the second, a markedly disarticulated specimen (fi g. 2B), the right librigena is com- pletely lacking, but the left  librigena reveals a long tubular genal spine. In both specimens the eyes are not preserved. Due to the considerably poor preservation, the course of the facial sutures can be only locally distinguished. As far as observable, the palpebral lobes seem to be rather large, which suggests the rather large size of the eyes (typical for Archegonus (Phillibole) aprathensis subgroup sensu Müller"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.7270588235294118
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.7270588235294118
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.9235294117647059
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.9235294117647059
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 58.913926,
+                "point_size": 125.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 9
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "– Brauckmann 2010). Both specimens are very similar to Archegonus (Phillibole) cauliquercus which was previously known from the cu IIIα 2 sequence (Asbian, Upper Viséan) in Germany (Bergisches Land; see Archinal 1992; p. 11).",
+                "html": "– Brauckmann 2010). Both specimens are very similar to Archegonus (Phillibole) cauliquercus which was previously known from the cu IIIα 2 sequence (Asbian, Upper Viséan) in Germany (Bergisches Land; see Archinal 1992; p. 11)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.09294117647058824
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.09294117647058824
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.14705882352941177
+                },
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.14705882352941177
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 16.227788,
+                "point_size": 34.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 10
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Genus Liobole Richer – Richter, 1949 Subspecies Liobole (Liobole) Richter – Richter, 1949",
+                "html": "Genus Liobole Richer – Richter, 1949 Subspecies Liobole (Liobole) Richter – Richter, 1949"
+              },
+              "coordinates": [
+                {
+                  "x": 0.5172981878088962,
+                  "y": 0.1623529411764706
+                },
+                {
+                  "x": 0.8517298187808896,
+                  "y": 0.1623529411764706
+                },
+                {
+                  "x": 0.8517298187808896,
+                  "y": 0.18941176470588236
+                },
+                {
+                  "x": 0.5172981878088962,
+                  "y": 0.18941176470588236
+                }
+              ],
+              "relative_size": {
+                "width_mm": 71.613934,
+                "height_mm": 8.113894,
+                "point_size": 17.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 11
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Liobole (Liobole) glabra proxima Chlupáč, 1966",
+                "html": "Liobole (Liobole) glabra proxima Chlupáč, 1966"
+              },
+              "coordinates": [
+                {
+                  "x": 0.515650741350906,
+                  "y": 0.20470588235294118
+                },
+                {
+                  "x": 0.8253706754530478,
+                  "y": 0.20470588235294118
+                },
+                {
+                  "x": 0.8253706754530478,
+                  "y": 0.21764705882352942
+                },
+                {
+                  "x": 0.515650741350906,
+                  "y": 0.21764705882352942
+                }
+              ],
+              "relative_size": {
+                "width_mm": 66.32226399999999,
+                "height_mm": 3.8805579999999997,
+                "point_size": 8.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 12
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Remarks: Th e cranidium (TW 3) depicted in fi g. 2G is markedly deformed. Th e course of the facial sutures as well as the shape of the glabella make it possible to deter- mine this specimen as Liobole (L.) glabra proxima due to the following characteristics: posterior fi xigenae extremely broad, ζ not marked, and constriction of glabella between γ and γ lacking.",
+                "html": "Remarks: Th e cranidium (TW 3) depicted in fi g. 2G is markedly deformed. Th e course of the facial sutures as well as the shape of the glabella make it possible to deter- mine this specimen as Liobole (L.) glabra proxima due to the following characteristics: posterior fi xigenae extremely broad, ζ not marked, and constriction of glabella between γ and γ lacking."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5090609555189456,
+                  "y": 0.22
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.22
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.3164705882352941
+                },
+                {
+                  "x": 0.5090609555189456,
+                  "y": 0.3164705882352941
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 28.927795999999997,
+                "point_size": 61.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 13
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Th is subspecies was originally described in the Czech Republic (Viséan, cu IIγ; localities Březina, Čelechovice – “horizon with Spinibole olgae ”) by Chlupáč (1966, 1969). Subsequently Owens – Tilsley (1995) reported Liobole (L.) glabra proxima in south-west England (North Devon; Lower Viséan: Late Chadian, cu IIγ).",
+                "html": "Th is subspecies was originally described in the Czech Republic (Viséan, cu IIγ; localities Březina, Čelechovice – “horizon with Spinibole olgae ”) by Chlupáč (1966, 1969). Subsequently Owens – Tilsley (1995) reported Liobole (L.) glabra proxima in south-west England (North Devon; Lower Viséan: Late Chadian, cu IIγ)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.31882352941176473
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.31882352941176473
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.4011764705882353
+                },
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.4011764705882353
+                }
+              ],
+              "relative_size": {
+                "width_mm": 81.13893999999999,
+                "height_mm": 24.69446,
+                "point_size": 52.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 14
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Subfamily ?Cystispininae Hahn – Hahn, 1982",
+                "html": "Subfamily ?Cystispininae Hahn – Hahn, 1982"
+              },
+              "coordinates": [
+                {
+                  "x": 0.5172981878088962,
+                  "y": 0.4164705882352941
+                },
+                {
+                  "x": 0.8154859967051071,
+                  "y": 0.4164705882352941
+                },
+                {
+                  "x": 0.8154859967051071,
+                  "y": 0.4435294117647059
+                },
+                {
+                  "x": 0.5172981878088962,
+                  "y": 0.4435294117647059
+                }
+              ],
+              "relative_size": {
+                "width_mm": 63.852818,
+                "height_mm": 8.113894,
+                "point_size": 17.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 15
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "? Spinibole sp. Chlupáč, 1966 Remarks: Th e thoracopygon (fi g. 2F) is similar to three species, i.e. Spinibole (Spinibole) ruethenensis Hahn – Hahn, 1969 (= Wagnerispina ruethenensis, sensu Gandl 1977 and Owens – Tilsley 1995), Spinibole (Combewoodia) coddonensis (Woodward, 1902) (= Wagnerispina cod- donensis, sensu Owens – Tilsley 1995) and Wagnerispina wagneri Gandl, 1977. Th e slightly subtriangular shape of the pygidium is closer to Spinibole (Sp.) ruethenensis . Although the assignment to the genus Spinibole is pro- bable, this specimen cannot be unequivocally allocated to a particular species because of the lack of the cephalon.",
+                "html": "? Spinibole sp. Chlupáč, 1966 Remarks: Th e thoracopygon (fi g. 2F) is similar to three species, i.e. Spinibole (Spinibole) ruethenensis Hahn – Hahn, 1969 (= Wagnerispina ruethenensis, sensu Gandl 1977 and Owens – Tilsley 1995), Spinibole (Combewoodia) coddonensis (Woodward, 1902) (= Wagnerispina cod- donensis, sensu Owens – Tilsley 1995) and Wagnerispina wagneri Gandl, 1977. Th e slightly subtriangular shape of the pygidium is closer to Spinibole (Sp.) ruethenensis . Although the assignment to the genus Spinibole is pro- bable, this specimen cannot be unequivocally allocated to a particular species because of the lack of the cephalon."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.4447058823529412
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.4447058823529412
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.5952941176470589
+                },
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.5952941176470589
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.78616199999999,
+                "height_mm": 45.155584,
+                "point_size": 96.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 16
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Stratigraphic range and distribution of similar taxa: Spinibole (Sp.) ruethenensis is known from Germany (Asbi- an, cu IIδ, Upper Viséan; Rhenish Massif, Harz Mountains). Specimens similar to Spinibole (Sp.) ruethenensis were cur- rently recorded by Rak – Viktorýn (2012) also from “the horizon with Spinibole olgae” (cu IIγ–cu IIδ, approximately Lower to Middle Viséan) from the vicinity of the village of Březina. Spinibole (C.) coddonensis occurs in south-west England (North Devon) and in Germany (Rhenish Massif: Bergisches Land) (both Early Viséan, approximately cu IIγ or Late Chadian). Wagnerispina wagneri was described from northern Spain (Late Mississippian: Serpukhovian: Early Namurian, E 1–2 ; Cantabrian Mountains).",
+                "html": "Stratigraphic range and distribution of similar taxa: Spinibole (Sp.) ruethenensis is known from Germany (Asbi- an, cu IIδ, Upper Viséan; Rhenish Massif, Harz Mountains). Specimens similar to Spinibole (Sp.) ruethenensis were cur- rently recorded by Rak – Viktorýn (2012) also from “the horizon with Spinibole olgae” (cu IIγ–cu IIδ, approximately Lower to Middle Viséan) from the vicinity of the village of Březina. Spinibole (C.) coddonensis occurs in south-west England (North Devon) and in Germany (Rhenish Massif: Bergisches Land) (both Early Viséan, approximately cu IIγ or Late Chadian). Wagnerispina wagneri was described from northern Spain (Late Mississippian: Serpukhovian: Early Namurian, E 1–2 ; Cantabrian Mountains)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5090609555189456,
+                  "y": 0.6011764705882353
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.6011764705882353
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.7835294117647059
+                },
+                {
+                  "x": 0.5090609555189456,
+                  "y": 0.7835294117647059
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.78616199999999,
+                "height_mm": 54.680589999999995,
+                "point_size": 116.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 17
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "Discussion and interpretations",
+                "html": "Discussion and interpretations"
+              },
+              "coordinates": [
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.7988235294117647
+                },
+                {
+                  "x": 0.7199341021416804,
+                  "y": 0.7988235294117647
+                },
+                {
+                  "x": 0.7199341021416804,
+                  "y": 0.8105882352941176
+                },
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.8105882352941176
+                }
+              ],
+              "relative_size": {
+                "width_mm": 45.508362,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 18
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "All the previously described trilobites from the Březina Formation in the valley of the Říčka Brook (Chlupáč 1966) were obtained from deep boreholes [bore Ochoz (Říčky) 2, bore V 97] situated approximately 100 m north of the bathing place. Rather poor trilobite material, composed of Liobole aff . glabroides (Richter – Richter, 1949) and “ Cyrtosymbole (Macrobole) sp.”, was interpreted by Chlupáč (1966) as belonging to the Lower Viséan (cu IIγ).",
+                "html": "All the previously described trilobites from the Březina Formation in the valley of the Říčka Brook (Chlupáč 1966) were obtained from deep boreholes [bore Ochoz (Říčky) 2, bore V 97] situated approximately 100 m north of the bathing place. Rather poor trilobite material, composed of Liobole aff . glabroides (Richter – Richter, 1949) and “ Cyrtosymbole (Macrobole) sp.”, was interpreted by Chlupáč (1966) as belonging to the Lower Viséan (cu IIγ)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.8129411764705883
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.8129411764705883
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.9235294117647059
+                },
+                {
+                  "x": 0.5074135090609555,
+                  "y": 0.9235294117647059
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.78616199999999,
+                "height_mm": 33.161131999999995,
+                "point_size": 70.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 19
+            },
+            {
+              "category": "page footer",
+              "content": {
+                "text": "126",
+                "html": "126"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.13673805601317957,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.13673805601317957,
+                  "y": 0.9670588235294117
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.9670588235294117
+                }
+              ],
+              "relative_size": {
+                "width_mm": 4.2333359999999995,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 20
+            }
+          ],
+          "metadata": {
+            "page_number": 1,
+            "page_width": 607,
+            "page_height": 850
+          }
+        }
+      },
+      "2": {
+        "timestamp": "2025-04-21T16:06:01.777162",
+        "structure": {
+          "elements": [
+            {
+              "category": "page header",
+              "content": {
+                "text": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012",
+                "html": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012"
+              },
+              "coordinates": [
+                {
+                  "x": 0.6935749588138386,
+                  "y": 0.03764705882352941
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.03764705882352941
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.04823529411764706
+                },
+                {
+                  "x": 0.6935749588138386,
+                  "y": 0.04823529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 39.863914,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 0
+            },
+            {
+              "category": "picture",
+              "content": {
+                "text": "",
+                "html": ""
+              },
+              "coordinates": [
+                {
+                  "x": 0.12026359143327842,
+                  "y": 0.09294117647058824
+                },
+                {
+                  "x": 0.8747940691927513,
+                  "y": 0.09294117647058824
+                },
+                {
+                  "x": 0.8747940691927513,
+                  "y": 0.7929411764705883
+                },
+                {
+                  "x": 0.12026359143327842,
+                  "y": 0.7929411764705883
+                }
+              ],
+              "relative_size": {
+                "width_mm": 161.57232399999998,
+                "height_mm": 209.90291,
+                "point_size": 446.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 1
+            },
+            {
+              "category": "page header",
+              "content": {
+                "text": "P aleo z oikum",
+                "html": "P aleo z oikum"
+              },
+              "coordinates": [
+                {
+                  "x": 0.9654036243822076,
+                  "y": 0.4717647058823529
+                },
+                {
+                  "x": 0.9736408566721582,
+                  "y": 0.4717647058823529
+                },
+                {
+                  "x": 0.9736408566721582,
+                  "y": 0.5447058823529412
+                },
+                {
+                  "x": 0.9654036243822076,
+                  "y": 0.5447058823529412
+                }
+              ],
+              "relative_size": {
+                "width_mm": 1.76389,
+                "height_mm": 21.872235999999997,
+                "point_size": 46.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 2
+            },
+            {
+              "category": "caption",
+              "content": {
+                "text": "Fig. 2: A – Archegonus (Phillibole) cf. polleni (Woodward, 1894); dorsal view of complete specimen; TW1a. B – Archegonus (Philli- bole) cf. cauliquercus Brauckmann, 1981; dorsal view of nearly complete but disarticulated specimen; idealized shape of facial suture marked by white line; TW2. C – Archegonus (Phillibole) cf. cauliquercus Brauckmann, 1981; dorsal view of complete specimen with damaged genal spines; slightly displaced palpebral lobe marked by white line; TW2. D – Archegonus (Phillibole) cf. polleni (Wood- ward, 1894); dorsolateral view of left  librigena of the specimen depicted in A; TW1. E – Archegonus (Phillibole) cf. cauliquercus Brauckmann, 1981; dorsolateral view of the specimen depicted in fi g. 2C; mould of fragmentary genal spine marked by white line; TW2. F – ? Spinibole sp.; thoracopygon; TW4. G – Liobole (Liobole) glabra proxima Chlupáč, 1966; lateral view of cranidium; TW3. H – Darjella monilis Malakhova, 1964; specimen from a limestone cobble; thin-section. Scale bars: A, G – 5 mm; B, C, D, E – 2 mm; F – 3 mm; H – 1 mm. Specimens A, B, C, F, G coated by ammonium chloride. All trilobites are housed in the Czech Geological Survey, Prague (inventory numbers TW1–TW4). Photo by T. Weiner, J. Kalvoda.",
+                "html": "Fig. 2: A – Archegonus (Phillibole) cf. polleni (Woodward, 1894); dorsal view of complete specimen; TW1a. B – Archegonus (Philli- bole) cf. cauliquercus Brauckmann, 1981; dorsal view of nearly complete but disarticulated specimen; idealized shape of facial suture marked by white line; TW2. C – Archegonus (Phillibole) cf. cauliquercus Brauckmann, 1981; dorsal view of complete specimen with damaged genal spines; slightly displaced palpebral lobe marked by white line; TW2. D – Archegonus (Phillibole) cf. polleni (Wood- ward, 1894); dorsolateral view of left  librigena of the specimen depicted in A; TW1. E – Archegonus (Phillibole) cf. cauliquercus Brauckmann, 1981; dorsolateral view of the specimen depicted in fi g. 2C; mould of fragmentary genal spine marked by white line; TW2. F – ? Spinibole sp.; thoracopygon; TW4. G – Liobole (Liobole) glabra proxima Chlupáč, 1966; lateral view of cranidium; TW3. H – Darjella monilis Malakhova, 1964; specimen from a limestone cobble; thin-section. Scale bars: A, G – 5 mm; B, C, D, E – 2 mm; F – 3 mm; H – 1 mm. Specimens A, B, C, F, G coated by ammonium chloride. All trilobites are housed in the Czech Geological Survey, Prague (inventory numbers TW1–TW4). Photo by T. Weiner, J. Kalvoda."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.8035294117647059
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.8035294117647059
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.9270588235294117
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.9270588235294117
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.394548,
+                "height_mm": 37.041689999999996,
+                "point_size": 78.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 3
+            },
+            {
+              "category": "page footer",
+              "content": {
+                "text": "127",
+                "html": "127"
+              },
+              "coordinates": [
+                {
+                  "x": 0.8583196046128501,
+                  "y": 0.9564705882352941
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.9564705882352941
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.9670588235294117
+                },
+                {
+                  "x": 0.8583196046128501,
+                  "y": 0.9670588235294117
+                }
+              ],
+              "relative_size": {
+                "width_mm": 4.938892,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 4
+            }
+          ],
+          "metadata": {
+            "page_number": 2,
+            "page_width": 607,
+            "page_height": 850
+          }
+        }
+      },
+      "3": {
+        "timestamp": "2025-04-21T16:06:01.777166",
+        "structure": {
+          "elements": [
+            {
+              "category": "page header",
+              "content": {
+                "text": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012",
+                "html": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.03882352941176471
+                },
+                {
+                  "x": 0.3014827018121911,
+                  "y": 0.03882352941176471
+                },
+                {
+                  "x": 0.3014827018121911,
+                  "y": 0.04823529411764706
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.04823529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 39.863914,
+                "height_mm": 2.822224,
+                "point_size": 6.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 0
+            },
+            {
+              "category": "page header",
+              "content": {
+                "text": "P aleo z oikum",
+                "html": "P aleo z oikum"
+              },
+              "coordinates": [
+                {
+                  "x": 0.026359143327841845,
+                  "y": 0.46705882352941175
+                },
+                {
+                  "x": 0.03789126853377265,
+                  "y": 0.46705882352941175
+                },
+                {
+                  "x": 0.03789126853377265,
+                  "y": 0.5447058823529412
+                },
+                {
+                  "x": 0.026359143327841845,
+                  "y": 0.5447058823529412
+                }
+              ],
+              "relative_size": {
+                "width_mm": 2.469446,
+                "height_mm": 23.283348,
+                "point_size": 49.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 1
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Apart from these fi ndings from boreholes, all the previ- ously described Viséan trilobites known from the Březina Formation derive from Březina, Zbrašov near Hranice and Čelechovice. Th ese localities are characterized by occur- rence of Spinibole (Spinibole) olgae Chlupáč, 1966, which is accompanied by further taxa (“horizon with Spinibole olgae” sensu Chlupáč 1969). Although about 80 trilobite remnants were collected from the newly discovered fos- siliferous beds, none of them belong to Spinibole (S.) olgae . Th is suggests an absence or infrequent occurrence of this species, which may have very restricted stratigraphical and/or palaeoecologically limited occurrence.",
+                "html": "Apart from these fi ndings from boreholes, all the previ- ously described Viséan trilobites known from the Březina Formation derive from Březina, Zbrašov near Hranice and Čelechovice. Th ese localities are characterized by occur- rence of Spinibole (Spinibole) olgae Chlupáč, 1966, which is accompanied by further taxa (“horizon with Spinibole olgae” sensu Chlupáč 1969). Although about 80 trilobite remnants were collected from the newly discovered fos- siliferous beds, none of them belong to Spinibole (S.) olgae . Th is suggests an absence or infrequent occurrence of this species, which may have very restricted stratigraphical and/or palaeoecologically limited occurrence."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.09411764705882353
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.09411764705882353
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.26
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.26
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 49.741698,
+                "point_size": 105.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 2
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Th e exact stratigraphic range of Spinibole (S.) olgae is essentially not yet known. Chlupáč (1966, 1969) has al- located this species to the Lower Viséan (cu IIγ). Owens – Tilsley (1995) have correlated “the horizon with S. olgae ” with the Late Chadian assemblage (Lower Viséan, cu IIγ) in North Devon. Müller – Brauckmann (2010) have dated their Archegonus (Phillibole) nehdenensis subgroup (= “ nehdenensis -Untergruppe”) to approximately the cu IIδ (=lower part of Beyrichoceras-Entogonites genozone sensu Korn in Amler – Gereke 2003). All the previously described Moravian specimens from this subgroup are from “the horizon with S. olgae .”",
+                "html": "Th e exact stratigraphic range of Spinibole (S.) olgae is essentially not yet known. Chlupáč (1966, 1969) has al- located this species to the Lower Viséan (cu IIγ). Owens – Tilsley (1995) have correlated “the horizon with S. olgae ” with the Late Chadian assemblage (Lower Viséan, cu IIγ) in North Devon. Müller – Brauckmann (2010) have dated their Archegonus (Phillibole) nehdenensis subgroup (= “ nehdenensis -Untergruppe”) to approximately the cu IIδ (=lower part of Beyrichoceras-Entogonites genozone sensu Korn in Amler – Gereke 2003). All the previously described Moravian specimens from this subgroup are from “the horizon with S. olgae .”"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.26235294117647057
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.26235294117647057
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.42823529411764705
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.42823529411764705
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 49.741698,
+                "point_size": 105.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 3
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Th e preliminarily studied material from the valley of the Říčka Brook suggests an age of an extremely long time interval from the Early to Late Viséan (approxi- mately cu IIγ to cu IIIα) and thus from the upper part of the Fascipericyclus-Ammonellipsites to the lower part of the Eoglyphioceras genozones (see Korn – Kaufmann 2008: fi g. 7). Th e Březina Formation is stratigraphically older, however, then cu IIIα (Go IIIα) because this zone is documented within the lower part of the Myslejovice Formation (see fi g. 1D) (Kumpera – Lang 1975, Lehotský 2008). A poorly known stratigraphy of the Rozstání For- mation (approximately cu IIδ–cu IIIα; fi g. 1D), which lies between the Březina and the Myslejovice Formations, was documented by indirect biostratigraphic evidence only (Kalvoda – Bábek 1995). Th erefore, the exact age of the newly discovered fossiliferous beds can be approximately allocated to cu IIγ–cu IIδ (approximately Lower to ?Upper Viséan). “Th e horizon with S. olgae ” seems to correlate with the same interval (cu IIγ–cu IIδ). However, exact stratigraphic relations between associations of “the horizon",
+                "html": "Th e preliminarily studied material from the valley of the Říčka Brook suggests an age of an extremely long time interval from the Early to Late Viséan (approxi- mately cu IIγ to cu IIIα) and thus from the upper part of the Fascipericyclus-Ammonellipsites to the lower part of the Eoglyphioceras genozones (see Korn – Kaufmann 2008: fi g. 7). Th e Březina Formation is stratigraphically older, however, then cu IIIα (Go IIIα) because this zone is documented within the lower part of the Myslejovice Formation (see fi g. 1D) (Kumpera – Lang 1975, Lehotský 2008). A poorly known stratigraphy of the Rozstání For- mation (approximately cu IIδ–cu IIIα; fi g. 1D), which lies between the Březina and the Myslejovice Formations, was documented by indirect biostratigraphic evidence only (Kalvoda – Bábek 1995). Th erefore, the exact age of the newly discovered fossiliferous beds can be approximately allocated to cu IIγ–cu IIδ (approximately Lower to ?Upper Viséan). “Th e horizon with S. olgae ” seems to correlate with the same interval (cu IIγ–cu IIδ). However, exact stratigraphic relations between associations of “the horizon"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.4329411764705882
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.4329411764705882
+                },
+                {
+                  "x": 0.49093904448105435,
+                  "y": 0.7129411764705882
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.7129411764705882
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 83.961164,
+                "point_size": 178.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 4
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "with S. olgae ” and the newly discovered association cannot be unequivocally interpreted.",
+                "html": "with S. olgae ” and the newly discovered association cannot be unequivocally interpreted."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.09411764705882353
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.09411764705882353
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.1188235294117647
+                },
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.1188235294117647
+                }
+              ],
+              "relative_size": {
+                "width_mm": 79.022272,
+                "height_mm": 7.408338,
+                "point_size": 15.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 5
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Th e assemblage of “the horizon with S. olgae ” re- sembles the Late Chadian atheloptic assemblage known from southwest England (North Devon; Owens – Tilsley 1995). Species with reduced eyes [ Liobole (Liobole) glabra proxima , ? Spinibole sp.] co-occur with rather large-eyed species [ Archegonus (Ph.) cf. polleni , Archegonus (Ph.) cf. cauliquercus] in the newly discovered fossiliferous beds.",
+                "html": "Th e assemblage of “the horizon with S. olgae ” re- sembles the Late Chadian atheloptic assemblage known from southwest England (North Devon; Owens – Tilsley 1995). Species with reduced eyes [ Liobole (Liobole) glabra proxima , ? Spinibole sp.] co-occur with rather large-eyed species [ Archegonus (Ph.) cf. polleni , Archegonus (Ph.) cf. cauliquercus] in the newly discovered fossiliferous beds."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.12117647058823529
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.12117647058823529
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.2164705882352941
+                },
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.2164705882352941
+                }
+              ],
+              "relative_size": {
+                "width_mm": 79.727828,
+                "height_mm": 28.575018,
+                "point_size": 60.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 6
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Th e presence of limestone pebbles and limestone cobbles is not particularly typical for aleuropelitic shales of the Březina Formation. Several subangular to rounded pebbles and one subangular limestone cobble were found on the newly discovered locality. Th e Late Tournaisian foraminifer Darjella monilis Malakhova, 1964 was deter- mined in thin-sections obtained from the limestone cobble (fi g. 2H). Th is species ranges from the lower part of the MFZ 7 zone to the MFZ 8 zone sensu Devyust – Hance (in Poty et al. 2006). Th is cobble is apparently derived from the Hády-Říčka Limestones of the Líšeň Formation. Th e limestone pebbles in all probability also come from the Líšeň Formation (Frasnian–Viséan).",
+                "html": "Th e presence of limestone pebbles and limestone cobbles is not particularly typical for aleuropelitic shales of the Březina Formation. Several subangular to rounded pebbles and one subangular limestone cobble were found on the newly discovered locality. Th e Late Tournaisian foraminifer Darjella monilis Malakhova, 1964 was deter- mined in thin-sections obtained from the limestone cobble (fi g. 2H). Th is species ranges from the lower part of the MFZ 7 zone to the MFZ 8 zone sensu Devyust – Hance (in Poty et al. 2006). Th is cobble is apparently derived from the Hády-Říčka Limestones of the Líšeň Formation. Th e limestone pebbles in all probability also come from the Líšeň Formation (Frasnian–Viséan)."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.22
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.22
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.4
+                },
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.4
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.08060599999999,
+                "height_mm": 53.975033999999994,
+                "point_size": 114.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 7
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "Conclusion",
+                "html": "Conclusion"
+              },
+              "coordinates": [
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.4176470588235294
+                },
+                {
+                  "x": 0.5881383855024712,
+                  "y": 0.4176470588235294
+                },
+                {
+                  "x": 0.5881383855024712,
+                  "y": 0.42823529411764705
+                },
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.42823529411764705
+                }
+              ],
+              "relative_size": {
+                "width_mm": 16.580565999999997,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 8
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Th e trilobite association from the newly discovered fossiliferous parts of the Březina Formation apparently belongs to the Viséan (Lower to ?Upper Viséan). Th is is in accordance with the occurrence of the reworked Up- per Tournaisian limestone cobble. Th e association seems to be considerably diff erent from other Viséan trilobite associations of the Březina Formation, which is chiefl y demonstrated by the absence (or very rare occurrence) of Spinibole (S.) olgae , co-occurrence of somewhat large-eyed and rather small-eyed trilobites and by the presence of taxa which were previously unknown from the Březina Forma- tion. Th e new material needs more detailed subsequent study which would follow.",
+                "html": "Th e trilobite association from the newly discovered fossiliferous parts of the Březina Formation apparently belongs to the Viséan (Lower to ?Upper Viséan). Th is is in accordance with the occurrence of the reworked Up- per Tournaisian limestone cobble. Th e association seems to be considerably diff erent from other Viséan trilobite associations of the Březina Formation, which is chiefl y demonstrated by the absence (or very rare occurrence) of Spinibole (S.) olgae , co-occurrence of somewhat large-eyed and rather small-eyed trilobites and by the presence of taxa which were previously unknown from the Březina Forma- tion. Th e new material needs more detailed subsequent study which would follow."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.4329411764705882
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.4329411764705882
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.6129411764705882
+                },
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.6129411764705882
+                }
+              ],
+              "relative_size": {
+                "width_mm": 80.43338399999999,
+                "height_mm": 53.975033999999994,
+                "point_size": 114.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 9
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "Acknowledgements",
+                "html": "Acknowledgements"
+              },
+              "coordinates": [
+                {
+                  "x": 0.5090609555189456,
+                  "y": 0.6294117647058823
+                },
+                {
+                  "x": 0.6342668863261944,
+                  "y": 0.6294117647058823
+                },
+                {
+                  "x": 0.6342668863261944,
+                  "y": 0.6411764705882353
+                },
+                {
+                  "x": 0.5090609555189456,
+                  "y": 0.6411764705882353
+                }
+              ],
+              "relative_size": {
+                "width_mm": 26.811128,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 10
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Tomáš Viktorýn is thanked for providing the trilobites of his collections and suggestions of the referee Petr Budil helped to improve the text. Th e study was supported by the grant project GACR 205/08/0182.",
+                "html": "Tomáš Viktorýn is thanked for providing the trilobites of his collections and suggestions of the referee Petr Budil helped to improve the text. Th e study was supported by the grant project GACR 205/08/0182."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.6447058823529411
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.6447058823529411
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.6976470588235294
+                },
+                {
+                  "x": 0.5107084019769358,
+                  "y": 0.6976470588235294
+                }
+              ],
+              "relative_size": {
+                "width_mm": 79.37505,
+                "height_mm": 15.87501,
+                "point_size": 33.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 11
+            },
+            {
+              "category": "page footer",
+              "content": {
+                "text": "128",
+                "html": "128"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.13509060955518945,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.13509060955518945,
+                  "y": 0.9658823529411765
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.9658823529411765
+                }
+              ],
+              "relative_size": {
+                "width_mm": 4.2333359999999995,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 12
+            }
+          ],
+          "metadata": {
+            "page_number": 3,
+            "page_width": 607,
+            "page_height": 850
+          }
+        }
+      },
+      "4": {
+        "timestamp": "2025-04-21T16:06:01.777171",
+        "structure": {
+          "elements": [
+            {
+              "category": "page header",
+              "content": {
+                "text": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012",
+                "html": "G EOL . VÝZK . M OR . S LEZ ., B RNO 2012"
+              },
+              "coordinates": [
+                {
+                  "x": 0.6935749588138386,
+                  "y": 0.03764705882352941
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.03764705882352941
+                },
+                {
+                  "x": 0.8813838550247117,
+                  "y": 0.04823529411764706
+                },
+                {
+                  "x": 0.6935749588138386,
+                  "y": 0.04823529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 40.216691999999995,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 0
+            },
+            {
+              "category": "page header",
+              "content": {
+                "text": "P aleo z oikum",
+                "html": "P aleo z oikum"
+              },
+              "coordinates": [
+                {
+                  "x": 0.9654036243822076,
+                  "y": 0.47058823529411764
+                },
+                {
+                  "x": 0.9769357495881383,
+                  "y": 0.47058823529411764
+                },
+                {
+                  "x": 0.9769357495881383,
+                  "y": 0.5458823529411765
+                },
+                {
+                  "x": 0.9654036243822076,
+                  "y": 0.5458823529411765
+                }
+              ],
+              "relative_size": {
+                "width_mm": 2.469446,
+                "height_mm": 22.577792,
+                "point_size": 48.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 1
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "References",
+                "html": "References"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.08588235294117647
+                },
+                {
+                  "x": 0.18616144975288304,
+                  "y": 0.08588235294117647
+                },
+                {
+                  "x": 0.18616144975288304,
+                  "y": 0.09647058823529411
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.09647058823529411
+                }
+              ],
+              "relative_size": {
+                "width_mm": 14.816676,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 2
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Amler, M. – Gereke, M. (2003): Karbon-Korrelationstabelle (KKT) Carboniferous Correlation Table (CCT). – Senckenbergiana lethaea, 83, 1/2, 235–247.",
+                "html": "Amler, M. – Gereke, M. (2003): Karbon-Korrelationstabelle (KKT) Carboniferous Correlation Table (CCT). – Senckenbergiana lethaea, 83, 1/2, 235–247."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.0988235294117647
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.0988235294117647
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.12117647058823529
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.12117647058823529
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.747326,
+                "height_mm": 6.702782,
+                "point_size": 14.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 3
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Archinal, A. (1992): Revision der Gattung Archegonus (Phillibole) (Trilobita, Ober-Devon/ Unter-Karbon). – Courier Forschungs- institut Senckenberg, 144, 1–133.",
+                "html": "Archinal, A. (1992): Revision der Gattung Archegonus (Phillibole) (Trilobita, Ober-Devon/ Unter-Karbon). – Courier Forschungs- institut Senckenberg, 144, 1–133."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.12352941176470589
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.12352941176470589
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.14823529411764705
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.14823529411764705
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.452882,
+                "height_mm": 7.408338,
+                "point_size": 15.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 4
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Brauckmann, C. (1981): Eine neue Trilobiten-Art aus dem Kulm (Unter-Karbon cu IIIα) von Aprath (Wuppertal, W-Deutsch- land). – Jahresberichte des naturwissenschaft lichen Vereins in Wuppertal, 34, 92–95.",
+                "html": "Brauckmann, C. (1981): Eine neue Trilobiten-Art aus dem Kulm (Unter-Karbon cu IIIα) von Aprath (Wuppertal, W-Deutsch- land). – Jahresberichte des naturwissenschaft lichen Vereins in Wuppertal, 34, 92–95."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.14941176470588236
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.14941176470588236
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.17294117647058824
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.17294117647058824
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.100104,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 5
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Brauckmann, C. (1992): Trilobiten aus dem Ober-Devon und Unter-Karbon im Raum Aprath. – In: Th omas, E. (ed.): Oberdevon und Unterkarbon von Aprath im Bergischen Land (Nördliches Rheinisches Schiefergebirge), 113–167.",
+                "html": "Brauckmann, C. (1992): Trilobiten aus dem Ober-Devon und Unter-Karbon im Raum Aprath. – In: Th omas, E. (ed.): Oberdevon und Unterkarbon von Aprath im Bergischen Land (Nördliches Rheinisches Schiefergebirge), 113–167."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.17411764705882352
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.17411764705882352
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.1976470588235294
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.1976470588235294
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.394548,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 6
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Chlupáč, I. (1956): Nález spodnokarbonské fauny u Hranic na Moravě. – Věstník Ústředního ústavu geologického, 31, 268–273. Chlupáč, I. (1958): Nová spodnokarbonská fauna od Zbrašova u Hranic na Moravě. – Sborník Ústředního ústavu geologického,",
+                "html": "Chlupáč, I. (1956): Nález spodnokarbonské fauny u Hranic na Moravě. – Věstník Ústředního ústavu geologického, 31, 268–273. Chlupáč, I. (1958): Nová spodnokarbonská fauna od Zbrašova u Hranic na Moravě. – Sborník Ústředního ústavu geologického,"
+              },
+              "coordinates": [
+                {
+                  "x": 0.11367380560131796,
+                  "y": 0.2
+                },
+                {
+                  "x": 0.8896210873146623,
+                  "y": 0.2
+                },
+                {
+                  "x": 0.8896210873146623,
+                  "y": 0.23647058823529413
+                },
+                {
+                  "x": 0.11367380560131796,
+                  "y": 0.23647058823529413
+                }
+              ],
+              "relative_size": {
+                "width_mm": 166.158438,
+                "height_mm": 10.936117999999999,
+                "point_size": 23.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 7
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "24, 279–312. Chlupáč, I. (1966): Th e Upper Devonian and Lower Carboniferous trilobites of the Moravian Karst. – Sborník geologických věd, Paleontologie, 7, 1–143.",
+                "html": "24, 279–312. Chlupáč, I. (1966): Th e Upper Devonian and Lower Carboniferous trilobites of the Moravian Karst. – Sborník geologických věd, Paleontologie, 7, 1–143."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.2376470588235294
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.2376470588235294
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.2611764705882353
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.2611764705882353
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.452882,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 8
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Chlupáč, I. (1969): Lower Carboniferous fauna from Čelechovice (Moravia) and its signifi cance. – Časopis pro mineralogii a geologii, 2, 211–218.",
+                "html": "Chlupáč, I. (1969): Lower Carboniferous fauna from Čelechovice (Moravia) and its signifi cance. – Časopis pro mineralogii a geologii, 2, 211–218."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.2635294117647059
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.2635294117647059
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.28823529411764703
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.28823529411764703
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.394548,
+                "height_mm": 7.408338,
+                "point_size": 15.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 9
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Gandl, J. (1977): Die Karbon-Trilobiten des Kantabrischen Gebirges (NW-Spanien), 2: Die Trilobiten der Alba-Schichten (Unter- -Visé bis Namur A). – Senckenbergiana lethaea, 58, 1/3, 113–217.",
+                "html": "Gandl, J. (1977): Die Karbon-Trilobiten des Kantabrischen Gebirges (NW-Spanien), 2: Die Trilobiten der Alba-Schichten (Unter- -Visé bis Namur A). – Senckenbergiana lethaea, 58, 1/3, 113–217."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.28941176470588237
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.28941176470588237
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.31176470588235294
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.31176470588235294
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.100104,
+                "height_mm": 6.702782,
+                "point_size": 14.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 10
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Hahn, G. – Hahn, R. (1969): Kulm–Trilobiten von Nehden und Rüthen (Sauerland). – Senckenbergiana lethaea, 50, 4, 273–289.",
+                "html": "Hahn, G. – Hahn, R. (1969): Kulm–Trilobiten von Nehden und Rüthen (Sauerland). – Senckenbergiana lethaea, 50, 4, 273–289."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.31411764705882356
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.31411764705882356
+                },
+                {
+                  "x": 0.8797364085667215,
+                  "y": 0.3247058823529412
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.3247058823529412
+                }
+              ],
+              "relative_size": {
+                "width_mm": 163.33621399999998,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 11
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Kalvoda, J. – Bábek, O. (1995): Příspěvek k poznání spodní části rozstáňského souvrství (Drahanská vrchovina, Morava). Geo- logické výzkumy na Moravě a ve Slezsku, 1994, 50–51.",
+                "html": "Kalvoda, J. – Bábek, O. (1995): Příspěvek k poznání spodní části rozstáňského souvrství (Drahanská vrchovina, Morava). Geo- logické výzkumy na Moravě a ve Slezsku, 1994, 50–51."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.3270588235294118
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.3270588235294118
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.34941176470588237
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.34941176470588237
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.100104,
+                "height_mm": 6.702782,
+                "point_size": 14.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 12
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Kalvoda, J. – Devyust, F. X. – Bábek, O. – Dvořák, L. – Rak, Š. – Rez, J. (2010): High-resolution biostratigraphy of the Tournai- sian-Visean (Carboniferous) boundary interval, Mokrá quarry, Czech Republic. – Geobios: Paleontology, Stratigraphy, Paleoecology, 43, 317–331.",
+                "html": "Kalvoda, J. – Devyust, F. X. – Bábek, O. – Dvořák, L. – Rak, Š. – Rez, J. (2010): High-resolution biostratigraphy of the Tournai- sian-Visean (Carboniferous) boundary interval, Mokrá quarry, Czech Republic. – Geobios: Paleontology, Stratigraphy, Paleoecology, 43, 317–331."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.35294117647058826
+                },
+                {
+                  "x": 0.8896210873146623,
+                  "y": 0.35294117647058826
+                },
+                {
+                  "x": 0.8896210873146623,
+                  "y": 0.38823529411764707
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.38823529411764707
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.452882,
+                "height_mm": 10.58334,
+                "point_size": 22.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 13
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Korn, D. – Kaufmann, B. (2009): A high-resolution relative time scale for the Visean Stage (Carboniferous) of the Kulm Basin (Rhenish Mountains, Germany). – Geological Journal, 44, 306–321.",
+                "html": "Korn, D. – Kaufmann, B. (2009): A high-resolution relative time scale for the Visean Stage (Carboniferous) of the Kulm Basin (Rhenish Mountains, Germany). – Geological Journal, 44, 306–321."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.3905882352941176
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.3905882352941176
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.41411764705882353
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.41411764705882353
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.394548,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 14
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Kumpera, O. – Lang, V. (1975): Goniatitová fauna v kulmu Drahanské vysočiny (moravskoslezská zóna Českého masivu). – Ča- sopis Slezského muzea A, 24, 11–32.",
+                "html": "Kumpera, O. – Lang, V. (1975): Goniatitová fauna v kulmu Drahanské vysočiny (moravskoslezská zóna Českého masivu). – Ča- sopis Slezského muzea A, 24, 11–32."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.4164705882352941
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.4164705882352941
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.44
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.44
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.100104,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 15
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Lehotský, T. (2008): Taxonomie goniatitové fauny, biostratigrafi e a paleoekologie jesenického a drahanského kulmu. – Disertační práce, Přírodovědecká fakulta Masarykovy univerzity, 1–131, Brno.",
+                "html": "Lehotský, T. (2008): Taxonomie goniatitové fauny, biostratigrafi e a paleoekologie jesenického a drahanského kulmu. – Disertační práce, Přírodovědecká fakulta Masarykovy univerzity, 1–131, Brno."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.4411764705882353
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.4411764705882353
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.46352941176470586
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.46352941176470586
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.394548,
+                "height_mm": 6.702782,
+                "point_size": 14.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 16
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Müller, P. – Brauckmann, C. (2010): Trilobiten-Funde aus dem Unter-Karbon im Hut-Tal (Ober-Harz, Deutschland). – Geologica et Palaeontologica, 43, 83–91.",
+                "html": "Müller, P. – Brauckmann, C. (2010): Trilobiten-Funde aus dem Unter-Karbon im Hut-Tal (Ober-Harz, Deutschland). – Geologica et Palaeontologica, 43, 83–91."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.46705882352941175
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.46705882352941175
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.49058823529411766
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.49058823529411766
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.394548,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 17
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Owens, R. M. – Tilsley, J. W. (1995): An atheloptic trilobite assemblage from the Carboniferous of North Devon. – Geological Magazine, 132, 6, 713–728.",
+                "html": "Owens, R. M. – Tilsley, J. W. (1995): An atheloptic trilobite assemblage from the Carboniferous of North Devon. – Geological Magazine, 132, 6, 713–728."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.4929411764705882
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.4929411764705882
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.5164705882352941
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.5164705882352941
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.394548,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 18
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Poty, E. – Devyust, F. X. – Hance, L. (2006): Upper Devonian and Mississippian foraminiferal and rugose coral zonations of Belgium and Northern France: a tool for Eurasian correlations. – Geological Magazine, 143, 6, 829–857.",
+                "html": "Poty, E. – Devyust, F. X. – Hance, L. (2006): Upper Devonian and Mississippian foraminiferal and rugose coral zonations of Belgium and Northern France: a tool for Eurasian correlations. – Geological Magazine, 143, 6, 829–857."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.5176470588235295
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.5176470588235295
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.5411764705882353
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.5411764705882353
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.747326,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 19
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Prentice, J. E. (1967): Lower Carboniferous trilobites of North Devon and related species from Northern England. – Bulletin of the British museum (Natural History), Geology, 14, 6, 207–241.",
+                "html": "Prentice, J. E. (1967): Lower Carboniferous trilobites of North Devon and related species from Northern England. – Bulletin of the British museum (Natural History), Geology, 14, 6, 207–241."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.5435294117647059
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.5435294117647059
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.5647058823529412
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.5647058823529412
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.747326,
+                "height_mm": 6.350003999999999,
+                "point_size": 13.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 20
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Rak, Š. (2004): Trilobitová fauna hraničních vrstev tournai–visé z Mokré u Brna. – MS, Diplomová práce, Přírodovědecká fakulta Masarykovy univerzity, 1–67, Brno.",
+                "html": "Rak, Š. (2004): Trilobitová fauna hraničních vrstev tournai–visé z Mokré u Brna. – MS, Diplomová práce, Přírodovědecká fakulta Masarykovy univerzity, 1–67, Brno."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.5682352941176471
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.5682352941176471
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.591764705882353
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.591764705882353
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.394548,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 21
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Rak, Š. – Lerosey–Aubril, R. (2009): First record of the Carboniferous trilobite Bollandia from the Moravian Karst (Czech Re- public) and its signifi cance. – Bulletin of Geosciences 84, 4, 739–744.",
+                "html": "Rak, Š. – Lerosey–Aubril, R. (2009): First record of the Carboniferous trilobite Bollandia from the Moravian Karst (Czech Re- public) and its signifi cance. – Bulletin of Geosciences 84, 4, 739–744."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.5941176470588235
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.5941176470588235
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.6176470588235294
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.6176470588235294
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.747326,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 22
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Rak, Š. – Kalvoda, J. – Devuyst, F.-X. (2012): New Mississippian trilobite association from the Brno vicinity and its signifi cance (Moravian Karst, Czech Republic). – Geologica Carpathica, June 2012, 63, 3, 181–190.",
+                "html": "Rak, Š. – Kalvoda, J. – Devuyst, F.-X. (2012): New Mississippian trilobite association from the Brno vicinity and its signifi cance (Moravian Karst, Czech Republic). – Geologica Carpathica, June 2012, 63, 3, 181–190."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.6188235294117647
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.6188235294117647
+                },
+                {
+                  "x": 0.8846787479406919,
+                  "y": 0.6423529411764706
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.6423529411764706
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.394548,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 23
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Rak, Š. – Viktorýn, T. (2010): Nový nález artikulovaného exoskeletonu trilobita Spinibole (Spinibole) olgae Chlupáč, 1966 z Mo- ravského krasu. – Zprávy o geologickych výzkumech v roce 2009, 31, 268–273.",
+                "html": "Rak, Š. – Viktorýn, T. (2010): Nový nález artikulovaného exoskeletonu trilobita Spinibole (Spinibole) olgae Chlupáč, 1966 z Mo- ravského krasu. – Zprávy o geologickych výzkumech v roce 2009, 31, 268–273."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.6447058823529411
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.6447058823529411
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.6670588235294118
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.6670588235294118
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.100104,
+                "height_mm": 6.702782,
+                "point_size": 14.25
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 24
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Rak, Š. – Viktorýn, T. (2012): Předběžné paleontologické zhodnocení lokality Březina 3 a  její srovnání s  ostatními výskyty trilobitové fauny v břidlicích březinského souvrství v okolí obce Březina v Moravském krasu. – MS, Moravskoslezské paleozoikum 2012, 40–42, Olomouc.",
+                "html": "Rak, Š. – Viktorýn, T. (2012): Předběžné paleontologické zhodnocení lokality Březina 3 a  její srovnání s  ostatními výskyty trilobitové fauny v břidlicích březinského souvrství v okolí obce Březina v Moravském krasu. – MS, Moravskoslezské paleozoikum 2012, 40–42, Olomouc."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.6705882352941176
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.6705882352941176
+                },
+                {
+                  "x": 0.886326194398682,
+                  "y": 0.7058823529411765
+                },
+                {
+                  "x": 0.11696869851729819,
+                  "y": 0.7058823529411765
+                }
+              ],
+              "relative_size": {
+                "width_mm": 164.747326,
+                "height_mm": 10.58334,
+                "point_size": 22.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 25
+            },
+            {
+              "category": "list item",
+              "content": {
+                "text": "Woodward, H. (1894): Note on a collection of Carboniferous trilobites from the banks of the Hodder, near Stonyhurst, Lanca- shire. – Geological Magazine 1, 481–489.",
+                "html": "Woodward, H. (1894): Note on a collection of Carboniferous trilobites from the banks of the Hodder, near Stonyhurst, Lanca- shire. – Geological Magazine 1, 481–489."
+              },
+              "coordinates": [
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.7082352941176471
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.7082352941176471
+                },
+                {
+                  "x": 0.8879736408566722,
+                  "y": 0.731764705882353
+                },
+                {
+                  "x": 0.11532125205930807,
+                  "y": 0.731764705882353
+                }
+              ],
+              "relative_size": {
+                "width_mm": 165.452882,
+                "height_mm": 7.05556,
+                "point_size": 15.0
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 26
+            },
+            {
+              "category": "page footer",
+              "content": {
+                "text": "129",
+                "html": "129"
+              },
+              "coordinates": [
+                {
+                  "x": 0.8583196046128501,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.9552941176470588
+                },
+                {
+                  "x": 0.8830313014827018,
+                  "y": 0.9670588235294117
+                },
+                {
+                  "x": 0.8583196046128501,
+                  "y": 0.9670588235294117
+                }
+              ],
+              "relative_size": {
+                "width_mm": 5.29167,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 607,
+                "page_height": 850
+              },
+              "id": 27
+            }
+          ],
+          "metadata": {
+            "page_number": 4,
+            "page_width": 607,
+            "page_height": 850
+          }
+        }
+      }
+    },
+    "metadata": {},
+    "page_dimensions": {}
+  },
+  "timestamp": "2025-04-21T16:06:01.888877",
+  "total_pages": 5,
+  "session_info": {
+    "analyzed_pages": 5,
+    "app_version": "0.0.1"
+  }
+}

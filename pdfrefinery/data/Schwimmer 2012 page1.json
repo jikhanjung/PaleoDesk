@@ -1,0 +1,483 @@
+{
+  "filename": "D:/projects/PaleoDesk/data/Schwimmer 2012 page1.pdf",
+  "current_page": 0,
+  "document_data": {
+    "page_structures": {
+      "0": {
+        "timestamp": "2025-04-21T16:03:44.762770",
+        "structure": {
+          "elements": [
+            {
+              "category": "page header",
+              "content": {
+                "text": "SOUTHEASTERN GEOLOGY V. 49, No. 1, June 2012, p. 31-41",
+                "html": "SOUTHEASTERN GEOLOGY V. 49, No. 1, June 2012, p. 31-41"
+              },
+              "coordinates": [
+                {
+                  "x": 0.6715686274509803,
+                  "y": 0.08712121212121213
+                },
+                {
+                  "x": 0.815359477124183,
+                  "y": 0.08712121212121213
+                },
+                {
+                  "x": 0.815359477124183,
+                  "y": 0.10606060606060606
+                },
+                {
+                  "x": 0.6715686274509803,
+                  "y": 0.10606060606060606
+                }
+              ],
+              "relative_size": {
+                "width_mm": 31.044463999999998,
+                "height_mm": 5.29167,
+                "point_size": 11.25
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 0
+            },
+            {
+              "category": "page header",
+              "content": {
+                "text": "Schwimmer.fm  Page 31  Monday, June 18, 2012  11:54 AM",
+                "html": "Schwimmer.fm  Page 31  Monday, June 18, 2012  11:54 AM"
+              },
+              "coordinates": [
+                {
+                  "x": 0.13398692810457516,
+                  "y": 0.027777777777777776
+                },
+                {
+                  "x": 0.41013071895424835,
+                  "y": 0.027777777777777776
+                },
+                {
+                  "x": 0.41013071895424835,
+                  "y": 0.036616161616161616
+                },
+                {
+                  "x": 0.13398692810457516,
+                  "y": 0.036616161616161616
+                }
+              ],
+              "relative_size": {
+                "width_mm": 59.619482,
+                "height_mm": 2.469446,
+                "point_size": 5.25
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 1
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "ABSTRACT",
+                "html": "ABSTRACT"
+              },
+              "coordinates": [
+                {
+                  "x": 0.2875816993464052,
+                  "y": 0.3042929292929293
+                },
+                {
+                  "x": 0.38562091503267976,
+                  "y": 0.3042929292929293
+                },
+                {
+                  "x": 0.38562091503267976,
+                  "y": 0.31691919191919193
+                },
+                {
+                  "x": 0.2875816993464052,
+                  "y": 0.31691919191919193
+                }
+              ],
+              "relative_size": {
+                "width_mm": 21.16668,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 2
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Middle and Upper Cambrian strata (Cambrian Series 3 and Furongian) in the southernmost Appalachians (Tennessee to Alabama) comprise the Conasauga Forma- tion or Group. Heretofore, the youngest re- ported Conasauga beds in the Valley and Ridge Province of Georgia were of the late Middle Cambrian (Series 3: Drumian) Bo- laspidella Zone, located on the western state boundary in the valley of the Coosa River. Two new localities sited eastward in the Co- nasauga River Valley, yield a diagnostic suite of trilobites from the Upper Cambrian A p h e l a s p i s Z o n e .   V e r y   a b u n d a n t , polymeroid trilobites at the primary locality are referable to Aphelaspis brachyphasis, which is a species known previously in west- ern North America. A second locality has produced a few identifiable specimens of the aphelaspine Eugonocare ( Olenaspella) sepa- ratum . Specimens at these two localities are generally complete individuals compressed in tan mudstones. The primary locality fea- tures abundant body cluster accumulations, implying mass mortality by bioimmuration. The trilobite assemblage also includes the ag- nostoids Glyptagnostus reticulatus , Agnostus inexpectans , and Aspidagnostus rugosus , all correlated to the global Paibian agnostoid Glyptagnostus reticulatus Zone. These locali- ties contain the southeastern-most Late Cambrian faunule in the Appalachians. The trilobite species and carbonate-free, mud- stone lithology, lacking evidence of infaunal bioturbation and burrowing, suggest accu- mulation eastward of a paleotopographic",
+                "html": "Middle and Upper Cambrian strata (Cambrian Series 3 and Furongian) in the southernmost Appalachians (Tennessee to Alabama) comprise the Conasauga Forma- tion or Group. Heretofore, the youngest re- ported Conasauga beds in the Valley and Ridge Province of Georgia were of the late Middle Cambrian (Series 3: Drumian) Bo- laspidella Zone, located on the western state boundary in the valley of the Coosa River. Two new localities sited eastward in the Co- nasauga River Valley, yield a diagnostic suite of trilobites from the Upper Cambrian A p h e l a s p i s Z o n e .   V e r y   a b u n d a n t , polymeroid trilobites at the primary locality are referable to Aphelaspis brachyphasis, which is a species known previously in west- ern North America. A second locality has produced a few identifiable specimens of the aphelaspine Eugonocare ( Olenaspella) sepa- ratum . Specimens at these two localities are generally complete individuals compressed in tan mudstones. The primary locality fea- tures abundant body cluster accumulations, implying mass mortality by bioimmuration. The trilobite assemblage also includes the ag- nostoids Glyptagnostus reticulatus , Agnostus inexpectans , and Aspidagnostus rugosus , all correlated to the global Paibian agnostoid Glyptagnostus reticulatus Zone. These locali- ties contain the southeastern-most Late Cambrian faunule in the Appalachians. The trilobite species and carbonate-free, mud- stone lithology, lacking evidence of infaunal bioturbation and burrowing, suggest accu- mulation eastward of a paleotopographic"
+              },
+              "coordinates": [
+                {
+                  "x": 0.1830065359477124,
+                  "y": 0.33585858585858586
+                },
+                {
+                  "x": 0.4950980392156863,
+                  "y": 0.33585858585858586
+                },
+                {
+                  "x": 0.4950980392156863,
+                  "y": 0.8787878787878788
+                },
+                {
+                  "x": 0.1830065359477124,
+                  "y": 0.8787878787878788
+                }
+              ],
+              "relative_size": {
+                "width_mm": 67.38059799999999,
+                "height_mm": 151.69454,
+                "point_size": 322.5
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 3
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "shelf-to-basin break, which is interpreted to be east of the Alabama Promontory and in the Tennessee Embayment. The preserva- tion of abundant aphelaspine specimens by bioimmuration events may have been the re- sult of mudflows down the shelf-to-basin slope.",
+                "html": "shelf-to-basin break, which is interpreted to be east of the Alabama Promontory and in the Tennessee Embayment. The preserva- tion of abundant aphelaspine specimens by bioimmuration events may have been the re- sult of mudflows down the shelf-to-basin slope."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5049019607843137,
+                  "y": 0.3068181818181818
+                },
+                {
+                  "x": 0.8169934640522876,
+                  "y": 0.3068181818181818
+                },
+                {
+                  "x": 0.8169934640522876,
+                  "y": 0.41035353535353536
+                },
+                {
+                  "x": 0.5049019607843137,
+                  "y": 0.41035353535353536
+                }
+              ],
+              "relative_size": {
+                "width_mm": 67.38059799999999,
+                "height_mm": 28.927795999999997,
+                "point_size": 61.5
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 4
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "INTRODUCTION",
+                "html": "INTRODUCTION"
+              },
+              "coordinates": [
+                {
+                  "x": 0.5915032679738562,
+                  "y": 0.4292929292929293
+                },
+                {
+                  "x": 0.7287581699346405,
+                  "y": 0.4292929292929293
+                },
+                {
+                  "x": 0.7287581699346405,
+                  "y": 0.44191919191919193
+                },
+                {
+                  "x": 0.5915032679738562,
+                  "y": 0.44191919191919193
+                }
+              ],
+              "relative_size": {
+                "width_mm": 29.633352,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 5
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Trilobites and associated biota from Middle Cambrian beds of the Conasauga Formation in northwestern Georgia have been described by Walcott, 1916a, 1916b; Butts, 1926; Resser, 1938; Palmer, 1962; Schwimmer, 1989; Schwimmer and Montante, 2007. These fossils and deposits come from exposures within the valley of the Coosa River, in Floyd County, Georgia, and adjoining Cherokee County, Ala- bama. Trilobite biozone associations of these Middle Cambrian biotas are of the Glyphaspis to Crepicephalus Zones of the traditional Lau- rentian Middle Cambrian Series.",
+                "html": "Trilobites and associated biota from Middle Cambrian beds of the Conasauga Formation in northwestern Georgia have been described by Walcott, 1916a, 1916b; Butts, 1926; Resser, 1938; Palmer, 1962; Schwimmer, 1989; Schwimmer and Montante, 2007. These fossils and deposits come from exposures within the valley of the Coosa River, in Floyd County, Georgia, and adjoining Cherokee County, Ala- bama. Trilobite biozone associations of these Middle Cambrian biotas are of the Glyphaspis to Crepicephalus Zones of the traditional Lau- rentian Middle Cambrian Series."
+              },
+              "coordinates": [
+                {
+                  "x": 0.5065359477124183,
+                  "y": 0.4583333333333333
+                },
+                {
+                  "x": 0.8186274509803921,
+                  "y": 0.4583333333333333
+                },
+                {
+                  "x": 0.8186274509803921,
+                  "y": 0.6515151515151515
+                },
+                {
+                  "x": 0.5065359477124183,
+                  "y": 0.6515151515151515
+                }
+              ],
+              "relative_size": {
+                "width_mm": 67.38059799999999,
+                "height_mm": 53.975033999999994,
+                "point_size": 114.75
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 6
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "Cambrian trilobites have not been described farther east- or southward from the above in the southern Appalachian outcrop, although the Conasauga Formation is exposed in a separate fault-bounded slice in the Conasauga River Val- ley (Figure 1). We report here new Upper Cam- brian localities in this outcrop, containing the southeastern-most Cambrian trilobites in North America. The new trilobite assemblages in- clude polymeroids of the Laurentian Upper Cambrian Aphelaspis Zone, including Aphelas- pis brachyphasis and Eugonocare (Ole- naspella) separatum ; and coeval agnostoids of the global Glyptagnostus reticulatus Zone, in- cluding Glyptagnostus reticulatus , Agnostus in-",
+                "html": "Cambrian trilobites have not been described farther east- or southward from the above in the southern Appalachian outcrop, although the Conasauga Formation is exposed in a separate fault-bounded slice in the Conasauga River Val- ley (Figure 1). We report here new Upper Cam- brian localities in this outcrop, containing the southeastern-most Cambrian trilobites in North America. The new trilobite assemblages in- clude polymeroids of the Laurentian Upper Cambrian Aphelaspis Zone, including Aphelas- pis brachyphasis and Eugonocare (Ole- naspella) separatum ; and coeval agnostoids of the global Glyptagnostus reticulatus Zone, in- cluding Glyptagnostus reticulatus , Agnostus in-"
+              },
+              "coordinates": [
+                {
+                  "x": 0.5065359477124183,
+                  "y": 0.6565656565656566
+                },
+                {
+                  "x": 0.8186274509803921,
+                  "y": 0.6565656565656566
+                },
+                {
+                  "x": 0.8186274509803921,
+                  "y": 0.8800505050505051
+                },
+                {
+                  "x": 0.5065359477124183,
+                  "y": 0.8800505050505051
+                }
+              ],
+              "relative_size": {
+                "width_mm": 67.38059799999999,
+                "height_mm": 62.441705999999996,
+                "point_size": 132.75
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 7
+            },
+            {
+              "category": "title",
+              "content": {
+                "text": "A N A PHELASPIS Z ONE (U PPER C AMBRIAN , P AIBIAN ) T RILOBITE F AUNULE IN THE C ENTRAL C ONASAUGA R IVER V ALLEY , N ORTH G EORGIA , USA",
+                "html": "A N A PHELASPIS Z ONE (U PPER C AMBRIAN , P AIBIAN ) T RILOBITE F AUNULE IN THE C ENTRAL C ONASAUGA R IVER V ALLEY , N ORTH G EORGIA , USA"
+              },
+              "coordinates": [
+                {
+                  "x": 0.184640522875817,
+                  "y": 0.1275252525252525
+                },
+                {
+                  "x": 0.8120915032679739,
+                  "y": 0.1275252525252525
+                },
+                {
+                  "x": 0.8120915032679739,
+                  "y": 0.16035353535353536
+                },
+                {
+                  "x": 0.184640522875817,
+                  "y": 0.16035353535353536
+                }
+              ],
+              "relative_size": {
+                "width_mm": 135.46675199999999,
+                "height_mm": 9.172227999999999,
+                "point_size": 19.5
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 8
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "D AVID R. S CHWIMMER1",
+                "html": "D AVID R. S CHWIMMER1"
+              },
+              "coordinates": [
+                {
+                  "x": 0.4084967320261438,
+                  "y": 0.17929292929292928
+                },
+                {
+                  "x": 0.5849673202614379,
+                  "y": 0.17929292929292928
+                },
+                {
+                  "x": 0.5849673202614379,
+                  "y": 0.1919191919191919
+                },
+                {
+                  "x": 0.4084967320261438,
+                  "y": 0.1919191919191919
+                }
+              ],
+              "relative_size": {
+                "width_mm": 38.100024,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 9
+            },
+            {
+              "category": "section header",
+              "content": {
+                "text": "W ILLIAM M. M ONTANTE2",
+                "html": "W ILLIAM M. M ONTANTE2"
+              },
+              "coordinates": [
+                {
+                  "x": 0.4035947712418301,
+                  "y": 0.2058080808080808
+                },
+                {
+                  "x": 0.5882352941176471,
+                  "y": 0.2058080808080808
+                },
+                {
+                  "x": 0.5882352941176471,
+                  "y": 0.21843434343434343
+                },
+                {
+                  "x": 0.4035947712418301,
+                  "y": 0.21843434343434343
+                }
+              ],
+              "relative_size": {
+                "width_mm": 39.863914,
+                "height_mm": 3.52778,
+                "point_size": 7.5
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 10
+            },
+            {
+              "category": "text",
+              "content": {
+                "text": "1 Department of Chemistry & Geology Columbus State University, 4225 University Avenue, Columbus, Georgia 31907, USA <schwimmer_david@columbusstate.edu> 2 Marsh & McLennan, Inc., 3560 Lenox Road, Suite 2400, Atlanta, Georgia 30326, USA   <william.m.montante@marsh.usa>",
+                "html": "1 Department of Chemistry & Geology Columbus State University, 4225 University Avenue, Columbus, Georgia 31907, USA <schwimmer_david@columbusstate.edu> 2 Marsh & McLennan, Inc., 3560 Lenox Road, Suite 2400, Atlanta, Georgia 30326, USA   <william.m.montante@marsh.usa>"
+              },
+              "coordinates": [
+                {
+                  "x": 0.1977124183006536,
+                  "y": 0.22853535353535354
+                },
+                {
+                  "x": 0.8006535947712419,
+                  "y": 0.22853535353535354
+                },
+                {
+                  "x": 0.8006535947712419,
+                  "y": 0.2803030303030303
+                },
+                {
+                  "x": 0.1977124183006536,
+                  "y": 0.2803030303030303
+                }
+              ],
+              "relative_size": {
+                "width_mm": 130.175082,
+                "height_mm": 14.463897999999999,
+                "point_size": 30.75
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 11
+            },
+            {
+              "category": "page footer",
+              "content": {
+                "text": "31",
+                "html": "31"
+              },
+              "coordinates": [
+                {
+                  "x": 0.7990196078431373,
+                  "y": 0.8952020202020202
+                },
+                {
+                  "x": 0.8186274509803921,
+                  "y": 0.8952020202020202
+                },
+                {
+                  "x": 0.8186274509803921,
+                  "y": 0.9065656565656566
+                },
+                {
+                  "x": 0.7990196078431373,
+                  "y": 0.9065656565656566
+                }
+              ],
+              "relative_size": {
+                "width_mm": 4.2333359999999995,
+                "height_mm": 3.1750019999999997,
+                "point_size": 6.75
+              },
+              "attributes": {
+                "page_width": 612,
+                "page_height": 792
+              },
+              "id": 12
+            }
+          ],
+          "metadata": {
+            "page_number": 0,
+            "page_width": 612,
+            "page_height": 792
+          }
+        }
+      }
+    },
+    "metadata": {},
+    "page_dimensions": {}
+  },
+  "timestamp": "2025-04-21T16:03:44.788708",
+  "total_pages": 1,
+  "session_info": {
+    "analyzed_pages": 1,
+    "app_version": "0.0.1"
+  }
+}
