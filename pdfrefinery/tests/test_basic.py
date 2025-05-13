@@ -1,5 +1,5 @@
 import unittest
-import os
+import os, sys
 import warnings
 import traceback
 import requests
@@ -13,6 +13,11 @@ warnings.showwarning = custom_warn
 
 # Example: Import the main module
 class TestImport(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Add the parent directory (pdfrefinery) to sys.path
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        
     def test_import_main(self):
         try:
             import PDFRefinery
