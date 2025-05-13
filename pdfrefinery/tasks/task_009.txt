@@ -27,25 +27,25 @@ Implement undo/redo functionality for all adjustment operations.
 Test all adjustment operations with various PDF layouts. Verify database updates after adjustments. Test undo/redo functionality. Conduct usability testing to ensure intuitive interaction.
 
 # Subtasks:
-## 1. Implement Element Selection and Multi-selection UI [pending]
+## 1. Implement Element Selection and Multi-selection UI [done]
 ### Dependencies: None
 ### Description: Create UI components for selecting and multi-selecting elements on the document view, which will serve as the foundation for all adjustment operations.
 ### Details:
 Implement click and shift+click selection mechanisms for elements. Add visual indicators for selected elements (e.g., highlight border, selection handles). Create a selection manager class to track currently selected elements. Implement keyboard shortcuts for selection operations (Ctrl+A for select all, Esc for deselect). Add event listeners to handle selection state changes.
 
-## 2. Implement Element Merging Functionality [pending]
+## 2. Implement Element Merging Functionality [done]
 ### Dependencies: None
 ### Description: Create UI and backend functionality to merge split elements such as figures or text blocks that span across columns or pages.
 ### Details:
 Add a 'Merge' button in the toolbar that activates when multiple elements are selected. Implement a merge function that combines the content and bounding boxes of selected elements. Create a confirmation dialog showing preview of merged result. Update the database schema to handle merged elements, maintaining references to original elements. Add visual feedback during the merge process.
 
-## 3. Implement Figure-Caption Association UI [pending]
+## 3. Implement Figure-Caption Association UI [done]
 ### Dependencies: None
 ### Description: Create UI for associating figures with their corresponding captions through intuitive interactions like drag-and-drop or selection-based pairing.
 ### Details:
 Implement two association methods: 1) Select figure then caption and click 'Associate' button, 2) Drag-and-drop caption onto figure or vice versa. Add visual indicators showing existing associations (connecting lines or highlighting). Create a panel showing all current associations. Update database schema to store figure-caption relationships. Add ability to remove associations.
 
-## 4. Implement Element Reclassification UI [pending]
+## 4. Implement Element Reclassification UI [done]
 ### Dependencies: None
 ### Description: Create UI for changing the classification of elements (e.g., from paragraph to caption, figure to table) with appropriate content re-extraction.
 ### Details:

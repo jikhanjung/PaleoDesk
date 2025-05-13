@@ -122,7 +122,7 @@
           "description": "Create UI components for selecting and multi-selecting elements on the document view, which will serve as the foundation for all adjustment operations.",
           "dependencies": [],
           "details": "Implement click and shift+click selection mechanisms for elements. Add visual indicators for selected elements (e.g., highlight border, selection handles). Create a selection manager class to track currently selected elements. Implement keyboard shortcuts for selection operations (Ctrl+A for select all, Esc for deselect). Add event listeners to handle selection state changes.",
-          "status": "pending",
+          "status": "done",
           "testStrategy": "Test single selection, multi-selection with shift+click, keyboard shortcuts, and verify the selection state is correctly maintained."
         },
         {
@@ -131,7 +131,7 @@
           "description": "Create UI and backend functionality to merge split elements such as figures or text blocks that span across columns or pages.",
           "dependencies": [],
           "details": "Add a 'Merge' button in the toolbar that activates when multiple elements are selected. Implement a merge function that combines the content and bounding boxes of selected elements. Create a confirmation dialog showing preview of merged result. Update the database schema to handle merged elements, maintaining references to original elements. Add visual feedback during the merge process.",
-          "status": "pending",
+          "status": "done",
           "testStrategy": "Test merging different types of elements (text blocks, figures), verify the merged element contains all content from source elements, and check database updates are correct."
         },
         {
@@ -140,7 +140,7 @@
           "description": "Create UI for associating figures with their corresponding captions through intuitive interactions like drag-and-drop or selection-based pairing.",
           "dependencies": [],
           "details": "Implement two association methods: 1) Select figure then caption and click 'Associate' button, 2) Drag-and-drop caption onto figure or vice versa. Add visual indicators showing existing associations (connecting lines or highlighting). Create a panel showing all current associations. Update database schema to store figure-caption relationships. Add ability to remove associations.",
-          "status": "pending",
+          "status": "done",
           "testStrategy": "Test both association methods, verify visual indicators appear correctly, check that associations are properly stored in the database, and test removing associations."
         },
         {
@@ -149,7 +149,7 @@
           "description": "Create UI for changing the classification of elements (e.g., from paragraph to caption, figure to table) with appropriate content re-extraction.",
           "dependencies": [],
           "details": "Add a classification dropdown in the element properties panel. Implement context menu with 'Change Type' option when right-clicking elements. Create handlers to re-process element content based on new classification (e.g., apply OCR for newly classified figures). Update database with new classification and re-extracted content. Add visual feedback during reclassification process.",
-          "status": "pending",
+          "status": "done",
           "testStrategy": "Test changing elements between different types, verify content is correctly re-extracted, and check database updates reflect the new classification."
         },
         {
