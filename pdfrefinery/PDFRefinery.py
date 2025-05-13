@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QScrollArea, QSizePolicy, QLayout, QListWidget, QListWidgetItem,
                            QFrame, QStatusBar, QProgressBar, QCheckBox, QGroupBox, QToolTip,
                            QStyle, QColorDialog)
-from PyQt6.QtCore import Qt, QPoint, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer, QEvent, QCoreApplication
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor, QBrush, QWheelEvent
+from PyQt6.QtCore import Qt, QPoint, QPointF, QSettings, QSize, QRect, QRectF, pyqtSignal, QTimer, QEvent, QCoreApplication
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QAction, QCursor, QIcon, QPen, QColor, QBrush, QWheelEvent, QPainterPath
 import fitz  # PyMuPDF
 import datetime
 import os
@@ -391,60 +391,64 @@ class PDFViewer(QWidget):
         # Set widget size to match total height
         self.setMinimumHeight(total_height)
         
-        # Paint pages
+        # First pass: Paint pages and bounding boxes, and collect element centers
+        element_centers = {}  # (page_num, element_id) -> (center_x, center_y)
+        page_y_offsets = {}   # page_num -> current_y
         for page_num in sorted(self.page_pixmaps.keys()):
+            # Always set the y offset for every page
+            page_y_offsets[page_num] = current_y
             if page_num not in pages_to_paint:
-                # Calculate height for skipped pages to keep layout
                 width = self.page_pixmaps[page_num]['width']
                 height = self.page_pixmaps[page_num]['height']
                 scale = self.width() / width
                 scaled_height = int(height * scale)
                 current_y += scaled_height
                 continue
-                
             # Ensure the page is loaded
-            #if page_num not in self.page_pixmaps:
             if self.page_pixmaps[page_num]['pixmap'] is None:
                 self.load_page(page_num)
                 if page_num not in self.page_pixmaps:
-                    continue  # Still not loaded, skip
-
+                    continue
             pixmap = self.page_pixmaps[page_num]['pixmap']
             width = self.page_pixmaps[page_num]['width']
             height = self.page_pixmaps[page_num]['height']
             scale = self.width() / width
             scaled_height = int(height * scale)
-            
-            # Check if page is in viewport
             page_top = current_y
-            page_bottom = current_y + scaled_height
-            is_in_viewport = (page_bottom > viewport_top and page_top < viewport_bottom)
-            
-            logger.debug(f"[paintEvent] Page {page_num}: y={current_y}, height={scaled_height}, in_viewport={is_in_viewport}")
-            
-            #logger.info(f"Drawing page {page_num} at {current_y}, {scaled_height}, {self.width()}")
-            scroll_area = self.main_window.pdf_scroll
-            scroll_area_height = scroll_area.viewport().height()
-            scroll_area_width = scroll_area.viewport().width()
-            #logger.info(f"Scroll area height: {scroll_area_height}, width: {scroll_area_width}")
-            # Draw the page
-
-            target_width = self.width()  # 논리 크기 그대로
-            target_height = scaled_height  # 원하는 비율 계산
-            target_rect = QRect(0, int(current_y), target_width, target_height)
-
-            painter.drawPixmap(target_rect, pixmap)  # 별도 scaled() 호출 없이
-
-            #painter.drawPixmap(0, int(current_y), pixmap.scaled(int(self.width() * self.dpr), int(scaled_height * self.dpr) , 
-            #                                          Qt.AspectRatioMode.KeepAspectRatio,
-            #                                          Qt.TransformationMode.SmoothTransformation))
-            
-            # Draw bounding boxes if enabled
+            target_rect = QRect(0, int(current_y), self.width(), scaled_height)
+            painter.drawPixmap(target_rect, pixmap)
             if self.show_bounding_boxes and self.bounding_boxes:
                 page_boxes = self.bounding_boxes.get(page_num, [])
                 for element in page_boxes:
-                    if 'coordinates' in element:
+                    if 'coordinates' in element and len(element['coordinates']) == 4:
                         coords = element['coordinates']
+                        x1 = int(coords[0]['x'] * self.width())
+                        y1 = int(coords[0]['y'] * scaled_height + current_y)
+                        x2 = int(coords[2]['x'] * self.width())
+                        y2 = int(coords[2]['y'] * scaled_height + current_y)
+                        center_x = (x1 + x2) // 2
+                        center_y = (y1 + y2) // 2
+                        box_id = element.get('id')
+                        element_centers[(page_num, box_id)] = (center_x, center_y)
+                        category = element.get('category', 'text').lower() 
+                        category_text = category+ " " + str(int(page_num)+1) + "-" + str(int(element.get('id', ''))+1)
+                        
+                        # Check if box is selected
+                        box_id = element.get('id')
+                        is_selected = (page_num, box_id) in self.selected_boxes
+                        
+                        # Get color based on selection state
+                        color = self.ELEMENT_COLORS.get(category, QColor(255, 0, 0, 64))
+                        if is_selected:
+                            # Make selected boxes more opaque and slightly brighter
+                            color.setAlpha(128)
+                            color = color.lighter(120)
+                        else:
+                            color.setAlpha(64)
+                        if element.get('merged_elements'):
+                            color = QColor(128,128,0,196)
+                        if element.get('linked_elements'):
+                            color = QColor(128,0,0,196)
                         if len(coords) == 4:
                             x1 = int(coords[0]['x'] * self.width())
                             y1 = int(coords[0]['y'] * scaled_height + current_y)
@@ -465,10 +469,6 @@ class PDFViewer(QWidget):
                                 color = color.lighter(120)
                             else:
                                 color.setAlpha(64)
-                            if element.get('merged_elements'):
-                                color = QColor(128,128,0,196)
-                            if element.get('linked_elements'):
-                                color = QColor(128,0,0,196)
                             logger.debug(f"Drawing bounding box for {category_text} at {x1}, {y1}, {x2}, {y2}, color: {color.getRgb()}")
                             
                             pen = QPen(color, 2)
@@ -488,6 +488,45 @@ class PDFViewer(QWidget):
                             painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, category_text)
             current_y += scaled_height
             
+        # Second pass: Draw S-shaped curves for merged elements
+        line_pen = QPen(QColor(200, 180, 0, 200), 2, Qt.PenStyle.DashLine)
+        painter.setPen(line_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)  # Ensure no fill for connecting lines
+        for (page_num, box_id), (center_x, center_y) in element_centers.items():
+            element = self._get_element_info(page_num, box_id)
+            merged = element.get('merged_elements') if element else None
+            if element and merged and len(merged) > 1:
+                # Draw S-shaped curves for each consecutive pair
+                for i in range(len(merged) - 1):
+                    prev_page, prev_id = merged[i]
+                    next_page, next_id = merged[i + 1]
+                    #logger.info(f"Drawing S-shaped curve for {prev_page}, {prev_id} -> {next_page}, {next_id}")
+                    prev_element = self._get_element_info(prev_page, prev_id)
+                    next_element = self._get_element_info(next_page, next_id)
+                    if prev_element and next_element and 'coordinates' in prev_element and 'coordinates' in next_element:
+                        # Get bottom center of prev_element
+                        prev_coords = prev_element['coordinates']
+                        prev_x1 = int(prev_coords[0]['x'] * self.width())
+                        prev_x2 = int(prev_coords[2]['x'] * self.width())
+                        prev_y2 = int(prev_coords[2]['y'] * self.page_pixmaps[int(prev_page)]['height'] * (self.width() / self.page_pixmaps[int(prev_page)]['width']) + page_y_offsets.get(int(prev_page), 0))
+                        prev_bottom = QPointF((prev_x1 + prev_x2) / 2, prev_y2)
+                        # Get top center of next_element
+                        next_coords = next_element['coordinates']
+                        next_x1 = int(next_coords[0]['x'] * self.width())
+                        next_x2 = int(next_coords[2]['x'] * self.width())
+                        next_y1 = int(next_coords[0]['y'] * self.page_pixmaps[int(next_page)]['height'] * (self.width() / self.page_pixmaps[int(next_page)]['width']) + page_y_offsets.get(int(next_page), 0))
+                        next_top = QPointF((next_x1 + next_x2) / 2, next_y1)
+                        # Control points for S-curve
+                        dy = next_top.y() - prev_bottom.y()
+                        dx = next_top.x() - prev_bottom.x()
+                        vertical_offset = max(abs(dy) * 0.5, 80, abs(dx) * 0.5)
+                        ctrl1 = QPointF(prev_bottom.x(), prev_bottom.y() + vertical_offset)
+                        ctrl2 = QPointF(next_top.x(), next_top.y() - vertical_offset)
+                        path = QPainterPath()
+                        path.moveTo(prev_bottom)
+                        path.cubicTo(ctrl1, ctrl2, next_top)
+                        painter.drawPath(path)
+
         # Draw element creation rectangle if in progress
         if self.creating_element and self.element_start_pos is not None and self.element_current_pos is not None:
             painter.setPen(QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.DashLine))
@@ -496,6 +535,77 @@ class PDFViewer(QWidget):
             x2 = max(self.element_start_pos.x(), self.element_current_pos.x())
             y2 = max(self.element_start_pos.y(), self.element_current_pos.y())
             painter.drawRect(x1, y1, x2 - x1, y2 - y1)
+
+        # --- Convex hull utility (Andrew's monotone chain) ---
+        def convex_hull(points):
+            # points: list of (x, y)
+            points = sorted(set(points))
+            if len(points) <= 1:
+                return points
+            def cross(o, a, b):
+                return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+            lower = []
+            for p in points:
+                while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+                    lower.pop()
+                lower.append(p)
+            upper = []
+            for p in reversed(points):
+                while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+                    upper.pop()
+                upper.append(p)
+            return lower[:-1] + upper[:-1]
+
+        # --- Grouping for linked_elements ---
+        # Map: frozenset of (page_num, box_id) -> set of all corner points
+        linked_groups = {}
+        element_to_group = {}
+        for (page_num, box_id), (center_x, center_y) in element_centers.items():
+            element = self._get_element_info(page_num, box_id)
+            if element and element.get('linked_elements'):
+                group = set()
+                for ref in element['linked_elements']:
+                    ref_page, ref_id = ref
+                    group.add((int(ref_page), ref_id))
+                group.add((page_num, box_id))
+                group_key = frozenset(group)
+                if group_key not in linked_groups:
+                    linked_groups[group_key] = set()
+                element_to_group[(page_num, box_id)] = group_key
+        # Collect all corner points for each group
+        for group_key in linked_groups:
+            for page_num, box_id in group_key:
+                element = self._get_element_info(page_num, box_id)
+                if element and 'coordinates' in element and len(element['coordinates']) == 4:
+                    coords = element['coordinates']
+                    # Find the page's y offset and scale
+                    width = self.page_pixmaps[page_num]['width']
+                    height = self.page_pixmaps[page_num]['height']
+                    scale = self.width() / width
+                    scaled_height = int(height * scale)
+                    y_offset = page_y_offsets.get(page_num, 0)
+                    for c in coords:
+                        x = int(c['x'] * self.width())
+                        y = int(c['y'] * scaled_height + y_offset)
+                        linked_groups[group_key].add((x, y))
+        # Draw convex hulls with internal padding
+        hull_pen = QPen(QColor(0, 128, 255, 180), 2, Qt.PenStyle.SolidLine)
+        hull_brush = QBrush(QColor(0, 128, 255, 60))
+        expand_factor = 1.05  # 1.1 means 10% outward padding
+        for group_key, points in linked_groups.items():
+            if len(points) >= 3:
+                hull = convex_hull(list(points))
+                # Compute centroid
+                cx = sum(x for x, y in hull) / len(hull)
+                cy = sum(y for x, y in hull) / len(hull)
+                padded_hull = []
+                for x, y in hull:
+                    px = cx + (x - cx) * expand_factor
+                    py = cy + (y - cy) * expand_factor
+                    padded_hull.append(QPoint(int(px), int(py)))
+                painter.setPen(hull_pen)
+                painter.setBrush(hull_brush)
+                painter.drawPolygon(*padded_hull)
 
     def set_bounding_boxes(self, boxes):
         """Set bounding boxes for all pages"""
@@ -1397,7 +1507,7 @@ class PDFViewer(QWidget):
             return
         page_num, box = self.selected_boxes.pop()
         element_data = self._get_element_info(page_num, box)
-        logger.info(f"element_data: {element_data}")
+        #logger.info(f"element_data: {element_data}")
         dialog = ElementInfoDialog(element_data)
         dialog.exec()
 
@@ -1425,8 +1535,8 @@ class PDFViewer(QWidget):
                             
                             # Update document_data
                             page_key = str(page_num)
-                            if page_key in main_window.document_data['page_structures']:
-                                page_structure = main_window.document_data['page_structures'][page_key]
+                            if page_key in self.main_window.document_data['page_structures']:
+                                page_structure = self.main_window.document_data['page_structures'][page_key]
                                 if 'structure' in page_structure and 'elements' in page_structure['structure']:
                                     elements = page_structure['structure']['elements']
                                     for element in elements:
@@ -1453,11 +1563,11 @@ class PDFViewer(QWidget):
             self.update()
             
             # Update structured content view
-            if hasattr(main_window, 'structured_view'):
-                main_window.structured_view.update_content(main_window.document_data['page_structures'])
+            if hasattr(self.main_window, 'structured_view'):
+                self.main_window.structured_view.update_content(self.main_window.document_data['page_structures'])
                 
             # Save session to ensure changes are persisted
-            main_window.save_session()
+            self.main_window.save_session()
                 
         except Exception as e:
             logger.error(f"Error updating element type in database: {str(e)}")
@@ -1473,18 +1583,24 @@ class PDFViewer(QWidget):
             return
 
         element_list = []
-        for box in self.selected_boxes:
+        for elem in self.selected_boxes:
             #box_info = self._get_element_info(box[0], box[1])
-            element_list.append([box[0],box[1]])
-        for box in self.selected_boxes:
+            element_list.append([elem[0],elem[1]])
+
+        # sort element_list by page number and int(element_id)
+        element_list.sort(key=lambda x: (int(x[0]), int(x[1])))
+
+        for elem in element_list:
+            elem_info = self._get_element_info(elem[0], elem[1])
             element = StructuredElement.get(
                 (StructuredElement.document == document) &
-                (StructuredElement.page_number == box[0]) &
-                (StructuredElement.element_id == box[1])
+                (StructuredElement.page_number == elem[0]) &
+                (StructuredElement.element_id == elem[1])
             )
             element.merged_elements = json.dumps(element_list)
             element.save()
-            logger.info(f"Merged elements {element_list} on page {box[0]}")
+            elem_info['merged_elements'] = element_list
+            logger.info(f"Merged elements {element_list} on page {elem[0]}")
         return
 
     def _unmerge_selected_boxes(self):
@@ -1521,13 +1637,15 @@ class PDFViewer(QWidget):
             element_list.append([box[0],box[1]])
 
         for box in self.selected_boxes:
-            element = StructuredElement.get(
+            elem_info = self._get_element_info(box[0], box[1])
+            elem_row_info = StructuredElement.get(
                 (StructuredElement.document == document) &
                 (StructuredElement.page_number == box[0]) &
                 (StructuredElement.element_id == box[1])
             )
-            element.linked_elements = json.dumps(element_list)
-            element.save()
+            elem_row_info.linked_elements = json.dumps(element_list)
+            elem_row_info.save()
+            elem_info['linked_elements'] = element_list
             logger.info(f"Linked elements {element_list} on page {box[0]}")
         
         return
@@ -1666,7 +1784,15 @@ class ElementInfoDialog(QDialog):
 
         caption_text = QTextEdit()
         caption_text.setReadOnly(True)
-        caption = self.element_data.get('content', '').get('text', '')
+        caption = ''
+        print(self.element_data)
+        if hasattr(self.element_data, 'content'):
+            if hasattr(self.element_data['content'], 'text'):
+                caption = self.element_data['content']['text']
+            else:
+                print(self.element_data['content'])
+                #if isinstance(self.element_data['content'], str):
+                #caption = self.element_data['content']
         caption_text.setPlainText(caption)
         #print(caption)
 
@@ -1691,6 +1817,7 @@ class StructuredContentView(QWidget):
         super().__init__(parent)
         self.current_doc = None  # Store current PDF document
         self.pixmap_cache = {}  # Cache for item pixmaps
+        self.main_window = parent
         logger.debug("StructuredContentView initialized")
         self.init_ui()
         
@@ -2338,7 +2465,7 @@ class MainWindow(QMainWindow):
         # Create structured content view with scroll area
         self.content_scroll = QScrollArea()
         self.content_scroll.setWidgetResizable(True)
-        self.structured_view = StructuredContentView()
+        self.structured_view = StructuredContentView(self)
         self.content_scroll.setWidget(self.structured_view)
         self.right_splitter.addWidget(self.content_scroll)
         
