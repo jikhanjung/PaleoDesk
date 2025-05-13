@@ -1,6 +1,6 @@
 # Task ID: 2
 # Title: Implement SQLite Database Schema
-# Status: pending
+# Status: done
 # Dependencies: 1
 # Priority: high
 # Description: Design and implement the SQLite database schema to store papers, figures, captions, and subfigures according to the data model requirements.

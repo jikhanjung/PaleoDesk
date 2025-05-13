@@ -8,7 +8,7 @@
       "testStrategy": "Verify project structure is correctly set up. Ensure all dependencies can be installed without conflicts. Test importing key libraries in a simple script.",
       "priority": "high",
       "dependencies": [],
-      "status": "pending",
+      "status": "done",
       "subtasks": []
     },
     {
@@ -21,7 +21,7 @@
       "dependencies": [
         1
       ],
-      "status": "pending",
+      "status": "done",
       "subtasks": []
     },
     {
@@ -34,7 +34,7 @@
       "dependencies": [
         1
       ],
-      "status": "pending",
+      "status": "done",
       "subtasks": []
     },
     {
@@ -47,7 +47,7 @@
       "dependencies": [
         1
       ],
-      "status": "pending",
+      "status": "done",
       "subtasks": []
     },
     {
@@ -60,7 +60,7 @@
       "dependencies": [
         1
       ],
-      "status": "pending",
+      "status": "done",
       "subtasks": []
     },
     {
@@ -74,7 +74,7 @@
         2,
         5
       ],
-      "status": "pending",
+      "status": "done",
       "subtasks": []
     },
     {
@@ -87,7 +87,7 @@
       "dependencies": [
         1
       ],
-      "status": "pending",
+      "status": "done",
       "subtasks": []
     },
     {
@@ -100,7 +100,7 @@
       "dependencies": [
         7
       ],
-      "status": "pending",
+      "status": "done",
       "subtasks": []
     },
     {
@@ -115,7 +115,53 @@
         8
       ],
       "status": "pending",
-      "subtasks": []
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Implement Element Selection and Multi-selection UI",
+          "description": "Create UI components for selecting and multi-selecting elements on the document view, which will serve as the foundation for all adjustment operations.",
+          "dependencies": [],
+          "details": "Implement click and shift+click selection mechanisms for elements. Add visual indicators for selected elements (e.g., highlight border, selection handles). Create a selection manager class to track currently selected elements. Implement keyboard shortcuts for selection operations (Ctrl+A for select all, Esc for deselect). Add event listeners to handle selection state changes.",
+          "status": "pending",
+          "testStrategy": "Test single selection, multi-selection with shift+click, keyboard shortcuts, and verify the selection state is correctly maintained."
+        },
+        {
+          "id": 2,
+          "title": "Implement Element Merging Functionality",
+          "description": "Create UI and backend functionality to merge split elements such as figures or text blocks that span across columns or pages.",
+          "dependencies": [],
+          "details": "Add a 'Merge' button in the toolbar that activates when multiple elements are selected. Implement a merge function that combines the content and bounding boxes of selected elements. Create a confirmation dialog showing preview of merged result. Update the database schema to handle merged elements, maintaining references to original elements. Add visual feedback during the merge process.",
+          "status": "pending",
+          "testStrategy": "Test merging different types of elements (text blocks, figures), verify the merged element contains all content from source elements, and check database updates are correct."
+        },
+        {
+          "id": 3,
+          "title": "Implement Figure-Caption Association UI",
+          "description": "Create UI for associating figures with their corresponding captions through intuitive interactions like drag-and-drop or selection-based pairing.",
+          "dependencies": [],
+          "details": "Implement two association methods: 1) Select figure then caption and click 'Associate' button, 2) Drag-and-drop caption onto figure or vice versa. Add visual indicators showing existing associations (connecting lines or highlighting). Create a panel showing all current associations. Update database schema to store figure-caption relationships. Add ability to remove associations.",
+          "status": "pending",
+          "testStrategy": "Test both association methods, verify visual indicators appear correctly, check that associations are properly stored in the database, and test removing associations."
+        },
+        {
+          "id": 4,
+          "title": "Implement Element Reclassification UI",
+          "description": "Create UI for changing the classification of elements (e.g., from paragraph to caption, figure to table) with appropriate content re-extraction.",
+          "dependencies": [],
+          "details": "Add a classification dropdown in the element properties panel. Implement context menu with 'Change Type' option when right-clicking elements. Create handlers to re-process element content based on new classification (e.g., apply OCR for newly classified figures). Update database with new classification and re-extracted content. Add visual feedback during reclassification process.",
+          "status": "pending",
+          "testStrategy": "Test changing elements between different types, verify content is correctly re-extracted, and check database updates reflect the new classification."
+        },
+        {
+          "id": 5,
+          "title": "Implement Undo/Redo System for Adjustment Operations",
+          "description": "Create a comprehensive undo/redo system that works across all element adjustment operations to allow users to revert changes.",
+          "dependencies": [],
+          "details": "Implement a command pattern for all adjustment operations (merge, associate, reclassify). Create an operation history stack to track actions. Add undo/redo buttons in the toolbar with keyboard shortcuts (Ctrl+Z, Ctrl+Y). Implement state restoration for each operation type. Ensure database consistency during undo/redo operations. Add visual feedback during undo/redo actions.",
+          "status": "pending",
+          "testStrategy": "Test undo/redo for each operation type individually and in combination. Verify application state is correctly restored after multiple undo/redo operations. Check edge cases like undoing after a new operation breaks the redo chain."
+        }
+      ]
     },
     {
       "id": 10,

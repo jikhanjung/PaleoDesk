@@ -1,6 +1,6 @@
 # Task ID: 4
 # Title: Implement PDF File System Access
-# Status: pending
+# Status: done
 # Dependencies: 1
 # Priority: medium
 # Description: Create a service to access PDF files from folders or individual selections, providing an alternative to Zotero as an input source.

@@ -1,6 +1,6 @@
 # Task ID: 8
 # Title: Implement PDF Viewer Component
-# Status: pending
+# Status: done
 # Dependencies: 7
 # Priority: high
 # Description: Create a PDF viewer component that displays the PDF with overlays for detected figures, captions, and other elements.

@@ -1,6 +1,6 @@
 # Task ID: 5
 # Title: Implement huridocs Docker Service Integration
-# Status: pending
+# Status: done
 # Dependencies: 1
 # Priority: high
 # Description: Create a service to communicate with the huridocs PDF layout analysis Docker container via HTTP requests.

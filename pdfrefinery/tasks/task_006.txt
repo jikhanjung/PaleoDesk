@@ -1,6 +1,6 @@
 # Task ID: 6
 # Title: Implement PDF Layout Analysis Processing
-# Status: pending
+# Status: done
 # Dependencies: 2, 5
 # Priority: high
 # Description: Create a service to process the layout analysis results from huridocs, extracting figures, captions, and metadata.

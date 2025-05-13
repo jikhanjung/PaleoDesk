@@ -167,8 +167,9 @@ class PDFViewer(QWidget):
         'list item': QColor(139, 0, 139, 64)   # magenta with alpha
     }
     
-    def __init__(self):
+    def __init__(self, main_window=None):
         super().__init__()
+        self.main_window = main_window
         self.dpr = self.devicePixelRatioF()
         self.pixmap = None
         self.current_page = 0
@@ -276,18 +277,16 @@ class PDFViewer(QWidget):
         self.show_bounding_boxes = True
         self.zoom = 1.0
         # Scroll PDF view area to top
-        main_window = self.window()
-        if hasattr(main_window, 'pdf_scroll'):
-            main_window.pdf_scroll.verticalScrollBar().setValue(0)
+        if hasattr(self.main_window, 'pdf_scroll'):
+            self.main_window.pdf_scroll.verticalScrollBar().setValue(0)
         self.update()
 
     def _get_element_info(self, page_num, element_id):
         """Get info for the selected box"""
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'document_data'):
+        if not self.main_window or not hasattr(self.main_window, 'document_data'):
             return
         
-        page_structures = main_window.document_data.get('page_structures', {})
+        page_structures = self.main_window.document_data.get('page_structures', {})
         page_structure = page_structures.get(str(page_num), {})
         page_elements = page_structure.get('structure', {}).get('elements', [])
         for element in page_elements:
@@ -363,11 +362,11 @@ class PDFViewer(QWidget):
             return
         
         # Get viewport position
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'pdf_scroll'):
+        if not self.main_window or not hasattr(self.main_window, 'pdf_scroll'):
             return
-        viewport_height = main_window.pdf_scroll.viewport().height()
-        scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
+
+        viewport_height = self.main_window.pdf_scroll.viewport().height()
+        scroll_value = self.main_window.pdf_scroll.verticalScrollBar().value()
         viewport_top = scroll_value
         viewport_bottom = scroll_value + viewport_height
         
@@ -424,8 +423,7 @@ class PDFViewer(QWidget):
             logger.debug(f"[paintEvent] Page {page_num}: y={current_y}, height={scaled_height}, in_viewport={is_in_viewport}")
             
             #logger.info(f"Drawing page {page_num} at {current_y}, {scaled_height}, {self.width()}")
-            parent_window = self.window()
-            scroll_area = parent_window.pdf_scroll
+            scroll_area = self.main_window.pdf_scroll
             scroll_area_height = scroll_area.viewport().height()
             scroll_area_width = scroll_area.viewport().width()
             #logger.info(f"Scroll area height: {scroll_area_height}, width: {scroll_area_width}")
@@ -467,6 +465,10 @@ class PDFViewer(QWidget):
                                 color = color.lighter(120)
                             else:
                                 color.setAlpha(64)
+                            if element.get('merged_elements'):
+                                color = QColor(128,128,0,196)
+                            if element.get('linked_elements'):
+                                color = QColor(128,0,0,196)
                             logger.debug(f"Drawing bounding box for {category_text} at {x1}, {y1}, {x2}, {y2}, color: {color.getRgb()}")
                             
                             pen = QPen(color, 2)
@@ -504,12 +506,11 @@ class PDFViewer(QWidget):
         self.bounding_boxes = {}
         
         # Get the main window instance
-        main_window = self.window()
-        if not hasattr(main_window, 'document_data'):
+        if not self.main_window or not hasattr(self.main_window, 'document_data'):
             return
             
         # Get all page structures
-        page_structures = main_window.document_data.get('page_structures', {})
+        page_structures = self.main_window.document_data.get('page_structures', {})
         
         # Set boxes for each page
         for page_num, structure in page_structures.items():
@@ -522,18 +523,17 @@ class PDFViewer(QWidget):
 
     def reset_page(self):
         """Reset the current page's boxes to their initial state"""
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'document_data'):
+        if not self.main_window or not hasattr(self.main_window, 'document_data'):
             return
             
         # Get initial page structure for current page
-        initial_structure = main_window.document_data.get('initial_page_structures', {}).get(str(self.current_page))
+        initial_structure = self.main_window.document_data.get('initial_page_structures', {}).get(str(self.current_page))
         if not initial_structure:
             logger.warning(f"No initial structure found for page {self.current_page}")
             return
             
         # Get current page structure
-        current_structure = main_window.document_data.get('page_structures', {}).get(str(self.current_page))
+        current_structure = self.main_window.document_data.get('page_structures', {}).get(str(self.current_page))
         if not current_structure:
             logger.warning(f"No current structure found for page {self.current_page}")
             return
@@ -545,8 +545,8 @@ class PDFViewer(QWidget):
         self.bounding_boxes[self.current_page] = initial_structure['structure']['elements']
         
         # Update structured content view
-        if hasattr(main_window, 'structured_view'):
-            main_window.structured_view.update_content(main_window.document_data['page_structures'])
+        if hasattr(self.main_window, 'structured_view'):
+            self.main_window.structured_view.update_content(self.main_window.document_data['page_structures'])
         
         self.update()
         logger.info(f"Reset page {self.current_page} to initial state")
@@ -574,7 +574,7 @@ class PDFViewer(QWidget):
             self.element_current_pos = event.pos()
             return
             
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton or event.button() == Qt.MouseButton.RightButton:
             # Check if we're over a box
             pos = event.pos()
             box_info = self._check_bounding_box_hover(pos)
@@ -584,7 +584,7 @@ class PDFViewer(QWidget):
                 box_id = box.get('id')
                 
                 # Handle selection
-                if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                if event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
                     # Toggle selection with Ctrl
                     if (page_num, box_id) in self.selected_boxes:
                         self.selected_boxes.remove((page_num, box_id))
@@ -620,8 +620,7 @@ class PDFViewer(QWidget):
             self.update()  # Trigger repaint to show the rectangle
             return
             
-        main_window = self.window()
-        if not main_window:
+        if not self.main_window:
             return
 
         if self.drag_start_pos and self.dragging_box and event.buttons() & Qt.MouseButton.LeftButton:
@@ -688,8 +687,7 @@ class PDFViewer(QWidget):
         """Handle mouse release events"""
         if self.creating_element and event.button() == Qt.MouseButton.LeftButton and self.element_start_pos is not None:
             # Get the main window instance
-            main_window = self.window()
-            if not main_window or not hasattr(main_window, 'document_data'):
+            if not self.main_window or not hasattr(self.main_window, 'document_data'):
                 logger.error("No main window or document data found")
                 return
                 
@@ -879,13 +877,14 @@ class PDFViewer(QWidget):
     def save_element(self, page_num, element_id):
         """Save the element to database and update the page structure"""
         # Get the element from the page structure
-        main_window = self.window()
+        if not self.main_window or not hasattr(self.main_window, 'document_data'):
+            return
         
-        page_structure = main_window.document_data['page_structures'][str(page_num)]
+        page_structure = self.main_window.document_data['page_structures'][str(page_num)]
         element = page_structure['structure']['elements'][int(element_id)]
         #logger.info(f"Saving element {element} from page {page_num}")
 
-        document = main_window.document_record
+        document = self.main_window.document_record
         if not document:
             logger.error("No document found in database")
             return
@@ -932,19 +931,18 @@ class PDFViewer(QWidget):
             return
             
         # Get the main window instance
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'pdf_scroll'):
+        if not self.main_window or not hasattr(self.main_window, 'pdf_scroll'):
             return
             
         # Get viewport height
-        viewport_height = main_window.pdf_scroll.viewport().height()
+        viewport_height = self.main_window.pdf_scroll.viewport().height()
         
         # If scroll_value is provided, use it to calculate viewport center
         if scroll_value is not None:
             viewport_center = scroll_value + viewport_height / 2
         else:
             # Otherwise, get current scroll position
-            scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
+            scroll_value = self.main_window.pdf_scroll.verticalScrollBar().value()
             viewport_center = scroll_value + viewport_height / 2
             
         logger.debug(f"[update_current_page] Viewport center: {viewport_center}, current_page: {self.current_page}, scroll_value: {scroll_value}")
@@ -1138,11 +1136,10 @@ class PDFViewer(QWidget):
             return None
             
         # Get scroll position for PDF coordinate calculation only
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'pdf_scroll'):
+        if not self.main_window or not hasattr(self.main_window, 'pdf_scroll'):
             return None
             
-        scroll_value = main_window.pdf_scroll.verticalScrollBar().value()
+        scroll_value = self.main_window.pdf_scroll.verticalScrollBar().value()
         
         # Calculate widget to pixmap ratio for proper scaling
         widget_width = self.width()
@@ -1339,16 +1336,45 @@ class PDFViewer(QWidget):
         # Only show menu if the box is selected
         if (page_num, box['id']) not in self.selected_boxes:
             return
-            
+
+        box_type = set()
+        for box in self.selected_boxes:
+            box_info = self._get_element_info(box[0], box[1])
+            category = box_info.get('category', 'text').lower() 
+            box_type.add(category)
+
         menu = QMenu(self)
 
         # show_info
         show_info_action = menu.addAction("Show Info")
-        show_info_action.triggered.connect(lambda: self._show_info(page_num, box))
+        show_info_action.triggered.connect(self._show_info)
+
+        # merge 
+        if len(self.selected_boxes) > 1:
+            if len(box_type) == 1:
+                merge_action = menu.addAction("Merge")
+                merge_action.triggered.connect(lambda: self._merge_selected_boxes())
+            else:
+                link_action = menu.addAction("Link")
+                link_action.triggered.connect(lambda: self._link_selected_boxes())
+        elif len(self.selected_boxes) == 1:
+            #logger.info(f"box_info: {box_info}")
+            if box_info['linked_elements']:
+                unlink_action = menu.addAction("Unlink")
+                unlink_action.triggered.connect(lambda: self._unlink_selected_boxes())
+            if box_info['merged_elements']:
+                unmerge_action = menu.addAction("Unmerge")
+                unmerge_action.triggered.connect(lambda: self._unmerge_selected_boxes())
+
+        menu.addSeparator()
 
         # Add "Change Block Type" as an enabled menu item without action
         change_type_action = menu.addAction("Change Block Type")
         change_type_action.triggered.connect(lambda: None)  # Connect to empty lambda
+        if len(box_type) > 1:
+            change_type_action.setEnabled(False)
+        else:
+            change_type_action.setEnabled(True) 
 
         # Add element type actions with indentation
         for element_type in self.ELEMENT_TYPES:
@@ -1365,22 +1391,25 @@ class PDFViewer(QWidget):
         # Show menu
         menu.exec(event.globalPos())
 
-    def _show_info(self, page_num, box):
+    def _show_info(self):
         """Show info for the selected box"""
-        element_data = self._get_element_info(page_num, box['id'])
+        if len(self.selected_boxes) != 1:
+            return
+        page_num, box = self.selected_boxes.pop()
+        element_data = self._get_element_info(page_num, box)
+        logger.info(f"element_data: {element_data}")
         dialog = ElementInfoDialog(element_data)
         dialog.exec()
 
     def _change_selected_boxes_type(self, new_type):
         """Change type for all selected boxes"""
         # Get the main window instance
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'document_data'):
+        if not self.main_window or not hasattr(self.main_window, 'document_data'):
             return
             
         logger.debug(f"Changing type to {new_type} for {len(self.selected_boxes)} boxes")
         
-        document = main_window.document_record
+        document = self.main_window.document_record
         if not document:
             logger.error("No document found in database")
             return
@@ -1436,14 +1465,98 @@ class PDFViewer(QWidget):
             QMessageBox.warning(self, "Update Error", 
                 f"Error updating element type in database: {str(e)}")
 
+    def _merge_selected_boxes(self):
+        """Merge all selected boxes"""
+        document = self.main_window.document_record
+        if not document:
+            logger.error("No document found in database")
+            return
+
+        element_list = []
+        for box in self.selected_boxes:
+            #box_info = self._get_element_info(box[0], box[1])
+            element_list.append([box[0],box[1]])
+        for box in self.selected_boxes:
+            element = StructuredElement.get(
+                (StructuredElement.document == document) &
+                (StructuredElement.page_number == box[0]) &
+                (StructuredElement.element_id == box[1])
+            )
+            element.merged_elements = json.dumps(element_list)
+            element.save()
+            logger.info(f"Merged elements {element_list} on page {box[0]}")
+        return
+
+    def _unmerge_selected_boxes(self):
+        """Unmerge all selected boxes"""
+        document = self.main_window.document_record
+        if not document:
+            logger.error("No document found in database")
+            return
+        
+        for box in self.selected_boxes:
+            box_info = self._get_element_info(box[0], box[1])
+            merged_elements = box_info['merged_elements']
+            for merged_element in merged_elements:
+                elem_info = self._get_element_info(merged_element[0], merged_element[1])
+                elem_row_info = StructuredElement.get(  
+                    (StructuredElement.document == document) &
+                    (StructuredElement.page_number == merged_element[0]) &
+                    (StructuredElement.element_id == merged_element[1])
+                )
+                elem_row_info.merged_elements = None
+                elem_row_info.save()
+                elem_info['merged_elements'] = []
+
+    def _link_selected_boxes(self):
+        """Link all selected boxes"""
+        document = self.main_window.document_record
+        if not document:
+            logger.error("No document found in database")
+            return
+
+        element_list = []
+        for box in self.selected_boxes:
+            #box_info = self._get_element_info(box[0], box[1])
+            element_list.append([box[0],box[1]])
+
+        for box in self.selected_boxes:
+            element = StructuredElement.get(
+                (StructuredElement.document == document) &
+                (StructuredElement.page_number == box[0]) &
+                (StructuredElement.element_id == box[1])
+            )
+            element.linked_elements = json.dumps(element_list)
+            element.save()
+            logger.info(f"Linked elements {element_list} on page {box[0]}")
+        
+        return
+
+    def _unlink_selected_boxes(self):
+        """Unlink all selected boxes"""
+        document = self.main_window.document_record
+        if not document:
+            logger.error("No document found in database")
+            return
+        
+        for box in self.selected_boxes:
+            box_info = self._get_element_info(box[0], box[1])
+            linked_elements = box_info['linked_elements']
+            for linked_element in linked_elements:
+                elem_info = self._get_element_info(linked_element[0], linked_element[1])
+                elem_row_info = StructuredElement.get(
+                    (StructuredElement.document == document) &
+                    (StructuredElement.page_number == linked_element[0]) &
+                    (StructuredElement.element_id == linked_element[1])
+                )
+                elem_row_info.linked_elements = None
+                elem_row_info.save()
+                elem_info['linked_elements'] = []
+
     def _delete_selected_boxes(self):
         """Delete all selected boxes"""
-        # Get the main window instance
-        main_window = self.window()
-        if not main_window or not hasattr(main_window, 'document_data'):
-            return
             
-        document = main_window.document_record
+        document = self.main_window.document_record
         if not document:
             logger.error("No document found in database")
             return
@@ -1453,8 +1566,8 @@ class PDFViewer(QWidget):
             for page_num, box_id in list(self.selected_boxes):
                 # Remove the element from document_data
                 page_key = str(page_num)
-                if page_key in main_window.document_data['page_structures']:
-                    page_structure = main_window.document_data['page_structures'][page_key]
+                if page_key in self.main_window.document_data['page_structures']:
+                    page_structure = self.main_window.document_data['page_structures'][page_key]
                     if 'structure' in page_structure and 'elements' in page_structure['structure']:
                         elements = page_structure['structure']['elements']
                         deleted_index = None
@@ -1503,11 +1616,11 @@ class PDFViewer(QWidget):
             self.update()
             
             # Update structured content view
-            if hasattr(main_window, 'structured_view'):
-                main_window.structured_view.update_content(main_window.document_data['page_structures'])
+            if hasattr(self.main_window, 'structured_view'):
+                self.main_window.structured_view.update_content(self.main_window.document_data['page_structures'])
             
             # Save session to update session data
-            main_window.save_session()
+            self.main_window.save_session()
             logger.info("Updated database after element deletion")
                 
         except Exception as e:
@@ -1530,7 +1643,7 @@ class ElementInfoDialog(QDialog):
         form_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         
         # Add type and page information
-        form_layout.addRow("Type:", QLabel(self.element_data.get('type', '').capitalize()))
+        form_layout.addRow("Type:", QLabel(self.element_data.get('category', '').capitalize()))
         form_layout.addRow("Page:", QLabel(str(self.element_data.get('page', ''))))
         
         layout.addLayout(form_layout)
@@ -1553,8 +1666,9 @@ class ElementInfoDialog(QDialog):
 
         caption_text = QTextEdit()
         caption_text.setReadOnly(True)
-        caption = self.element_data.get('caption', '')
-        print(caption)
+        caption = self.element_data.get('content', '').get('text', '')
+        caption_text.setPlainText(caption)
+        #print(caption)
 
         #caption_text.setPlainText(caption)
         caption_text.setMaximumHeight(100)  # Limit height for captions
@@ -1776,8 +1890,7 @@ class StructuredContentView(QWidget):
     def _handle_item_click(self, item):
         """Handle single click on an item to scroll to the corresponding page"""
         # Get the main window instance
-        main_window = self.window()
-        if not main_window:
+        if not self.main_window:
             return
             
         # Get the widget associated with the item
@@ -1790,22 +1903,22 @@ class StructuredContentView(QWidget):
         logger.debug(f"Page number: {page_num}")
         if page_num is not None:
             # Update current page in PDF viewer
-            main_window.current_page = page_num - 1  # Convert to 0-based index
-            main_window.pdf_viewer.current_page = page_num - 1
+            self.main_window.current_page = page_num - 1  # Convert to 0-based index
+            self.main_window.pdf_viewer.current_page = page_num - 1
             #main_window.pdf_viewer.display_all_pages()
             
             # Calculate the scroll position for the target page
-            scroll_bar = main_window.pdf_scroll.verticalScrollBar()
+            scroll_bar = self.main_window.pdf_scroll.verticalScrollBar()
             target_pos = 0
             
             # Sum up the heights of all pages before the target page
             for i in range(page_num - 1):
-                if i in main_window.pdf_viewer.page_pixmaps:
-                    target_pos += main_window.pdf_viewer.page_pixmaps[i]['height']
+                if i in self.main_window.pdf_viewer.page_pixmaps:
+                    target_pos += self.main_window.pdf_viewer.page_pixmaps[i]['height']
             
             # Scroll to the target position
             scroll_bar.setValue(target_pos)
-            main_window.update_navigation()
+            self.main_window.update_navigation()
         
     def set_document(self, doc):
         """Set the current PDF document"""
@@ -2100,8 +2213,7 @@ class StructuredContentView(QWidget):
     def _show_element_info(self, item):
         """Show element information dialog"""
         # Get the main window instance
-        main_window = self.window()
-        if not main_window:
+        if not self.main_window:
             return
             
         # Get the widget associated with the item
@@ -2114,22 +2226,22 @@ class StructuredContentView(QWidget):
         logger.debug(f"Page number: {page_num}")
         if page_num is not None:
             # Update current page in PDF viewer
-            main_window.current_page = page_num - 1  # Convert to 0-based index
-            main_window.pdf_viewer.current_page = page_num - 1
+            self.main_window.current_page = page_num - 1  # Convert to 0-based index
+            self.main_window.pdf_viewer.current_page = page_num - 1
             #main_window.pdf_viewer.display_all_pages()
             
             # Calculate the scroll position for the target page
-            scroll_bar = main_window.pdf_scroll.verticalScrollBar()
+            scroll_bar = self.main_window.pdf_scroll.verticalScrollBar()
             target_pos = 0
             
             # Sum up the heights of all pages before the target page
             for i in range(page_num - 1):
-                if i in main_window.pdf_viewer.page_pixmaps:
-                    target_pos += main_window.pdf_viewer.page_pixmaps[i]['height']
+                if i in self.main_window.pdf_viewer.page_pixmaps:
+                    target_pos += self.main_window.pdf_viewer.page_pixmaps[i]['height']
             
             # Scroll to the target position
             scroll_bar.setValue(target_pos)
-            main_window.update_navigation()
+            self.main_window.update_navigation()
             
         # Show element info dialog
         dialog = ElementInfoDialog(widget.element_data, self)
@@ -2217,7 +2329,7 @@ class MainWindow(QMainWindow):
         pdf_layout.setContentsMargins(0, 0, 0, 0)
         pdf_layout.setSpacing(0)
         
-        self.pdf_viewer = PDFViewer()
+        self.pdf_viewer = PDFViewer(self)
         pdf_layout.addWidget(self.pdf_viewer)
         
         self.pdf_scroll.setWidget(pdf_container)
@@ -2575,36 +2687,6 @@ class MainWindow(QMainWindow):
             self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
         except Exception as e:
             logger.error(f"Error loading session data: {str(e)}")
-
-
-    def set_bounding_boxes(self, boxes):
-        """Set bounding boxes for all pages"""
-        if not boxes:
-            return
-            
-        # Clear existing boxes
-        self.bounding_boxes.clear()
-        
-        # Get the main window instance
-        main_window = self.window()
-        if not hasattr(main_window, 'document_data'):
-            return
-            
-        # Get all page structures
-        page_structures = main_window.document_data.get('page_structures', {})
-        
-        # Set boxes for each page
-        for page_num, structure in page_structures.items():
-            page_boxes = structure.get('structure', {}).get('elements', [])
-            if page_boxes:
-                self.bounding_boxes.append({
-                    'page': int(page_num) + 1,
-                    'structure': structure,
-                    'coordinates': page_boxes
-                })
-                #logger.debug(f"Set {len(page_boxes)} bounding boxes for page {int(page_num) + 1}")
-        
-        self.update()
 
     def load_directory(self):
         """Load all PDF files from a selected directory and its subdirectories"""

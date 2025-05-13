@@ -1,6 +1,6 @@
 # Task ID: 7
 # Title: Implement Basic PyQt6 UI Framework
-# Status: pending
+# Status: done
 # Dependencies: 1
 # Priority: high
 # Description: Create the foundational UI framework using PyQt6, including the main window, navigation, and basic workflow.

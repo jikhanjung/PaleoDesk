@@ -69,6 +69,10 @@ class StructuredElement(BaseModel):
     content = TextField(null=True)  # Text content or description
     caption = TextField(null=True)  # Associated caption text
     metadata = TextField(null=True)  # JSON string for additional metadata
+    image_path = TextField(null=True)  # Path to the image file
+    image_binary = BlobField(null=True)  # Binary data of the image
+    linked_elements = TextField(null=True)  # JSON string of linked elements
+    merged_elements = TextField(null=True)  # JSON string of merged elements
     created_at = DateTimeField(default=datetime.datetime.now)
     updated_at = DateTimeField(default=datetime.datetime.now)
     
@@ -101,7 +105,9 @@ class StructuredElement(BaseModel):
             'coordinates': normalized_coords,
             'content': json.loads(self.content) if self.content else {},
             'caption': json.loads(self.caption) if self.caption else {},
-            'metadata': json.loads(self.metadata) if self.metadata else {}
+            'metadata': json.loads(self.metadata) if self.metadata else {},
+            'linked_elements': json.loads(self.linked_elements) if self.linked_elements else [],
+            'merged_elements': json.loads(self.merged_elements) if self.merged_elements else []
         }
         return element_data
 

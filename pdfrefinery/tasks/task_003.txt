@@ -1,6 +1,6 @@
 # Task ID: 3
 # Title: Implement Zotero Database Access
-# Status: pending
+# Status: done
 # Dependencies: 1
 # Priority: high
 # Description: Create a service to access the Zotero database file directly to retrieve collections and paper lists without using the API.
