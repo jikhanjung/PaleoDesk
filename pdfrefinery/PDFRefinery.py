@@ -151,7 +151,10 @@ class PDFViewer(QWidget):
     currentPageChanged = pyqtSignal(int)  # Signal to emit the new current page (0-based)
     
     # Define element types and their colors as class variables
-    ELEMENT_TYPES = ['text', 'figure', 'table', 'picture', 'caption', 'footnote', 'page header', 'page footer', 'section header', 'list item']
+    ELEMENT_TYPES = ['text', 'figure', 'table', 'picture', 'caption', 'footnote', 'page header', 
+                     'page footer', 'section header', 'list item']
+
+    FIGURE_TYPES = ['table', 'sepcimen photo', 'illustration', 'graph', 'map', 'correlation chart','general']
     
     # Define colors for each element type with alpha
     ELEMENT_COLORS = {
@@ -283,14 +286,17 @@ class PDFViewer(QWidget):
 
     def _get_element_info(self, page_num, element_id):
         """Get info for the selected box"""
+        #logger.info(f"Getting element info for page {type(page_num)} {page_num}, element {type(element_id)} {element_id}")
         if not self.main_window or not hasattr(self.main_window, 'document_data'):
             return
         
         page_structures = self.main_window.document_data.get('page_structures', {})
         page_structure = page_structures.get(str(page_num), {})
         page_elements = page_structure.get('structure', {}).get('elements', [])
+        #logger.info(f"page_elements: {page_elements}")
         for element in page_elements:
-            if element.get('id') == element_id:
+            #logger.info(f"{type(element)} {element.get('id')} {type(element.get('id'))}")
+            if int(element.get('id')) == int(element_id):
                 return element
 
     def set_document(self, pdf_document):
@@ -338,13 +344,6 @@ class PDFViewer(QWidget):
             #self.load_next_pages()
         except Exception as e:
             logger.error(f"Error loading initial pages: {str(e)}")
-
-    def scroll_to_page(self, page_num):
-        """Scroll to a specific page"""
-        if 0 <= page_num < self.total_pages:
-            self.current_page = page_num
-            self.update_current_page()
-            self.update()
 
     def set_current_page(self, page_num):
         """Set the current page and scroll to it"""
@@ -519,7 +518,7 @@ class PDFViewer(QWidget):
                         # Control points for S-curve
                         dy = next_top.y() - prev_bottom.y()
                         dx = next_top.x() - prev_bottom.x()
-                        vertical_offset = max(abs(dy) * 0.5, 80, abs(dx) * 0.5)
+                        vertical_offset = max(abs(dy) * 0.2, 60 )
                         ctrl1 = QPointF(prev_bottom.x(), prev_bottom.y() + vertical_offset)
                         ctrl2 = QPointF(next_top.x(), next_top.y() - vertical_offset)
                         path = QPainterPath()
@@ -1468,13 +1467,19 @@ class PDFViewer(QWidget):
                 link_action = menu.addAction("Link")
                 link_action.triggered.connect(lambda: self._link_selected_boxes())
         elif len(self.selected_boxes) == 1:
+            box = list(self.selected_boxes)[0]
+            box_info = self._get_element_info(box[0], box[1])
             #logger.info(f"box_info: {box_info}")
-            if box_info['linked_elements']:
+            #logger.info(f"linked_elements: {box_info['linked_elements']} {type(box_info['linked_elements'])}, {len(box_info['linked_elements'])} {hasattr(box_info, 'linked_elements')}")
+            #logger.info(f"merged_elements: {box_info['merged_elements']} {type(box_info['merged_elements'])}, {len(box_info['merged_elements'])} {hasattr(box_info, 'merged_elements')}")
+            if 'linked_elements' in box_info and len(box_info['linked_elements']) > 0:
                 unlink_action = menu.addAction("Unlink")
                 unlink_action.triggered.connect(lambda: self._unlink_selected_boxes())
-            if box_info['merged_elements']:
+                #logger.info(f"linked_elements: {box_info['linked_elements']}")
+            if 'merged_elements' in box_info and len(box_info['merged_elements']) > 0:
                 unmerge_action = menu.addAction("Unmerge")
                 unmerge_action.triggered.connect(lambda: self._unmerge_selected_boxes())
+                #logger.info(f"merged_elements: {box_info['merged_elements']}")
 
         menu.addSeparator()
 
@@ -1505,9 +1510,10 @@ class PDFViewer(QWidget):
         """Show info for the selected box"""
         if len(self.selected_boxes) != 1:
             return
-        page_num, box = self.selected_boxes.pop()
-        element_data = self._get_element_info(page_num, box)
-        #logger.info(f"element_data: {element_data}")
+
+        page_num, element_id = list(self.selected_boxes)[0]
+        element_data = self._get_element_info(page_num, element_id)
+
         dialog = ElementInfoDialog(element_data)
         dialog.exec()
 
@@ -1601,7 +1607,8 @@ class PDFViewer(QWidget):
             element.save()
             elem_info['merged_elements'] = element_list
             logger.info(f"Merged elements {element_list} on page {elem[0]}")
-        return
+        self.selected_boxes.clear()
+        self.update()
 
     def _unmerge_selected_boxes(self):
         """Unmerge all selected boxes"""
@@ -1623,6 +1630,8 @@ class PDFViewer(QWidget):
                 elem_row_info.merged_elements = None
                 elem_row_info.save()
                 elem_info['merged_elements'] = []
+        self.selected_boxes.clear()
+        self.update()
 
     def _link_selected_boxes(self):
         """Link all selected boxes"""
@@ -1647,8 +1656,8 @@ class PDFViewer(QWidget):
             elem_row_info.save()
             elem_info['linked_elements'] = element_list
             logger.info(f"Linked elements {element_list} on page {box[0]}")
-        
-        return
+        self.selected_boxes.clear()
+        self.update()
 
     def _unlink_selected_boxes(self):
         """Unlink all selected boxes"""
@@ -1662,6 +1671,7 @@ class PDFViewer(QWidget):
             linked_elements = box_info['linked_elements']
             for linked_element in linked_elements:
                 elem_info = self._get_element_info(linked_element[0], linked_element[1])
+                logger.info(f"linked_element: {linked_element} {elem_info}")
                 elem_row_info = StructuredElement.get(
                     (StructuredElement.document == document) &
                     (StructuredElement.page_number == linked_element[0]) &
@@ -1670,6 +1680,8 @@ class PDFViewer(QWidget):
                 elem_row_info.linked_elements = None
                 elem_row_info.save()
                 elem_info['linked_elements'] = []
+        self.selected_boxes.clear()
+        self.update()
 
     def _delete_selected_boxes(self):
         """Delete all selected boxes"""
@@ -1759,18 +1771,15 @@ class ElementInfoDialog(QDialog):
         # Create form layout for basic information
         form_layout = QFormLayout()
         form_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        logger.info(f"element_data: {self.element_data}")
         
         # Add type and page information
         form_layout.addRow("Type:", QLabel(self.element_data.get('category', '').capitalize()))
-        form_layout.addRow("Page:", QLabel(str(self.element_data.get('page', ''))))
+        form_layout.addRow("Page:", QLabel(str(int(self.element_data.get('page_number', ''))+1)))
+        form_layout.addRow("Element ID:", QLabel(str(int(self.element_data.get('id', ''))+1)))
         
         layout.addLayout(form_layout)
-        
-        # Add caption in a read-only text area
-        caption_label = QLabel("Caption:")
-        caption_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        layout.addWidget(caption_label)
-        
+
         # Add image if available
         pixmap = self.element_data.get('pixmap')
         if pixmap:
@@ -1782,12 +1791,16 @@ class ElementInfoDialog(QDialog):
             image_label.setMinimumSize(200, 200)  # Set minimum size for the image
             layout.addWidget(image_label, 1)  # Add stretch factor of 1
 
+        # Add caption in a read-only text area
+        caption_label = QLabel("Text:")
+        caption_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout.addWidget(caption_label)
+        
         caption_text = QTextEdit()
         caption_text.setReadOnly(True)
         caption = ''
-        print(self.element_data)
-        if hasattr(self.element_data, 'content'):
-            if hasattr(self.element_data['content'], 'text'):
+        if 'content' in self.element_data:
+            if 'text' in self.element_data['content']:
                 caption = self.element_data['content']['text']
             else:
                 print(self.element_data['content'])
@@ -1797,9 +1810,9 @@ class ElementInfoDialog(QDialog):
         #print(caption)
 
         #caption_text.setPlainText(caption)
-        caption_text.setMaximumHeight(100)  # Limit height for captions
-        caption_text.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        layout.addWidget(caption_text)
+        #caption_text.setMaximumHeight(100)  # Limit height for captions
+        caption_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(caption_text, 1)
         
         # Add close button
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -1810,7 +1823,7 @@ class ElementInfoDialog(QDialog):
         self.setLayout(layout)
         
         # Set minimum size for the dialog
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(600, 400)
 
 class StructuredContentView(QWidget):
     def __init__(self, parent=None):
@@ -1822,18 +1835,18 @@ class StructuredContentView(QWidget):
         self.init_ui()
         
         # Install event filter for smooth scrolling
-        self.content_list.viewport().installEventFilter(self)
+        self.content_list_widget.viewport().installEventFilter(self)
         
     def eventFilter(self, obj, event):
         """Handle wheel events for smooth scrolling"""
-        if obj == self.content_list.viewport() and event.type() == QEvent.Type.Wheel:
+        if obj == self.content_list_widget.viewport() and event.type() == QEvent.Type.Wheel:
             # Reduce scroll speed by adjusting delta
             scroll_factor = 0.4  # Adjust this value to control scroll speed (smaller = slower)
             delta = event.angleDelta().y()
             reduced_delta = int(delta * scroll_factor)
             
             # Scroll the viewport directly
-            scrollbar = self.content_list.verticalScrollBar()
+            scrollbar = self.content_list_widget.verticalScrollBar()
             scrollbar.setValue(scrollbar.value() - reduced_delta)
             return True
             
@@ -1872,22 +1885,22 @@ class StructuredContentView(QWidget):
         layout.addWidget(toolbar)
         
         # Create list widget for both views
-        self.content_list = QListWidget()
-        self.content_list.setViewMode(QListWidget.ViewMode.IconMode)  # Set icon mode as default
-        self.content_list.setIconSize(QSize(200, 200))
-        self.content_list.setSpacing(10)
-        self.content_list.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.content_list.setWrapping(False)  # Single column
-        self.content_list.setFlow(QListWidget.Flow.TopToBottom)  # Vertical flow
+        self.content_list_widget = QListWidget()
+        self.content_list_widget.setViewMode(QListWidget.ViewMode.IconMode)  # Set icon mode as default
+        self.content_list_widget.setIconSize(QSize(200, 200))
+        self.content_list_widget.setSpacing(10)
+        self.content_list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.content_list_widget.setWrapping(False)  # Single column
+        self.content_list_widget.setFlow(QListWidget.Flow.TopToBottom)  # Vertical flow
         
         # Enable smooth pixel-based scrolling
-        self.content_list.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
-        self.content_list.setHorizontalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self.content_list_widget.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self.content_list_widget.setHorizontalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         
-        self.content_list.itemClicked.connect(self._handle_item_click)
-        self.content_list.itemDoubleClicked.connect(self._show_element_info)
+        self.content_list_widget.itemClicked.connect(self._handle_item_click)
+        self.content_list_widget.itemDoubleClicked.connect(self._show_element_info)
         
-        layout.addWidget(self.content_list)
+        layout.addWidget(self.content_list_widget)
         self.setLayout(layout)
         
         # Initialize with icon view
@@ -1901,13 +1914,14 @@ class StructuredContentView(QWidget):
         coord_str = ''
         if coords and len(coords) >= 4:
             coord_str = f"_{coords[0]['x']}_{coords[0]['y']}_{coords[2]['x']}_{coords[2]['y']}"
-        cache_key = f"{item['page']}_{item.get('id', '')}{coord_str}"
+        cache_key = f"{item['page_number']}_{item.get('id', '')}{coord_str}"
+        #logger.info(f"cache_key: {cache_key}")
         
         if cache_key in self.pixmap_cache:
             return self.pixmap_cache[cache_key]
             
         try:
-            page = self.current_doc[item['page'] - 1]  # Convert to 0-based index
+            page = self.current_doc[item['page_number'] ]  # Convert to 0-based index
             zoom = 2  # Reduced zoom for better performance
             matrix = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=matrix)
@@ -1938,82 +1952,10 @@ class StructuredContentView(QWidget):
                 self.pixmap_cache[cache_key] = pixmap
                 return pixmap
         except Exception as e:
-            logger.error(f"Error creating image for item on page {item['page']}: {str(e)}")
+            logger.error(f"Error creating image for item on page {item['page_number']} {item['id']}: {str(e)}")
         
         return None
 
-    def _update_icon_view(self, content_by_type):
-        """Update the icon view with content"""
-        self.content_list.clear()
-        
-        if not self.current_doc:
-            logger.warning("No PDF document available for icon view")
-            return
-            
-        # Flatten all items into a single list
-        all_items = []
-        for items in content_by_type.values():
-            all_items.extend(items)
-            
-        # Sort items by page number and position
-        all_items = self._sort_elements_by_position(all_items)
-        
-        # Add items in chronological order
-        for item in all_items:
-            # Create item widget
-            item_widget = QWidget()
-            item_layout = QVBoxLayout()
-            item_layout.setContentsMargins(5, 5, 5, 5)
-            
-            # Get cached pixmap
-            item_pixmap = self._get_cached_pixmap(item)
-            
-            if item_pixmap:
-                # Create image label
-                image_label = QLabel()
-                image_label.setPixmap(item_pixmap)
-                image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                item_layout.addWidget(image_label)
-            
-            # Add page number and type label
-            header_label = QLabel(f"Page {item['page']} - {item.get('type', 'Unknown')}")
-            header_label.setStyleSheet("font-weight: bold;")
-            item_layout.addWidget(header_label)
-            
-            # Show caption if available
-            if item['caption']:
-                caption_label = QLabel(item['caption'])
-                caption_label.setWordWrap(True)
-                caption_label.setStyleSheet("font-style: italic;")
-                item_layout.addWidget(caption_label)
-            
-            item_widget.setLayout(item_layout)
-            item_widget.setStyleSheet("border: 1px solid #ccc; padding: 5px;")
-            
-            # Store element data for double-click
-            item_widget.element_data = {
-                'type': item.get('type', 'Unknown'),
-                'page': item['page'],
-                'caption': item['caption'],
-                'content': item['content'],
-                'pixmap': item_pixmap
-            }
-            
-            # Create list item
-            list_item = QListWidgetItem()
-            list_item.setSizeHint(item_widget.sizeHint())
-            self.content_list.addItem(list_item)
-            self.content_list.setItemWidget(list_item, item_widget)
-            
-            # Add spacing between items
-            spacer = QListWidgetItem()
-            spacer.setSizeHint(QSize(0, 10))
-            spacer.setFlags(Qt.ItemFlag.NoItemFlags)
-            self.content_list.addItem(spacer)
-            
-            # Process events to keep UI responsive
-            QApplication.processEvents()
-    
     def _handle_item_click(self, item):
         """Handle single click on an item to scroll to the corresponding page"""
         # Get the main window instance
@@ -2021,7 +1963,7 @@ class StructuredContentView(QWidget):
             return
             
         # Get the widget associated with the item
-        widget = self.content_list.itemWidget(item)
+        widget = self.content_list_widget.itemWidget(item)
         if not widget or not hasattr(widget, 'element_data'):
             return
             
@@ -2031,20 +1973,9 @@ class StructuredContentView(QWidget):
         if page_num is not None:
             # Update current page in PDF viewer
             self.main_window.current_page = page_num - 1  # Convert to 0-based index
+            self.main_window.current_page_input.setText(str(page_num))
             self.main_window.pdf_viewer.current_page = page_num - 1
-            #main_window.pdf_viewer.display_all_pages()
-            
-            # Calculate the scroll position for the target page
-            scroll_bar = self.main_window.pdf_scroll.verticalScrollBar()
-            target_pos = 0
-            
-            # Sum up the heights of all pages before the target page
-            for i in range(page_num - 1):
-                if i in self.main_window.pdf_viewer.page_pixmaps:
-                    target_pos += self.main_window.pdf_viewer.page_pixmaps[i]['height']
-            
-            # Scroll to the target position
-            scroll_bar.setValue(target_pos)
+            self.main_window.go_to_page()
             self.main_window.update_navigation()
         
     def set_document(self, doc):
@@ -2054,15 +1985,15 @@ class StructuredContentView(QWidget):
     def switch_view_mode(self, mode):
         """Switch between list and icon views"""
         if mode == 'list':
-            self.content_list.setViewMode(QListWidget.ViewMode.ListMode)
-            self.content_list.setIconSize(QSize(32, 32))  # Smaller icons for list view
-            self.content_list.setSpacing(2)  # Less spacing for list view
+            self.content_list_widget.setViewMode(QListWidget.ViewMode.ListMode)
+            self.content_list_widget.setIconSize(QSize(32, 32))  # Smaller icons for list view
+            self.content_list_widget.setSpacing(2)  # Less spacing for list view
             self.list_view_action.setChecked(True)
             self.icon_view_action.setChecked(False)
         else:
-            self.content_list.setViewMode(QListWidget.ViewMode.IconMode)
-            self.content_list.setIconSize(QSize(200, 200))  # Larger icons for icon view
-            self.content_list.setSpacing(10)  # More spacing for icon view
+            self.content_list_widget.setViewMode(QListWidget.ViewMode.IconMode)
+            self.content_list_widget.setIconSize(QSize(200, 200))  # Larger icons for icon view
+            self.content_list_widget.setSpacing(10)  # More spacing for icon view
             self.list_view_action.setChecked(False)
             self.icon_view_action.setChecked(True)
         
@@ -2192,6 +2123,21 @@ class StructuredContentView(QWidget):
         
         return category_map.get(first_word)
 
+    def _get_element_info(self, page_num, element_id):
+        """Get info for the selected box"""
+        #logger.info(f"Getting element info for page {type(page_num)} {page_num}, element {type(element_id)} {element_id}")
+        if not self.main_window or not hasattr(self.main_window, 'document_data'):
+            return
+        
+        page_structures = self.main_window.document_data.get('page_structures', {})
+        page_structure = page_structures.get(str(page_num), {})
+        page_elements = page_structure.get('structure', {}).get('elements', [])
+        #logger.info(f"page_elements: {page_elements}")
+        for element in page_elements:
+            #logger.info(f"{type(element)} {element.get('id')} {type(element.get('id'))}")
+            if int(element.get('id')) == int(element_id):
+                return element
+
     def update_content(self, page_structures):
         """Update the structured content view with page structures"""
         logger.debug("StructuredContentView.update_content called")
@@ -2200,15 +2146,11 @@ class StructuredContentView(QWidget):
         self._current_content = page_structures  # Store for view switching
         
         # Clear current view
-        self.content_list.clear()
+        self.content_list_widget.clear()
+        self.content_list = []
         
         # Group content by type
-        content_by_type = {
-            'image': [],
-            'table': [],
-            'figure': [],
-            'picture': []
-        }
+        content_type_list = ['image', 'table', 'figure', 'picture']
         
         # Process each page's structure
         for page_num, structure in page_structures.items():
@@ -2216,103 +2158,148 @@ class StructuredContentView(QWidget):
             logger.debug(f"Processing page {page_num} with {len(elements)} elements")
             for element in elements:
                 element_type = element.get('category', '').lower()
-                if element_type in content_by_type:
+                if element_type in content_type_list:
                     # Find nearest caption
-                    caption_element = self._find_nearest_caption(element, elements)
-                    #logger.debug(f"Caption element: {caption_element}")
-                    caption = caption_element.get('content', {}).get('text', '') if caption_element else None
-                    
-                    # Try to get category from caption
-                    if caption:
-                        caption_category = self._get_category_from_caption(caption)
-                        if caption_category:
-                            element_type = caption_category
-                    
-                    content_by_type[element_type].append({
-                        'page': int(page_num) + 1,  # Convert to 1-based page number
-                        'content': element.get('content', {}).get('text', ''),
-                        'caption': caption,
+                    linked_elements = element.get('linked_elements', None)
+                    caption_element = None
+                    if linked_elements:
+                        for linked_element in linked_elements:
+                            element_info = self._get_element_info( linked_element[0], linked_element[1])
+                            if element_info.get('category', '').lower() == 'caption':
+                                caption_element = element_info
+                                break
+                    caption_text = caption_element.get('content', {}).get('text', '') if caption_element else None
+                    item = {
+                        'figure_element': element,
+                        'caption_element': caption_element,
+                        'category': element_type,
+                        'caption': caption_text,
                         'coordinates': element.get('coordinates', []),
+                        'id': element.get('id', ''),
+                        'page_number': int(page_num),
                         'page_width': element.get('attributes', {}).get('page_width', 0),
                         'page_height': element.get('attributes', {}).get('page_height', 0)
-                    })
+                    }
+
+                    self.content_list.append(item)
                     logger.debug(f"Added element of type {element_type} from page {page_num}")
         
-        # Sort elements by position for each type
-        for content_type in content_by_type:
-            content_by_type[content_type] = self._sort_elements_by_position(content_by_type[content_type])
-            logger.debug(f"Sorted {len(content_by_type[content_type])} {content_type} elements")
-        
         # Update view based on current mode
-        if self.content_list.viewMode() == QListWidget.ViewMode.ListMode:
+        if self.content_list_widget.viewMode() == QListWidget.ViewMode.ListMode:
             logger.debug("Updating list view")
-            self._update_list_view(content_by_type)
+            self._update_list_view()
         else:
             logger.debug("Updating icon view")
-            self._update_icon_view(content_by_type)
+            self._update_icon_view()
     
-    def _update_list_view(self, content_by_type):
+    def _update_list_view(self):
         """Update the list view with content"""
-        for content_type, items in content_by_type.items():
-            if items:
-                # Add type label as a special item
-                type_item = QListWidgetItem(content_type.capitalize())
-                type_item.setFlags(Qt.ItemFlag.NoItemFlags)  # Make it non-selectable
-                type_item.setForeground(Qt.GlobalColor.black)
-                font = type_item.font()
-                font.setBold(True)
-                type_item.setFont(font)
-                self.content_list.addItem(type_item)
-                
-                for item in items:
-                    # Create item widget
-                    item_widget = QWidget()
-                    item_layout = QGridLayout()  # Use grid layout for fixed columns
-                    item_layout.setContentsMargins(5, 5, 5, 5)
-                    item_layout.setSpacing(10)  # Add some spacing between columns
-                    
-                    # Add page number (column 0)
-                    page_label = QLabel(f"Page {item['page']}")
-                    page_label.setFixedWidth(80)  # Fixed width for page number
-                    item_layout.addWidget(page_label, 0, 0)
-                    
-                    # Add content (column 1)
-                    content_label = QLabel(item['content'])
-                    content_label.setWordWrap(True)
-                    content_label.setFixedWidth(300)  # Fixed width for content
-                    item_layout.addWidget(content_label, 0, 1)
-                    
-                    # Add caption if available (column 2)
-                    if item['caption']:
-                        caption_label = QLabel(item['caption'])
-                        caption_label.setWordWrap(True)
-                        caption_label.setStyleSheet("font-style: italic;")
-                        caption_label.setFixedWidth(300)  # Fixed width for caption
-                        item_layout.addWidget(caption_label, 0, 2)
-                    
-                    item_widget.setLayout(item_layout)
-                    
-                    # Store element data for double-click
-                    item_widget.element_data = {
-                        'type': content_type,
-                        'page': item['page'],
-                        'caption': item['caption'],
-                        'content': item['content'],
-                        'pixmap': None  # No pixmap for list view
-                    }
-                    
-                    # Create list item
-                    list_item = QListWidgetItem()
-                    list_item.setSizeHint(item_widget.sizeHint())
-                    self.content_list.addItem(list_item)
-                    self.content_list.setItemWidget(list_item, item_widget)
-                
-                # Add spacing after each type
-                spacer = QListWidgetItem()
-                spacer.setSizeHint(QSize(0, 10))
-                spacer.setFlags(Qt.ItemFlag.NoItemFlags)
-                self.content_list.addItem(spacer)
-    
+        for idx, item in enumerate(self.content_list):
+            # Create item widget
+            item_widget = QWidget()
+            item_layout = QGridLayout()  # Use grid layout for fixed columns
+            item_layout.setContentsMargins(5, 5, 5, 5)
+            item_layout.setSpacing(10)  # Add some spacing between columns
+            
+            # Add item index (column 0)
+            index_label = QLabel(f"{idx+1}")
+            index_label.setFixedWidth(30)  # Fixed width for index
+            item_layout.addWidget(index_label, 0, 0)
+
+            # Add page number (column 1)
+            page_label = QLabel(f"Page {item['page_number']}")
+            page_label.setFixedWidth(80)  # Fixed width for page number
+            item_layout.addWidget(page_label, 0, 1)
+            
+            # Add content (column 1)
+            content_label = QLabel(item['content'])
+            content_label.setWordWrap(True)
+            content_label.setFixedWidth(300)  # Fixed width for content
+            item_layout.addWidget(content_label, 0, 2)
+            
+            # Add caption if available (column 2)
+            if item['caption']:
+                caption_label = QLabel(item['caption'])
+                caption_label.setWordWrap(True)
+                caption_label.setStyleSheet("font-style: italic;")
+                caption_label.setFixedWidth(300)  # Fixed width for caption
+                item_layout.addWidget(caption_label, 0, 2)
+            
+            item_widget.setLayout(item_layout)
+            
+            # Store element data for double-click
+            item_widget.element_data = {
+                'type': content_type,
+                'page': item['page'],
+                'caption': item['caption'],
+                'content': item['content'],
+                'pixmap': None  # No pixmap for list view
+            }
+            
+            # Create list item
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(item_widget.sizeHint())
+            self.content_list_widget.addItem(list_item)
+            self.content_list_widget.setItemWidget(list_item, item_widget)
+
+    def _update_icon_view(self):
+        """Update the icon view with content"""
+        self.content_list_widget.clear()
+        
+        if not self.current_doc:
+            logger.warning("No PDF document available for icon view")
+            return
+            
+        # Add items in chronological order
+        for idx, item in enumerate(self.content_list):
+            # Create item widget
+            item_widget = QWidget()
+            item_layout = QVBoxLayout()
+            item_layout.setContentsMargins(5, 5, 5, 5)
+            
+            # Get cached pixmap
+            item_pixmap = self._get_cached_pixmap(item)
+            
+            if item_pixmap:
+                # Create image label
+                image_label = QLabel()
+                image_label.setPixmap(item_pixmap)
+                image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                item_layout.addWidget(image_label)
+            
+            # Add page number and type label
+            header_label = QLabel(f"Figure {idx+1}.")
+            header_label.setStyleSheet("font-weight: bold;")
+            item_layout.addWidget(header_label)
+            
+            # Show caption if available
+            if item['caption']:
+                caption_label = QLabel(item['caption'])
+                caption_label.setWordWrap(True)
+                caption_label.setStyleSheet("font-style: italic;")
+                item_layout.addWidget(caption_label)
+            
+            item_widget.setLayout(item_layout)
+            item_widget.setStyleSheet("border: 1px solid #ccc; padding: 5px;")
+            
+            # Store element data for double-click
+            item_widget.element_data = item
+            
+            # Create list item
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(item_widget.sizeHint())
+            self.content_list_widget.addItem(list_item)
+            self.content_list_widget.setItemWidget(list_item, item_widget)
+            
+            # Add spacing between items
+            spacer = QListWidgetItem()
+            spacer.setSizeHint(QSize(0, 10))
+            spacer.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.content_list_widget.addItem(spacer)
+            
+            # Process events to keep UI responsive
+            QApplication.processEvents()
+
     def _clear_grid(self):
         """Clear the grid layout"""
         while self.content_grid.count():
@@ -2344,7 +2331,7 @@ class StructuredContentView(QWidget):
             return
             
         # Get the widget associated with the item
-        widget = self.content_list.itemWidget(item)
+        widget = self.content_list_widget.itemWidget(item)
         if not widget or not hasattr(widget, 'element_data'):
             return
             
@@ -2378,14 +2365,14 @@ class StructuredContentView(QWidget):
         """Scroll to the first element for the given 0-based page number (page_num)"""
         # Elements in content_list are added in _update_icon_view/_update_list_view
         # We need to find the first item whose element_data['page'] == page_num+1
-        for i in range(self.content_list.count()):
-            item = self.content_list.item(i)
-            widget = self.content_list.itemWidget(item)
+        for i in range(self.content_list_widget.count()):
+            item = self.content_list_widget.item(i)
+            widget = self.content_list_widget.itemWidget(item)
             if widget and hasattr(widget, 'element_data'):
                 element_page = widget.element_data.get('page')
                 if element_page == page_num + 1:
-                    self.content_list.scrollToItem(item, QListWidget.ScrollHint.PositionAtCenter)
-                    self.content_list.setCurrentItem(item)
+                    self.content_list_widget.scrollToItem(item, QListWidget.ScrollHint.PositionAtCenter)
+                    self.content_list_widget.setCurrentItem(item)
                     break
 
 class MainWindow(QMainWindow):
@@ -3276,7 +3263,8 @@ class MainWindow(QMainWindow):
                                         'page_width': element['page_width'],
                                         'page_height': element['page_height']
                                     },
-                                    'id': len(page_elements[page_num])  # ID starts from 0 for each page
+                                    'id': len(page_elements[page_num]),  # ID starts from 0 for each page
+                                    'page_number': int(page_num)
                                 }
                                 page_elements[page_num].append(structured_element)
                             
@@ -3408,7 +3396,7 @@ class MainWindow(QMainWindow):
                                     'updated_at': datetime.datetime.now()
                                 })
                     # printout elements' page and id, not the whole element for elements_to_create
-                    logger.info(f"Elements to create: {[{'page': e['page_number'], 'id': e['element_id']} for e in elements_to_create]}")
+                    #logger.info(f"Elements to create: {[{'page': e['page_number'], 'id': e['element_id']} for e in elements_to_create]}")
 
                     if elements_to_create:
                         with db.atomic():

@@ -107,97 +107,10 @@ class StructuredElement(BaseModel):
             'caption': json.loads(self.caption) if self.caption else {},
             'metadata': json.loads(self.metadata) if self.metadata else {},
             'linked_elements': json.loads(self.linked_elements) if self.linked_elements else [],
-            'merged_elements': json.loads(self.merged_elements) if self.merged_elements else []
+            'merged_elements': json.loads(self.merged_elements) if self.merged_elements else [],
+            'page_number': self.page_number
         }
         return element_data
-
-def init_database(db_path):
-    """Initialize the database with all required tables"""
-    try:
-        db.init(db_path)
-        with db:
-            # Check if tables exist
-            tables_exist = db.get_tables()
-            
-            if not tables_exist:
-                # Create tables if they don't exist
-                db.create_tables([PDFDocument, PageAnalysis, SessionData, StructuredElement])
-                logger.info("Created new database tables")
-            else:
-                # Handle migration for existing database
-                try:
-                    # Check existing columns
-                    cursor = db.execute_sql(
-                        "SELECT name FROM pragma_table_info('pdfdocument')"
-                    )
-                    existing_columns = [row[0] for row in cursor.fetchall()]
-                    
-                    # Create new table with all required columns
-                    db.execute_sql("""
-                        CREATE TABLE IF NOT EXISTS pdfdocument_new (
-                            id INTEGER PRIMARY KEY,
-                            file_path VARCHAR(255) NOT NULL UNIQUE,
-                            file_hash VARCHAR(255),
-                            zotero_key VARCHAR(255),
-                            title VARCHAR(255) NOT NULL,
-                            page_count INTEGER NOT NULL,
-                            last_analyzed DATETIME,
-                            created_at DATETIME NOT NULL,
-                            updated_at DATETIME NOT NULL
-                        )
-                    """)
-                    
-                    # Copy data from old table to new table
-                    if 'updated_at' in existing_columns:
-                        db.execute_sql("""
-                            INSERT INTO pdfdocument_new 
-                            SELECT id, file_path, file_hash, zotero_key, title, page_count,
-                                   last_analyzed, created_at, updated_at
-                            FROM pdfdocument
-                        """)
-                    else:
-                        db.execute_sql("""
-                            INSERT INTO pdfdocument_new 
-                            SELECT id, file_path, file_hash, zotero_key, title, page_count,
-                                   last_analyzed, created_at, created_at
-                            FROM pdfdocument
-                        """)
-                    
-                    # Drop old table and rename new one
-                    db.execute_sql("DROP TABLE pdfdocument")
-                    db.execute_sql("ALTER TABLE pdfdocument_new RENAME TO pdfdocument")
-                    logger.info("Updated database schema with all required columns")
-                    
-                except Exception as e:
-                    logger.error(f"Error during migration: {str(e)}")
-                    raise
-            
-            try:
-                # Drop existing indexes if they exist
-                db.execute_sql("DROP INDEX IF EXISTS idx_pdfdocument_file_hash")
-                db.execute_sql("DROP INDEX IF EXISTS idx_pdfdocument_zotero_key")
-                
-                # Create conditional unique indexes
-                db.execute_sql("""
-                    CREATE UNIQUE INDEX IF NOT EXISTS idx_pdfdocument_file_hash 
-                    ON pdfdocument(file_hash) 
-                    WHERE file_hash IS NOT NULL
-                """)
-                db.execute_sql("""
-                    CREATE UNIQUE INDEX IF NOT EXISTS idx_pdfdocument_zotero_key 
-                    ON pdfdocument(zotero_key) 
-                    WHERE zotero_key IS NOT NULL
-                """)
-                logger.info("Created/updated database indexes")
-            except Exception as e:
-                logger.error(f"Error creating indexes: {str(e)}")
-                # Continue even if index creation fails
-                
-        logger.info(f"Database initialized at {db_path}")
-        return True
-    except Exception as e:
-        logger.error(f"Error initializing database: {str(e)}")
-        raise
 
 def calculate_file_hash(file_path):
     """Calculate SHA-256 hash of a file"""
