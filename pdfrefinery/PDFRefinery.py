@@ -154,7 +154,7 @@ class PDFViewer(QWidget):
     ELEMENT_TYPES = ['text', 'figure', 'table', 'picture', 'caption', 'footnote', 'page header', 
                      'page footer', 'section header', 'list item']
 
-    FIGURE_TYPES = ['table', 'sepcimen photo', 'illustration', 'graph', 'map', 'correlation chart','general']
+    FIGURE_TYPES = ['figure:table', 'figure:sepcimen photo', 'figure:illustration', 'figure:graph', 'figure:map', 'figure:correlation chart', 'figure:photo', 'figure:general']
     
     # Define colors for each element type with alpha
     ELEMENT_COLORS = {
@@ -1489,13 +1489,23 @@ class PDFViewer(QWidget):
         if len(box_type) > 1:
             change_type_action.setEnabled(False)
         else:
-            change_type_action.setEnabled(True) 
+            change_type_action.setEnabled(True)
 
         # Add element type actions with indentation
         for element_type in self.ELEMENT_TYPES:
-            action = menu.addAction(f"    {element_type}")  # 4 spaces for indentation
-            # Create a partial function to avoid lambda capture issues
-            action.triggered.connect(lambda checked, t=element_type: self._change_selected_boxes_type(t))
+            if element_type == 'figure':
+                # Add a submenu for figure subtypes
+                figure_menu = QMenu("    figure (subtype)", menu)
+                for fig_type in self.FIGURE_TYPES:
+                    fig_action = figure_menu.addAction(f"        {fig_type}")
+                    fig_action.triggered.connect(lambda checked, t=fig_type: self._change_selected_boxes_type(t))
+                menu.addMenu(figure_menu)
+                # Also add the main 'figure' type as a direct option
+                #action = menu.addAction(f"    figure")
+                #action.triggered.connect(lambda checked, t=element_type: self._change_selected_boxes_type(t))
+            else:
+                action = menu.addAction(f"    {element_type}")  # 4 spaces for indentation
+                action.triggered.connect(lambda checked, t=element_type: self._change_selected_boxes_type(t))
         
         menu.addSeparator()
         
