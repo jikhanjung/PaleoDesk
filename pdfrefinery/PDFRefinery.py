@@ -518,7 +518,7 @@ class PDFViewer(QWidget):
                         # Control points for S-curve
                         dy = next_top.y() - prev_bottom.y()
                         dx = next_top.x() - prev_bottom.x()
-                        vertical_offset = max(abs(dy) * 0.2, 60 )
+                        vertical_offset = 200
                         ctrl1 = QPointF(prev_bottom.x(), prev_bottom.y() + vertical_offset)
                         ctrl2 = QPointF(next_top.x(), next_top.y() - vertical_offset)
                         path = QPainterPath()
@@ -691,19 +691,29 @@ class PDFViewer(QWidget):
             if box_info:
                 page_num, box = box_info
                 box_id = box.get('id')
+                extra_select = set()
+                # Gather merged/linked elements if present
+                if 'merged_elements' in box and box['merged_elements']:
+                    for ref in box['merged_elements']:
+                        extra_select.add((int(ref[0]), ref[1]))
+                if 'linked_elements' in box and box['linked_elements']:
+                    for ref in box['linked_elements']:
+                        extra_select.add((int(ref[0]), ref[1]))
+                # Always include the clicked box itself
+                extra_select.add((page_num, box_id))
                 
-                # Handle selection
                 if event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
                     # Toggle selection with Ctrl
-                    if (page_num, box_id) in self.selected_boxes:
-                        self.selected_boxes.remove((page_num, box_id))
-                    else:
-                        self.selected_boxes.add((page_num, box_id))
+                    for sel in extra_select:
+                        if sel in self.selected_boxes:
+                            self.selected_boxes.remove(sel)
+                        else:
+                            self.selected_boxes.add(sel)
                 else:
                     # Single selection without Ctrl
-                    if (page_num, box_id) not in self.selected_boxes:
+                    if not extra_select.issubset(self.selected_boxes):
                         self.selected_boxes.clear()
-                        self.selected_boxes.add((page_num, box_id))
+                        self.selected_boxes.update(extra_select)
                 
                 # If we're over a box, start dragging or resizing
                 if self.dragging_box is not None:
@@ -1458,28 +1468,43 @@ class PDFViewer(QWidget):
         show_info_action = menu.addAction("Show Info")
         show_info_action.triggered.connect(self._show_info)
 
-        # merge 
+        # Determine all_linked and all_merged for selected boxes
+        all_linked = True
+        all_merged = True
+        any_linked = False
+        any_merged = False
+        for sel in self.selected_boxes:
+            box_info = self._get_element_info(sel[0], sel[1])
+            is_linked = box_info and 'linked_elements' in box_info and box_info['linked_elements'] and len(box_info['linked_elements']) > 0
+            is_merged = box_info and 'merged_elements' in box_info and box_info['merged_elements'] and len(box_info['merged_elements']) > 0
+            if not is_linked:
+                all_linked = False
+            if not is_merged:
+                all_merged = False
+            if is_linked:
+                any_linked = True
+            if is_merged:
+                any_merged = True
+
+        # merge/link actions
         if len(self.selected_boxes) > 1:
             if len(box_type) == 1:
-                merge_action = menu.addAction("Merge")
-                merge_action.triggered.connect(lambda: self._merge_selected_boxes())
+                if not all_merged:
+                    merge_action = menu.addAction("Merge")
+                    merge_action.triggered.connect(lambda: self._merge_selected_boxes())
             else:
-                link_action = menu.addAction("Link")
-                link_action.triggered.connect(lambda: self._link_selected_boxes())
-        elif len(self.selected_boxes) == 1:
-            box = list(self.selected_boxes)[0]
-            box_info = self._get_element_info(box[0], box[1])
-            #logger.info(f"box_info: {box_info}")
-            #logger.info(f"linked_elements: {box_info['linked_elements']} {type(box_info['linked_elements'])}, {len(box_info['linked_elements'])} {hasattr(box_info, 'linked_elements')}")
-            #logger.info(f"merged_elements: {box_info['merged_elements']} {type(box_info['merged_elements'])}, {len(box_info['merged_elements'])} {hasattr(box_info, 'merged_elements')}")
-            if 'linked_elements' in box_info and len(box_info['linked_elements']) > 0:
+                if not all_linked:
+                    link_action = menu.addAction("Link")
+                    link_action.triggered.connect(lambda: self._link_selected_boxes())
+
+        # Unlink/Unmerge actions for all selected
+        if len(self.selected_boxes) > 0:
+            if all_linked:
                 unlink_action = menu.addAction("Unlink")
                 unlink_action.triggered.connect(lambda: self._unlink_selected_boxes())
-                #logger.info(f"linked_elements: {box_info['linked_elements']}")
-            if 'merged_elements' in box_info and len(box_info['merged_elements']) > 0:
+            if all_merged:
                 unmerge_action = menu.addAction("Unmerge")
                 unmerge_action.triggered.connect(lambda: self._unmerge_selected_boxes())
-                #logger.info(f"merged_elements: {box_info['merged_elements']}")
 
         menu.addSeparator()
 
@@ -1491,6 +1516,16 @@ class PDFViewer(QWidget):
         else:
             change_type_action.setEnabled(True)
 
+        # Disable type change if any selected element is linked
+        disable_type_change = False
+        for sel in self.selected_boxes:
+            box_info = self._get_element_info(sel[0], sel[1])
+            if box_info and 'linked_elements' in box_info and box_info['linked_elements'] and len(box_info['linked_elements']) > 0:
+                disable_type_change = True
+                break
+        if disable_type_change:
+            change_type_action.setEnabled(False)
+
         # Add element type actions with indentation
         for element_type in self.ELEMENT_TYPES:
             if element_type == 'figure':
@@ -1499,13 +1534,14 @@ class PDFViewer(QWidget):
                 for fig_type in self.FIGURE_TYPES:
                     fig_action = figure_menu.addAction(f"        {fig_type}")
                     fig_action.triggered.connect(lambda checked, t=fig_type: self._change_selected_boxes_type(t))
+                    if disable_type_change:
+                        fig_action.setEnabled(False)
                 menu.addMenu(figure_menu)
-                # Also add the main 'figure' type as a direct option
-                #action = menu.addAction(f"    figure")
-                #action.triggered.connect(lambda checked, t=element_type: self._change_selected_boxes_type(t))
             else:
                 action = menu.addAction(f"    {element_type}")  # 4 spaces for indentation
                 action.triggered.connect(lambda checked, t=element_type: self._change_selected_boxes_type(t))
+                if disable_type_change:
+                    action.setEnabled(False)
         
         menu.addSeparator()
         
@@ -1518,13 +1554,14 @@ class PDFViewer(QWidget):
 
     def _show_info(self):
         """Show info for the selected box"""
-        if len(self.selected_boxes) != 1:
-            return
+        #if len(self.selected_boxes) != 1:
+        #    return
 
-        page_num, element_id = list(self.selected_boxes)[0]
-        element_data = self._get_element_info(page_num, element_id)
+        element_data = []
+        for page_num, element_id in self.selected_boxes:
+            element_data.append(self._get_element_info(page_num, element_id))
 
-        dialog = ElementInfoDialog(element_data)
+        dialog = ElementInfoDialog(element_data, self.main_window)
         dialog.exec()
 
     def _change_selected_boxes_type(self, new_type):
@@ -1605,6 +1642,7 @@ class PDFViewer(QWidget):
 
         # sort element_list by page number and int(element_id)
         element_list.sort(key=lambda x: (int(x[0]), int(x[1])))
+        logger.info(f"element_list: {element_list}")
 
         for elem in element_list:
             elem_info = self._get_element_info(elem[0], elem[1])
@@ -1614,6 +1652,7 @@ class PDFViewer(QWidget):
                 (StructuredElement.element_id == elem[1])
             )
             element.merged_elements = json.dumps(element_list)
+            logger.info(f"element: {element.merged_elements}")
             element.save()
             elem_info['merged_elements'] = element_list
             logger.info(f"Merged elements {element_list} on page {elem[0]}")
@@ -1654,6 +1693,9 @@ class PDFViewer(QWidget):
         for box in self.selected_boxes:
             #box_info = self._get_element_info(box[0], box[1])
             element_list.append([box[0],box[1]])
+        
+        # sort element_list by page number and int(element_id)
+        element_list.sort(key=lambda x: (int(x[0]), int(x[1])))
 
         for box in self.selected_boxes:
             elem_info = self._get_element_info(box[0], box[1])
@@ -1769,10 +1811,87 @@ class PDFViewer(QWidget):
                 f"Error updating database after element deletion: {str(e)}")
 
 class ElementInfoDialog(QDialog):
-    def __init__(self, element_data, parent=None):
-        super().__init__(parent)
+    def __init__(self, element_data, main_window=None):
+        super().__init__()
         self.element_data = element_data
+        self.main_window = main_window
+        self.category = None
+        self.figure_element = None
+        self.caption_element = None
+        self.text_elements = []
+        self._handle_element_data()
         self.init_ui()
+
+    def _get_pixmap(self, elem):
+        """Get or create a cached pixmap for an item"""
+        # Create a unique cache key using page number, id, and coordinates
+            
+        try:
+            coords = elem.get('coordinates', [])
+            page = self.main_window.pdf_document[elem['page_number'] ]  # Convert to 0-based index
+            zoom = 2  # Reduced zoom for better performance
+            matrix = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=matrix)
+            
+            # Convert to QImage
+            img = QImage(pix.samples, pix.width, pix.height, 
+                       pix.stride, QImage.Format.Format_RGB888)
+            
+            # Get coordinates
+            if coords and len(coords) >= 4:
+                # Convert relative coordinates to absolute
+                x1 = int(coords[0]['x'] * pix.width)
+                y1 = int(coords[0]['y'] * pix.height)
+                x2 = int(coords[2]['x'] * pix.width)
+                y2 = int(coords[2]['y'] * pix.height)
+                
+                # Clip the region
+                clipped_img = img.copy(x1, y1, x2 - x1, y2 - y1)
+                
+                # Create QPixmap and scale to reasonable size
+                pixmap = QPixmap.fromImage(clipped_img)
+                max_size = 400
+                pixmap = pixmap.scaled(max_size, max_size, 
+                                     Qt.AspectRatioMode.KeepAspectRatio,
+                                     Qt.TransformationMode.SmoothTransformation)
+                
+                # Cache the pixmap
+                return pixmap
+        except Exception as e:
+            logger.error(f"Error creating image for item on page {elem['page_number']} {elem['id']}: {str(e)}")
+        
+        return None
+
+    def _handle_element_data(self):
+        """Handle element data for a given page number and element ID"""
+        all_same_category = True
+        category_set = set()
+        for elem in self.element_data:
+            category_set.add(elem['category'])
+            if len(category_set) > 1:
+                all_same_category = False
+        
+        if all_same_category:
+            self.category = category_set.pop()
+            #self.text_elements = self.element_data
+        else:
+            for type in category_set:
+                if type.startswith('figure:'):
+                    self.category = 'figure'
+                    self.figure_element = None
+                    self.caption_element = None
+                    for elem in self.element_data:
+                        if elem['category'].startswith('figure:'):
+                            self.figure_element = elem
+                        elif elem['category'].startswith('caption'):
+                            self.caption_element = elem
+    
+    def _get_element_info(self, page_num, element_id):
+        """Get element info for a given page number and element ID"""
+        for elem in self.element_data:
+            if elem['page_number'] == page_num and elem['id'] == element_id:
+                return elem
+        return None
         
     def init_ui(self):
         self.setWindowTitle("Element Information")
@@ -1781,58 +1900,60 @@ class ElementInfoDialog(QDialog):
         # Create form layout for basic information
         form_layout = QFormLayout()
         form_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
-        logger.info(f"element_data: {self.element_data}")
+        #logger.info(f"element_data: {self.element_data}")
         
         # Add type and page information
-        form_layout.addRow("Type:", QLabel(self.element_data.get('category', '').capitalize()))
-        form_layout.addRow("Page:", QLabel(str(int(self.element_data.get('page_number', ''))+1)))
-        form_layout.addRow("Element ID:", QLabel(str(int(self.element_data.get('id', ''))+1)))
-        
+        form_layout.addRow("Category:", QLabel(self.category.capitalize()))
+        for elem in self.element_data:
+            form_layout.addRow("ID:", QLabel(f"{elem.get('page_number', '')+1}-{int(elem.get('id', ''))+1}"))
         layout.addLayout(form_layout)
 
-        # Add image if available
-        pixmap = self.element_data.get('pixmap')
-        if pixmap:
-            # Create image label that will scale with the dialog
-            image_label = QLabel()
-            image_label.setPixmap(pixmap)
-            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            image_label.setMinimumSize(200, 200)  # Set minimum size for the image
-            layout.addWidget(image_label, 1)  # Add stretch factor of 1
-
-        # Add caption in a read-only text area
-        caption_label = QLabel("Text:")
-        caption_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        layout.addWidget(caption_label)
-        
-        caption_text = QTextEdit()
-        caption_text.setReadOnly(True)
-        caption = ''
-        if 'content' in self.element_data:
-            if 'text' in self.element_data['content']:
-                caption = self.element_data['content']['text']
-            else:
-                print(self.element_data['content'])
-                #if isinstance(self.element_data['content'], str):
-                #caption = self.element_data['content']
-        caption_text.setPlainText(caption)
-        #print(caption)
-
-        #caption_text.setPlainText(caption)
-        #caption_text.setMaximumHeight(100)  # Limit height for captions
-        caption_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(caption_text, 1)
-        
+        caption_text_value = None
+        figure_pixmap = None
+        # If figure, try to get cropped image and caption
+        if self.category == 'figure':
+            # Try to get pixmap (cropped image)
+            # Show figure image
+            figure_pixmap = self._get_pixmap(self.figure_element)
+            if figure_pixmap:
+                image_label = QLabel()
+                image_label.setPixmap(figure_pixmap)
+                image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                image_label.setMinimumSize(200, 200)
+                layout.addWidget(image_label, 1)
+            # Show caption if found
+            logger.info(f"caption_element: {self.caption_element}")
+            if self.caption_element:
+                caption_label = QLabel("Caption:")
+                caption_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+                layout.addWidget(caption_label)
+                caption_text = QTextEdit()
+                caption_text.setReadOnly(True)
+                caption_text.setPlainText(self.caption_element['content']['text'])
+                caption_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                layout.addWidget(caption_text, 1)
+        else:
+            # Add caption in a read-only text area
+            text_label = QLabel("Text:")
+            text_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+            layout.addWidget(text_label)
+            text_edit = QTextEdit()
+            text_edit.setReadOnly(True)
+            text = ''
+            for elem in self.element_data:
+                if 'content' in elem:
+                    if 'text' in elem['content']:
+                        text += elem['content']['text']
+            text_edit.setPlainText(text)
+            text_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            layout.addWidget(text_edit, 1)
         # Add close button
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         button_box.rejected.connect(self.reject)
         button_box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout.addWidget(button_box)
-        
         self.setLayout(layout)
-        
-        # Set minimum size for the dialog
         self.setMinimumSize(600, 400)
 
 class StructuredContentView(QWidget):
@@ -2160,7 +2281,8 @@ class StructuredContentView(QWidget):
         self.content_list = []
         
         # Group content by type
-        content_type_list = ['image', 'table', 'figure', 'picture']
+        #content_type_list = ['image', 'table', 'figure', 'picture']
+
         
         # Process each page's structure
         for page_num, structure in page_structures.items():
@@ -2168,7 +2290,7 @@ class StructuredContentView(QWidget):
             logger.debug(f"Processing page {page_num} with {len(elements)} elements")
             for element in elements:
                 element_type = element.get('category', '').lower()
-                if element_type in content_type_list:
+                if element_type.startswith('figure:'):
                     # Find nearest caption
                     linked_elements = element.get('linked_elements', None)
                     caption_element = None
@@ -2368,7 +2490,7 @@ class StructuredContentView(QWidget):
             self.main_window.update_navigation()
             
         # Show element info dialog
-        dialog = ElementInfoDialog(widget.element_data, self)
+        dialog = ElementInfoDialog(widget.element_data, self.main_window)
         dialog.exec()
 
     def scroll_to_page_element(self, page_num):
