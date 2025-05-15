@@ -509,7 +509,7 @@ class MainWindow(QMainWindow):
         try:
             self.update_page_display()
             # Update structured content view with all page structures
-            #self.structured_view.update_content(self.document_data['page_structures'])
+            self.structured_view.show_figures_from_db(self.document_record)
             self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
         except Exception as e:
             logger.error(f"Error loading session data: {str(e)}")

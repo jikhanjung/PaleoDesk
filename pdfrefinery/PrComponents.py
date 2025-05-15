@@ -1376,7 +1376,7 @@ class PDFViewer(QWidget):
             change_type_action.setEnabled(False)
 
         # Add element type actions with indentation
-        for element_type in self.ELEMENT_TYPES:
+        for element_type in ELEMENT_TYPES:
             if element_type == 'figure':
                 # Add a submenu for figure subtypes
                 figure_menu = QMenu("    figure (subtype)", menu)
@@ -1470,7 +1470,7 @@ class PDFViewer(QWidget):
             #    self.main_window.structured_view.update_content(self.main_window.document_data['page_structures'])
                 
             # Save session to ensure changes are persisted
-            self.main_window.save_session()
+            #self.main_window.save_session()
                 
         except Exception as e:
             logger.error(f"Error updating element type in database: {str(e)}")
@@ -1652,7 +1652,7 @@ class PDFViewer(QWidget):
             #    self.main_window.structured_view.update_content(self.main_window.document_data['page_structures'])
             
             # Save session to update session data
-            self.main_window.save_session()
+            #self.main_window.save_session()
             logger.info("Updated database after element deletion")
                 
         except Exception as e:
