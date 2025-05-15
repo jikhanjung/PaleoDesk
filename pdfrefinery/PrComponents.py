@@ -556,7 +556,7 @@ class PDFViewer(QWidget):
                     for ref in box['linked_elements']:
                         if ref not in extra_select:
                             extra_select.append((int(ref[0]), ref[1]))
-                logger.info(f"extra_select: {extra_select}, {box['linked_elements'] if 'linked_elements' in box else ''} {box['merged_elements'] if 'merged_elements' in box else '' }")
+                logger.debug(f"extra_select: {extra_select}, {box['linked_elements'] if 'linked_elements' in box else ''} {box['merged_elements'] if 'merged_elements' in box else '' }")
                 # Always include the clicked box itself
                 if (page_num, box_id) not in extra_select:
                     extra_select.append((page_num, box_id))
@@ -591,7 +591,7 @@ class PDFViewer(QWidget):
                 self.selected_boxes = []
                 # Normal panning behavior
                 self.last_pan_pos = event.pos()
-            logger.info(f"selected_boxes: {self.selected_boxes}")
+            logger.debug(f"selected_boxes: {self.selected_boxes}")
             self.update()  # Update to show selection changes
 
     def mouseMoveEvent(self, event):
@@ -1557,7 +1557,7 @@ class PDFViewer(QWidget):
             elem_row_info.linked_elements = json.dumps(element_list)
             elem_row_info.save()
             elem_info['linked_elements'] = element_list
-            logger.info(f"Linked elements {element_list} on page {box[0]}")
+            logger.debug(f"Linked elements {element_list} on page {box[0]}")
         self.selected_boxes = []
         self.update()
 
@@ -1573,7 +1573,7 @@ class PDFViewer(QWidget):
             linked_elements = box_info['linked_elements']
             for linked_element in linked_elements:
                 elem_info = self._get_element_info(linked_element[0], linked_element[1])
-                logger.info(f"linked_element: {linked_element} {elem_info}")
+                logger.debug(f"linked_element: {linked_element} {elem_info}")
                 elem_row_info = StructuredElement.get(
                     (StructuredElement.document == document) &
                     (StructuredElement.page_number == linked_element[0]) &
@@ -1609,14 +1609,14 @@ class PDFViewer(QWidget):
                             if element.get('id') == box_id:
                                 deleted_index = i
                                 elements.pop(i)
-                                logger.info(f"Deleted element {box_id} from page {page_num}")
+                                logger.debug(f"Deleted element {box_id} from page {page_num}")
                                 break
                         
                         if deleted_index is not None:
                             # Adjust element IDs for remaining elements
                             for i in range(deleted_index, len(elements)):
                                 elements[i]['id'] = int(i)
-                                logger.info(f"Adjusted element ID from {i+1} to {i}")
+                                logger.debug(f"Adjusted element ID from {i+1} to {i}")
                             
                             # Delete the element from StructuredElement table
                             StructuredElement.delete().where(
