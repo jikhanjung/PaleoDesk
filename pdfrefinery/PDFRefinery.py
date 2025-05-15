@@ -22,7 +22,7 @@ import shutil
 from peewee import DoesNotExist, chunked
 from peewee_migrate import Router
 from PDFCommons import *
-from PDFModels import (db, PDFDocument, PageAnalysis, SessionData, StructuredElement, calculate_file_hash)                       
+from PDFModels import (db, PDFDocument, PageAnalysis, SessionData, StructuredElement, calculate_file_hash, PrFigure)                       
 import hashlib
 import uuid
 import copy
@@ -196,7 +196,7 @@ class PDFViewer(QWidget):
         self.current_page_height = 0  # Add current page height
         self.hovered_box = None  # Track currently hovered bounding box
         self.hovered_box_page = None  # Track page number of hovered box
-        self.selected_boxes = set()  # Track selected boxes (set of (page_num, box_id) tuples)
+        self.selected_boxes = []  # Track selected boxes (list of (page_num, box_id) tuples, order preserved, no duplicates)
         # Add these new instance variables
         self.dragging_box = None  # Currently dragged box
         self.drag_start_pos = None  # Mouse position when drag started
@@ -691,16 +691,19 @@ class PDFViewer(QWidget):
             if box_info:
                 page_num, box = box_info
                 box_id = box.get('id')
-                extra_select = set()
+                extra_select = []
                 # Gather merged/linked elements if present
                 if 'merged_elements' in box and box['merged_elements']:
                     for ref in box['merged_elements']:
-                        extra_select.add((int(ref[0]), ref[1]))
+                        if ref not in extra_select:
+                            extra_select.append((int(ref[0]), ref[1]))
                 if 'linked_elements' in box and box['linked_elements']:
                     for ref in box['linked_elements']:
-                        extra_select.add((int(ref[0]), ref[1]))
+                        if ref not in extra_select:
+                            extra_select.append((int(ref[0]), ref[1]))
+                #logger.info(f"extra_select: {extra_select}, {box['linked_elements']} {box['merged_elements']}")
                 # Always include the clicked box itself
-                extra_select.add((page_num, box_id))
+                extra_select.append((page_num, box_id))
                 
                 if event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
                     # Toggle selection with Ctrl
@@ -708,12 +711,15 @@ class PDFViewer(QWidget):
                         if sel in self.selected_boxes:
                             self.selected_boxes.remove(sel)
                         else:
-                            self.selected_boxes.add(sel)
+                            if sel not in self.selected_boxes:
+                                self.selected_boxes.append(sel)
                 else:
                     # Single selection without Ctrl
-                    if not extra_select.issubset(self.selected_boxes):
-                        self.selected_boxes.clear()
-                        self.selected_boxes.update(extra_select)
+                    if not all(sel in self.selected_boxes for sel in extra_select):
+                        self.selected_boxes = []
+                        for sel in extra_select:
+                            if sel not in self.selected_boxes:
+                                self.selected_boxes.append(sel)
                 
                 # If we're over a box, start dragging or resizing
                 if self.dragging_box is not None:
@@ -726,7 +732,7 @@ class PDFViewer(QWidget):
                     self.last_pan_pos = event.pos()
             else:
                 # Clicked outside any box, clear selection
-                self.selected_boxes.clear()
+                self.selected_boxes = []
                 # Normal panning behavior
                 self.last_pan_pos = event.pos()
             
@@ -1423,11 +1429,12 @@ class PDFViewer(QWidget):
             if self.current_page in self.bounding_boxes:
                 for box in self.bounding_boxes[self.current_page]:
                     if 'id' in box:
-                        self.selected_boxes.add((self.current_page, box['id']))
+                        if (self.current_page, box['id']) not in self.selected_boxes:
+                            self.selected_boxes.append((self.current_page, box['id']))
                 self.update()
         elif event.key() == Qt.Key.Key_Escape:
             # Escape: Clear all selections
-            self.selected_boxes.clear()
+            self.selected_boxes = []
             self.update()
         elif event.key() == Qt.Key.Key_Delete:
             # Delete: Remove selected boxes
@@ -1436,7 +1443,7 @@ class PDFViewer(QWidget):
                     if page_num in self.bounding_boxes:
                         self.bounding_boxes[page_num] = [b for b in self.bounding_boxes[page_num] 
                                                        if b.get('id') != box_id]
-                self.selected_boxes.clear()
+                self.selected_boxes = []
                 self.update()
         else:
             super().keyPressEvent(event)
@@ -1559,6 +1566,7 @@ class PDFViewer(QWidget):
 
         element_data = []
         for page_num, element_id in self.selected_boxes:
+            logger.info(f"page_num: {page_num} element_id: {element_id}")
             element_data.append(self._get_element_info(page_num, element_id))
 
         dialog = ElementInfoDialog(element_data, self.main_window)
@@ -1656,7 +1664,7 @@ class PDFViewer(QWidget):
             element.save()
             elem_info['merged_elements'] = element_list
             logger.info(f"Merged elements {element_list} on page {elem[0]}")
-        self.selected_boxes.clear()
+        self.selected_boxes = []
         self.update()
 
     def _unmerge_selected_boxes(self):
@@ -1679,7 +1687,7 @@ class PDFViewer(QWidget):
                 elem_row_info.merged_elements = None
                 elem_row_info.save()
                 elem_info['merged_elements'] = []
-        self.selected_boxes.clear()
+        self.selected_boxes = []
         self.update()
 
     def _link_selected_boxes(self):
@@ -1708,7 +1716,7 @@ class PDFViewer(QWidget):
             elem_row_info.save()
             elem_info['linked_elements'] = element_list
             logger.info(f"Linked elements {element_list} on page {box[0]}")
-        self.selected_boxes.clear()
+        self.selected_boxes = []
         self.update()
 
     def _unlink_selected_boxes(self):
@@ -1732,7 +1740,7 @@ class PDFViewer(QWidget):
                 elem_row_info.linked_elements = None
                 elem_row_info.save()
                 elem_info['linked_elements'] = []
-        self.selected_boxes.clear()
+        self.selected_boxes = []
         self.update()
 
     def _delete_selected_boxes(self):
@@ -1792,7 +1800,7 @@ class PDFViewer(QWidget):
                                                    if b.get('id') != box_id]
             
             # Clear selection
-            self.selected_boxes.clear()
+            self.selected_boxes = []
             
             # Update UI
             self.update()
@@ -1820,6 +1828,7 @@ class ElementInfoDialog(QDialog):
         self.caption_element = None
         self.text_elements = []
         self._handle_element_data()
+        logger.info(f"element_data: {self.element_data}")
         self.init_ui()
 
     def _get_pixmap(self, elem):
@@ -2285,6 +2294,7 @@ class StructuredContentView(QWidget):
 
         
         # Process each page's structure
+        figure_number = 0
         for page_num, structure in page_structures.items():
             elements = structure.get('structure', {}).get('elements', [])
             logger.debug(f"Processing page {page_num} with {len(elements)} elements")
@@ -2304,6 +2314,7 @@ class StructuredContentView(QWidget):
                     item = {
                         'figure_element': element,
                         'caption_element': caption_element,
+                        'figure_number': figure_number,
                         'category': element_type,
                         'caption': caption_text,
                         'coordinates': element.get('coordinates', []),
@@ -2314,6 +2325,7 @@ class StructuredContentView(QWidget):
                     }
 
                     self.content_list.append(item)
+                    figure_number += 1
                     logger.debug(f"Added element of type {element_type} from page {page_num}")
         
         # Update view based on current mode
@@ -2325,49 +2337,52 @@ class StructuredContentView(QWidget):
             self._update_icon_view()
     
     def _update_list_view(self):
-        """Update the list view with content"""
+        """Update the list view with content (compatible with new self.content_list format)"""
+        self.content_list_widget.clear()
         for idx, item in enumerate(self.content_list):
             # Create item widget
             item_widget = QWidget()
-            item_layout = QGridLayout()  # Use grid layout for fixed columns
+            item_layout = QHBoxLayout()
             item_layout.setContentsMargins(5, 5, 5, 5)
-            item_layout.setSpacing(10)  # Add some spacing between columns
-            
-            # Add item index (column 0)
-            index_label = QLabel(f"{idx+1}")
-            index_label.setFixedWidth(30)  # Fixed width for index
-            item_layout.addWidget(index_label, 0, 0)
+            item_layout.setSpacing(10)
 
-            # Add page number (column 1)
-            page_label = QLabel(f"Page {item['page_number']}")
-            page_label.setFixedWidth(80)  # Fixed width for page number
-            item_layout.addWidget(page_label, 0, 1)
-            
-            # Add content (column 1)
-            content_label = QLabel(item['content'])
-            content_label.setWordWrap(True)
-            content_label.setFixedWidth(300)  # Fixed width for content
-            item_layout.addWidget(content_label, 0, 2)
-            
-            # Add caption if available (column 2)
-            if item['caption']:
+            # Add small thumbnail (if available)
+            item_pixmap = self._get_cached_pixmap(item)
+            if item_pixmap:
+                thumb_label = QLabel()
+                thumb_label.setPixmap(item_pixmap.scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                thumb_label.setFixedSize(52, 52)
+                item_layout.addWidget(thumb_label)
+            else:
+                spacer = QLabel()
+                spacer.setFixedSize(52, 52)
+                item_layout.addWidget(spacer)
+
+            # Add figure number and page number
+            info_layout = QVBoxLayout()
+            info_layout.setSpacing(2)
+            fig_label = QLabel(f"Figure {idx+1}")
+            fig_label.setStyleSheet("font-weight: bold;")
+            info_layout.addWidget(fig_label)
+            page_label = QLabel(f"Page {item['page_number']+1}")
+            page_label.setStyleSheet("color: #555;")
+            info_layout.addWidget(page_label)
+            item_layout.addLayout(info_layout)
+
+            # Add caption if available
+            if item.get('caption'):
                 caption_label = QLabel(item['caption'])
                 caption_label.setWordWrap(True)
                 caption_label.setStyleSheet("font-style: italic;")
-                caption_label.setFixedWidth(300)  # Fixed width for caption
-                item_layout.addWidget(caption_label, 0, 2)
-            
+                caption_label.setFixedWidth(300)
+                item_layout.addWidget(caption_label)
+
             item_widget.setLayout(item_layout)
-            
+            item_widget.setStyleSheet("border-bottom: 1px solid #eee; padding: 2px;")
+
             # Store element data for double-click
-            item_widget.element_data = {
-                'type': content_type,
-                'page': item['page'],
-                'caption': item['caption'],
-                'content': item['content'],
-                'pixmap': None  # No pixmap for list view
-            }
-            
+            item_widget.element_data = item
+
             # Create list item
             list_item = QListWidgetItem()
             list_item.setSizeHint(item_widget.sizeHint())
@@ -3131,6 +3146,11 @@ class MainWindow(QMainWindow):
         add_element_action.setShortcut("Ctrl+N")
         add_element_action.triggered.connect(self.pdf_viewer.start_element_creation)
         toolbar.addAction(add_element_action)
+
+        # extract figures action
+        extract_figures_action = QAction("Extract Figures", self)
+        extract_figures_action.triggered.connect(self.extract_figures)
+        toolbar.addAction(extract_figures_action)
 
     def load_recent_files(self):
         """Load recent files from settings"""
@@ -4533,6 +4553,76 @@ class MainWindow(QMainWindow):
             # Restore cursor
             QApplication.restoreOverrideCursor()
             self.ensure_normal_cursor()
+
+    def extract_figures(self):
+        """Extract figures from the current document and store them in the PrFigure table as PNG binary."""
+        if not self.pdf_document or not self.document_record:
+            QMessageBox.warning(self, "No Document", "No PDF document is loaded.")
+            return
+        try:
+            # Remove previous figures for this document
+            PrFigure.delete().where(PrFigure.document == self.document_record).execute()
+            page_structures = self.document_data.get('page_structures', {})
+            figure_count = 0
+            for page_num, structure in page_structures.items():
+                elements = structure.get('structure', {}).get('elements', [])
+                for element in elements:
+                    category = element.get('category', '').lower()
+                    if not category.startswith('figure:'):
+                        continue
+                    coords = element.get('coordinates', [])
+                    if len(coords) < 4:
+                        continue
+                    # Find caption (if linked)
+                    caption_text = None
+                    linked_elements = element.get('linked_elements', None)
+                    if linked_elements:
+                        for ref in linked_elements:
+                            ref_page, ref_id = ref
+                            # Find the linked element
+                            for e in page_structures.get(str(ref_page), {}).get('structure', {}).get('elements', []):
+                                if str(e.get('id')) == str(ref_id) and e.get('category', '').lower() == 'caption':
+                                    caption_text = e.get('content', {}).get('text', None)
+                                    break
+                            if caption_text:
+                                break
+                    # Render the figure at high resolution (3x zoom)
+                    page = self.pdf_document[int(page_num)]
+                    zoom = 3.0
+                    matrix = fitz.Matrix(zoom, zoom)
+                    pix = page.get_pixmap(matrix=matrix)
+                    # Convert relative coordinates to absolute pixel values
+                    x1 = int(coords[0]['x'] * pix.width)
+                    y1 = int(coords[0]['y'] * pix.height)
+                    x2 = int(coords[2]['x'] * pix.width)
+                    y2 = int(coords[2]['y'] * pix.height)
+                    # Ensure coordinates are within bounds
+                    x1, x2 = max(0, min(x1, x2)), min(pix.width, max(x1, x2))
+                    y1, y2 = max(0, min(y1, y2)), min(pix.height, max(y1, y2))
+                    if x2 <= x1 or y2 <= y1:
+                        continue
+                    # Crop the image
+                    import io
+                    from PIL import Image
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    cropped = img.crop((x1, y1, x2, y2))
+                    # Save as PNG to bytes
+                    buf = io.BytesIO()
+                    cropped.save(buf, format="PNG")
+                    figure_binary = buf.getvalue()
+                    # Insert into PrFigure
+                    PrFigure.create(
+                        document=self.document_record,
+                        figure_number=str(figure_count + 1),
+                        figure_page_number=int(page_num) + 1,
+                        figure_binary=figure_binary,
+                        caption_text=caption_text
+                    )
+                    figure_count += 1
+            QMessageBox.information(self, "Figures Extracted", f"Extracted {figure_count} figures to the database.")
+        except Exception as e:
+            logger.error(f"Error extracting figures: {str(e)}")
+            QMessageBox.critical(self, "Extraction Error", f"Error extracting figures: {str(e)}")
 
     def handle_scroll(self, value):
         """Handle scroll events from the PDF viewer"""

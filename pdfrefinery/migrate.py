@@ -28,5 +28,5 @@ print("router: ", router)
 # set migration_name to YYYYMMDD_HHMMSS
 migration_name = get_timestamp()
 print("migration_name: ", migration_name)
-ret = router.create(auto=[PDFDocument,PageAnalysis,SessionData,StructuredElement,], name=migration_name)
+ret = router.create(auto=[PDFDocument,PageAnalysis,SessionData,StructuredElement,PrFigure], name=migration_name)
 print("ret: ", ret)

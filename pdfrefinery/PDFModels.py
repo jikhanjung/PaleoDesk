@@ -112,6 +112,23 @@ class StructuredElement(BaseModel):
         }
         return element_data
 
+class PrFigure(BaseModel):
+    """Model for storing figure information"""
+    document = ForeignKeyField(PDFDocument, backref='figures')
+    figure_number = CharField()
+    figure_page_number = IntegerField(null=True)
+    part1_prefix = CharField(null=True)
+    part1_number = CharField(null=True)
+    part2_prefix = CharField(null=True)
+    part2_number = CharField(null=True)
+    part_separator = CharField(null=True,default='-')
+    figure_binary = BlobField(null=True)
+    caption_binary = BlobField(null=True)
+    caption_text = TextField(null=True)
+    parent = ForeignKeyField('self', backref='children', null=True,on_delete="CASCADE")
+    created_at = DateTimeField(default=datetime.datetime.now)
+    updated_at = DateTimeField(default=datetime.datetime.now)
+
 def calculate_file_hash(file_path):
     """Calculate SHA-256 hash of a file"""
     try:
