@@ -26,6 +26,8 @@ from PDFModels import (db, PDFDocument, PageAnalysis, SessionData, StructuredEle
 import hashlib
 import uuid
 import copy
+import io
+from PIL import Image
 
 # Configure logging
 def setup_logging():
@@ -58,6 +60,14 @@ def setup_logging():
 
 # Initialize logger
 logger = setup_logging()
+
+def get_analysis_done_icon():
+    # Get the application style (requires QApplication to be initialized)
+    style = QApplication.instance().style()
+    pixmap = style.standardPixmap(QStyle.StandardPixmap.SP_DialogApplyButton)
+    return QIcon(pixmap)
+
+
 
 def setup_icons():
     # Create icons directory if it doesn't exist
@@ -292,7 +302,7 @@ class PDFViewer(QWidget):
         
         page_structures = self.main_window.document_data.get('page_structures', {})
         #logger.info(f"page_structures: {page_structures.keys()}")
-        page_structure = page_structures.get(int(page_num), {})
+        page_structure = page_structures.get(str(page_num), {})
         page_elements = page_structure.get('structure', {}).get('elements', [])
         #logger.info(f"page_elements: {page_elements} {len(page_elements)}")
         for element in page_elements:
@@ -637,13 +647,13 @@ class PDFViewer(QWidget):
             return
             
         # Get initial page structure for current page
-        initial_structure = self.main_window.document_data.get('initial_page_structures', {}).get(int(self.current_page))
+        initial_structure = self.main_window.document_data.get('initial_page_structures', {}).get(str(self.current_page))
         if not initial_structure:
             logger.warning(f"No initial structure found for page {self.current_page}")
             return
             
         # Get current page structure
-        current_structure = self.main_window.document_data.get('page_structures', {}).get(int(self.current_page))
+        current_structure = self.main_window.document_data.get('page_structures', {}).get(str(self.current_page))
         if not current_structure:
             logger.warning(f"No current structure found for page {self.current_page}")
             return
@@ -857,7 +867,7 @@ class PDFViewer(QWidget):
                 logger.info(f"Relative coordinates: ({rel_x1:.3f}, {rel_y1:.3f}) to ({rel_x2:.3f}, {rel_y2:.3f})")
                 
                 # Get current page elements to determine new element ID
-                page_key = int(self.current_box_page)
+                page_key = str(self.current_box_page)
                 if page_key in main_window.document_data['page_structures']:
                     page_structure = main_window.document_data['page_structures'][page_key]
                     if 'structure' in page_structure and 'elements' in page_structure['structure']:
@@ -895,7 +905,7 @@ class PDFViewer(QWidget):
                         
                         # Update bounding boxes
                         if self.current_box_page not in self.bounding_boxes:
-                            self.bounding_boxes[self.current_box_page] = []
+                            self.bounding_boxes[str(self.current_box_page)] = []
                         #self.bounding_boxes[self.current_cursor_page].append(new_element)
                         #logger.info(f"Added element to bounding boxes for page {self.current_cursor_page}")
                         
@@ -954,7 +964,7 @@ class PDFViewer(QWidget):
                         logger.debug("Found document_data in main window")
                         if 'page_structures' in main_window.document_data:
                             logger.debug(f"Found page_structures in document_data")
-                            page_key = int(self.current_box_page)
+                            page_key = str(self.current_box_page)
                             if page_key in main_window.document_data['page_structures']:
                                 logger.debug(f"Found page {page_key} in page_structures")
                                 page_structure = main_window.document_data['page_structures'][page_key]
@@ -1006,8 +1016,8 @@ class PDFViewer(QWidget):
         # Get the element from the page structure
         if not self.main_window or not hasattr(self.main_window, 'document_data'):
             return
-        
-        page_structure = self.main_window.document_data['page_structures'][int(page_num)]
+        page_key = str(page_num)
+        page_structure = self.main_window.document_data['page_structures'][page_key]
         element = page_structure['structure']['elements'][int(element_id)]
         #logger.info(f"Saving element {element} from page {page_num}")
 
@@ -1337,18 +1347,16 @@ class PDFViewer(QWidget):
                 self.dragging_box = box
                 self.current_box_page = current_page
                 
-                # Only enable resize for single selected box
+                # Only enable resize for selected box (not just single selection)
                 box_id = box.get('id')
                 is_selected = (current_page, box_id) in self.selected_boxes
-                is_only_selected = len(self.selected_boxes) == 1 and is_selected
-                
-                if is_only_selected:
+                #is_only_selected = len(self.selected_boxes) == 1 and is_selected
+                if is_selected:
                     # Determine which edges the cursor is near
                     near_left = abs(viewport_x - screen_x1) <= self.edge_threshold
                     near_right = abs(viewport_x - screen_x2) <= self.edge_threshold
                     near_top = abs(viewport_y - screen_y1) <= self.edge_threshold
                     near_bottom = abs(viewport_y - screen_y2) <= self.edge_threshold
-                    
                     # Set resize edges and cursor based on position
                     if near_top and near_left:
                         self.resize_edges = 'nw'
@@ -1757,7 +1765,7 @@ class PDFViewer(QWidget):
             # Process each selected box
             for page_num, box_id in list(self.selected_boxes):
                 # Remove the element from document_data
-                page_key = int(page_num)
+                page_key = str(page_num)
                 if page_key in self.main_window.document_data['page_structures']:
                     page_structure = self.main_window.document_data['page_structures'][page_key]
                     if 'structure' in page_structure and 'elements' in page_structure['structure']:
@@ -1830,7 +1838,7 @@ class ElementInfoDialog(QDialog):
         self.caption_element = None
         self.text_elements = []
         self._handle_element_data()
-        logger.info(f"element_data: {self.element_data}")
+        #logger.info(f"element_data: {self.element_data}")
         self.init_ui()
 
     def _get_pixmap(self, elem):
@@ -2274,7 +2282,7 @@ class StructuredContentView(QWidget):
             return
         
         page_structures = self.main_window.document_data.get('page_structures', {})
-        page_structure = page_structures.get(int(page_num), {})
+        page_structure = page_structures.get(str(page_num), {})
         page_elements = page_structure.get('structure', {}).get('elements', [])
         logger.info(f"page_elements: {page_elements}")
         for element in page_elements:
@@ -3390,8 +3398,8 @@ class MainWindow(QMainWindow):
                             page_elements = {}
                             for element in results:
                                 page_num = int(element['page_number'] - 1)  # Convert to 0-based index
-                                if page_num not in page_elements:
-                                    page_elements[page_num] = []
+                                if str(page_num) not in page_elements:
+                                    page_elements[str(page_num)] = []
                                 
                                 # Convert the element to our structure format
                                 structured_element = {
@@ -3419,14 +3427,14 @@ class MainWindow(QMainWindow):
                                         'page_width': element['page_width'],
                                         'page_height': element['page_height']
                                     },
-                                    'id': len(page_elements[page_num]),  # ID starts from 0 for each page
+                                    'id': len(page_elements[str(page_num)]),  # ID starts from 0 for each page
                                     'page_number': int(page_num)
                                 }
-                                page_elements[page_num].append(structured_element)
+                                page_elements[str(page_num)].append(structured_element)
                             
                             # Store the analysis results
                             for page_num, elements in page_elements.items():
-                                self.document_data['page_structures'][page_num] = {
+                                self.document_data['page_structures'][str(page_num)] = {
                                     'timestamp': datetime.datetime.now().isoformat(),
                                     'structure': {
                                         'elements': elements,
@@ -3437,7 +3445,7 @@ class MainWindow(QMainWindow):
                                         }
                                     }
                                 }
-                                self.document_data['initial_page_structures'][page_num] = {
+                                self.document_data['initial_page_structures'][str(page_num)] = {
                                     'timestamp': datetime.datetime.now().isoformat(),
                                     'structure': {
                                         'elements': elements,
@@ -3463,16 +3471,8 @@ class MainWindow(QMainWindow):
                             
                             # Update icon in tree
                             current_item = self.items_tree.currentItem()
-                            if current_item and hasattr(current_item, 'zotero_key'):
-                                icon = self.get_analysis_status_icon(current_item.zotero_key)
-                                if icon:  # Only set icon if not None
-                                    current_item.setIcon(0, icon)
-                                # If item has a parent, update parent icon too
-                                parent = current_item.parent()
-                                if parent and hasattr(parent, 'zotero_key'):
-                                    icon = self.get_analysis_status_icon(parent.zotero_key)
-                                    if icon:  # Only set icon if not None
-                                        parent.setIcon(0, icon)
+                            icon = get_analysis_done_icon()
+                            current_item.setIcon(0, icon)
                             
                             # Show completion message
                             analyzed_pages = len(page_elements)
@@ -3633,13 +3633,14 @@ class MainWindow(QMainWindow):
             logger.debug(f"Loading {len(self.element_records)} structured elements")
             for element in self.element_records:
                 page_num = int(element.page_number)
-                if page_num not in page_structures:
-                    page_structures[page_num] = {'structure': {'elements': []}}
+                page_key = str(page_num)
+                if page_key not in page_structures:
+                    page_structures[page_key] = {'structure': {'elements': []}}
 
                 element_data = element.to_dict()
                 
                 # Update existing element or append new one
-                elements_list = page_structures[page_num]['structure']['elements']
+                elements_list = page_structures[page_key]['structure']['elements']
                 for i, existing in enumerate(elements_list):
                     if int(existing.get('id')) == int(element.element_id):
                         elements_list[i] = element_data
@@ -3740,7 +3741,7 @@ class MainWindow(QMainWindow):
             
             # Update bounding boxes for current page
             if self.pdf_viewer.show_bounding_boxes:
-                current_page_boxes = self.document_data['page_structures'].get(int(self.current_page), {})
+                current_page_boxes = self.document_data['page_structures'].get(str(self.current_page), {})
                 if current_page_boxes:
                     self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
                 else:
@@ -4068,7 +4069,7 @@ class MainWindow(QMainWindow):
                                     document = PDFDocument.get(PDFDocument.zotero_key == zotero_key)
                                     if len(document.sessions) > 0:
                                         logger.info(f"Sessions: {document.sessions}")
-                                        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
+                                        icon = get_analysis_done_icon()
                                         pdf_item.setIcon(0, icon)
                                         logger.info(f"Session already exists in database: {zotero_key}")
 
@@ -4564,6 +4565,30 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No Document", "No PDF document is loaded.")
             return
         try:
+
+            def get_pixmap(page_number, coordinates):
+                zoom = 3.0
+                matrix = fitz.Matrix(zoom, zoom)
+                page = self.pdf_document[int(page_number)]
+                pix = page.get_pixmap(matrix=matrix)
+                # Convert relative coordinates to absolute pixel values
+                x1 = int(coordinates[0]['x'] * pix.width)
+                y1 = int(coordinates[0]['y'] * pix.height)
+                x2 = int(coordinates[2]['x'] * pix.width)
+                y2 = int(coordinates[2]['y'] * pix.height)
+                # Ensure coordinates are within bounds
+                x1, x2 = max(0, min(x1, x2)), min(pix.width, max(x1, x2))
+                y1, y2 = max(0, min(y1, y2)), min(pix.height, max(y1, y2))
+                if x2 <= x1 or y2 <= y1:
+                    return None
+                # Crop the image
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                cropped = img.crop((x1, y1, x2, y2))
+                # Save as PNG to bytes
+                buf = io.BytesIO()
+                cropped.save(buf, format="PNG")
+                return buf.getvalue()
+
             # Remove previous figures for this document
             PrFigure.delete().where(PrFigure.document == self.document_record).execute()
             page_structures = self.document_data.get('page_structures', {})
@@ -4579,48 +4604,33 @@ class MainWindow(QMainWindow):
                         continue
                     # Find caption (if linked)
                     caption_text = None
+                    caption_pixmap = None
                     linked_elements = element.get('linked_elements', None)
                     if linked_elements:
                         for ref in linked_elements:
                             ref_page, ref_id = ref
                             # Find the linked element
-                            for e in page_structures.get(int(ref_page), {}).get('structure', {}).get('elements', []):
+                            for e in page_structures.get(str(ref_page), {}).get('structure', {}).get('elements', []):
                                 if int(e.get('id')) == int(ref_id) and e.get('category', '').lower() == 'caption':
                                     caption_text = e.get('content', {}).get('text', None)
+                                    caption_page_num = ref_page
+                                    caption_element = e
+                                    caption_coords = e.get('coordinates', [])
                                     break
                             if caption_text:
                                 break
-                    # Render the figure at high resolution (3x zoom)
-                    page = self.pdf_document[int(page_num)]
-                    zoom = 3.0
-                    matrix = fitz.Matrix(zoom, zoom)
-                    pix = page.get_pixmap(matrix=matrix)
-                    # Convert relative coordinates to absolute pixel values
-                    x1 = int(coords[0]['x'] * pix.width)
-                    y1 = int(coords[0]['y'] * pix.height)
-                    x2 = int(coords[2]['x'] * pix.width)
-                    y2 = int(coords[2]['y'] * pix.height)
-                    # Ensure coordinates are within bounds
-                    x1, x2 = max(0, min(x1, x2)), min(pix.width, max(x1, x2))
-                    y1, y2 = max(0, min(y1, y2)), min(pix.height, max(y1, y2))
-                    if x2 <= x1 or y2 <= y1:
-                        continue
-                    # Crop the image
-                    import io
-                    from PIL import Image
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    cropped = img.crop((x1, y1, x2, y2))
-                    # Save as PNG to bytes
-                    buf = io.BytesIO()
-                    cropped.save(buf, format="PNG")
-                    figure_binary = buf.getvalue()
+
+                    figure_binary = get_pixmap(page_num, coords)
+                    caption_binary = get_pixmap(caption_page_num, caption_coords)
+
                     # Insert into PrFigure
                     PrFigure.create(
                         document=self.document_record,
                         figure_number=str(figure_count + 1),
                         figure_page_number=int(page_num) + 1,
                         figure_binary=figure_binary,
-                        caption_text=caption_text
+                        caption_text=caption_text,
+                        caption_binary=caption_binary
                     )
                     figure_count += 1
             QMessageBox.information(self, "Figures Extracted", f"Extracted {figure_count} figures to the database.")
