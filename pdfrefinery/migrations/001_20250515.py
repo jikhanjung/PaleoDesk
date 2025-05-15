@@ -1,4 +1,4 @@
-"""Peewee migrations -- 001_20250507.py.
+"""Peewee migrations -- 001_20250515.py.
 
 Some examples (model - class or model name)::
 
@@ -66,6 +66,27 @@ def migrate(migrator: Migrator, database: pw.Database, *, fake=False):
             indexes = [(('document', 'page_number'), True)]
 
     @migrator.create_model
+    class PrFigure(pw.Model):
+        id = pw.AutoField()
+        document = pw.ForeignKeyField(column_name='document_id', field='id', model=migrator.orm['pdfdocument'])
+        figure_number = pw.CharField(max_length=255)
+        figure_page_number = pw.IntegerField(null=True)
+        part1_prefix = pw.CharField(max_length=255, null=True)
+        part1_number = pw.CharField(max_length=255, null=True)
+        part2_prefix = pw.CharField(max_length=255, null=True)
+        part2_number = pw.CharField(max_length=255, null=True)
+        part_separator = pw.CharField(default='-', max_length=255, null=True)
+        figure_binary = pw.BlobField(null=True)
+        caption_binary = pw.BlobField(null=True)
+        caption_text = pw.TextField(null=True)
+        parent = pw.ForeignKeyField(column_name='parent_id', field='id', model='self', null=True, on_delete='CASCADE')
+        created_at = pw.DateTimeField()
+        updated_at = pw.DateTimeField()
+
+        class Meta:
+            table_name = "prfigure"
+
+    @migrator.create_model
     class SessionData(pw.Model):
         id = pw.AutoField()
         document = pw.ForeignKeyField(column_name='document_id', field='id', model=migrator.orm['pdfdocument'])
@@ -83,12 +104,16 @@ def migrate(migrator: Migrator, database: pw.Database, *, fake=False):
         id = pw.AutoField()
         document = pw.ForeignKeyField(column_name='document_id', field='id', model=migrator.orm['pdfdocument'])
         page_number = pw.IntegerField()
-        element_id = pw.CharField(max_length=255)
+        element_id = pw.IntegerField()
         element_type = pw.CharField(max_length=255)
         coordinates = pw.TextField()
         content = pw.TextField(null=True)
         caption = pw.TextField(null=True)
         metadata = pw.TextField(null=True)
+        image_path = pw.TextField(null=True)
+        image_binary = pw.BlobField(null=True)
+        linked_elements = pw.TextField(null=True)
+        merged_elements = pw.TextField(null=True)
         created_at = pw.DateTimeField()
         updated_at = pw.DateTimeField()
 
@@ -103,6 +128,8 @@ def rollback(migrator: Migrator, database: pw.Database, *, fake=False):
     migrator.remove_model('structuredelement')
 
     migrator.remove_model('sessiondata')
+
+    migrator.remove_model('prfigure')
 
     migrator.remove_model('pageanalysis')
 

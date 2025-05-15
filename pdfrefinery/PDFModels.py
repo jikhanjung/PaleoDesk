@@ -63,7 +63,7 @@ class StructuredElement(BaseModel):
     """Model for storing structured elements from PDFs"""
     document = ForeignKeyField(PDFDocument, backref='elements')
     page_number = IntegerField()
-    element_id = CharField()  # ID within the page
+    element_id = IntegerField()  # ID within the page
     element_type = CharField()  # Type of element (e.g., 'figure', 'table', 'text')
     coordinates = TextField()  # JSON string of coordinates
     content = TextField(null=True)  # Text content or description

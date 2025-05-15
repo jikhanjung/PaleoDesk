@@ -291,9 +291,10 @@ class PDFViewer(QWidget):
             return
         
         page_structures = self.main_window.document_data.get('page_structures', {})
-        page_structure = page_structures.get(str(page_num), {})
+        #logger.info(f"page_structures: {page_structures.keys()}")
+        page_structure = page_structures.get(int(page_num), {})
         page_elements = page_structure.get('structure', {}).get('elements', [])
-        #logger.info(f"page_elements: {page_elements}")
+        #logger.info(f"page_elements: {page_elements} {len(page_elements)}")
         for element in page_elements:
             #logger.info(f"{type(element)} {element.get('id')} {type(element.get('id'))}")
             if int(element.get('id')) == int(element_id):
@@ -636,13 +637,13 @@ class PDFViewer(QWidget):
             return
             
         # Get initial page structure for current page
-        initial_structure = self.main_window.document_data.get('initial_page_structures', {}).get(str(self.current_page))
+        initial_structure = self.main_window.document_data.get('initial_page_structures', {}).get(int(self.current_page))
         if not initial_structure:
             logger.warning(f"No initial structure found for page {self.current_page}")
             return
             
         # Get current page structure
-        current_structure = self.main_window.document_data.get('page_structures', {}).get(str(self.current_page))
+        current_structure = self.main_window.document_data.get('page_structures', {}).get(int(self.current_page))
         if not current_structure:
             logger.warning(f"No current structure found for page {self.current_page}")
             return
@@ -701,9 +702,10 @@ class PDFViewer(QWidget):
                     for ref in box['linked_elements']:
                         if ref not in extra_select:
                             extra_select.append((int(ref[0]), ref[1]))
-                #logger.info(f"extra_select: {extra_select}, {box['linked_elements']} {box['merged_elements']}")
+                logger.info(f"extra_select: {extra_select}, {box['linked_elements'] if 'linked_elements' in box else ''} {box['merged_elements'] if 'merged_elements' in box else '' }")
                 # Always include the clicked box itself
-                extra_select.append((page_num, box_id))
+                if (page_num, box_id) not in extra_select:
+                    extra_select.append((page_num, box_id))
                 
                 if event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
                     # Toggle selection with Ctrl
@@ -735,7 +737,7 @@ class PDFViewer(QWidget):
                 self.selected_boxes = []
                 # Normal panning behavior
                 self.last_pan_pos = event.pos()
-            
+            logger.info(f"selected_boxes: {self.selected_boxes}")
             self.update()  # Update to show selection changes
 
     def mouseMoveEvent(self, event):
@@ -855,7 +857,7 @@ class PDFViewer(QWidget):
                 logger.info(f"Relative coordinates: ({rel_x1:.3f}, {rel_y1:.3f}) to ({rel_x2:.3f}, {rel_y2:.3f})")
                 
                 # Get current page elements to determine new element ID
-                page_key = str(self.current_box_page)
+                page_key = int(self.current_box_page)
                 if page_key in main_window.document_data['page_structures']:
                     page_structure = main_window.document_data['page_structures'][page_key]
                     if 'structure' in page_structure and 'elements' in page_structure['structure']:
@@ -863,7 +865,7 @@ class PDFViewer(QWidget):
                         # show elements' page, id and category
                         logger.info(f"Elements on current page: {[{'page': page_key, 'id': e['id'], 'category': e['category']} for e in elements]}")
                         
-                        new_id = str(len(elements))  # Use element count as ID
+                        new_id = int(len(elements))  # Use element count as ID
                         logger.info(f"Current page has {len(elements)} elements, new element ID will be {new_id}")
                         
                         # Create new element with normalized coordinates
@@ -952,7 +954,7 @@ class PDFViewer(QWidget):
                         logger.debug("Found document_data in main window")
                         if 'page_structures' in main_window.document_data:
                             logger.debug(f"Found page_structures in document_data")
-                            page_key = str(self.current_box_page)
+                            page_key = int(self.current_box_page)
                             if page_key in main_window.document_data['page_structures']:
                                 logger.debug(f"Found page {page_key} in page_structures")
                                 page_structure = main_window.document_data['page_structures'][page_key]
@@ -1005,7 +1007,7 @@ class PDFViewer(QWidget):
         if not self.main_window or not hasattr(self.main_window, 'document_data'):
             return
         
-        page_structure = self.main_window.document_data['page_structures'][str(page_num)]
+        page_structure = self.main_window.document_data['page_structures'][int(page_num)]
         element = page_structure['structure']['elements'][int(element_id)]
         #logger.info(f"Saving element {element} from page {page_num}")
 
@@ -1019,7 +1021,7 @@ class PDFViewer(QWidget):
             structured_element = StructuredElement.get_or_create(
                 document=document,
                 page_number=page_num,
-                element_id=str(element_id),
+                element_id=int(element_id),
                 defaults={
                     'element_type': element.get('category', 'unknown'),
                     'coordinates': json.dumps(element.get('coordinates', [])),
@@ -1595,7 +1597,7 @@ class PDFViewer(QWidget):
                             logger.debug(f"Changed type of box {box_id} on page {page_num} to {new_type}")
                             
                             # Update document_data
-                            page_key = str(page_num)
+                            page_key = int(page_num)
                             if page_key in self.main_window.document_data['page_structures']:
                                 page_structure = self.main_window.document_data['page_structures'][page_key]
                                 if 'structure' in page_structure and 'elements' in page_structure['structure']:
@@ -1660,10 +1662,10 @@ class PDFViewer(QWidget):
                 (StructuredElement.element_id == elem[1])
             )
             element.merged_elements = json.dumps(element_list)
-            logger.info(f"element: {element.merged_elements}")
+            #logger.info(f"element: {element.merged_elements}")
             element.save()
             elem_info['merged_elements'] = element_list
-            logger.info(f"Merged elements {element_list} on page {elem[0]}")
+            #logger.info(f"Merged elements {element_list} on page {elem[0]}")
         self.selected_boxes = []
         self.update()
 
@@ -1755,7 +1757,7 @@ class PDFViewer(QWidget):
             # Process each selected box
             for page_num, box_id in list(self.selected_boxes):
                 # Remove the element from document_data
-                page_key = str(page_num)
+                page_key = int(page_num)
                 if page_key in self.main_window.document_data['page_structures']:
                     page_structure = self.main_window.document_data['page_structures'][page_key]
                     if 'structure' in page_structure and 'elements' in page_structure['structure']:
@@ -1773,7 +1775,7 @@ class PDFViewer(QWidget):
                         if deleted_index is not None:
                             # Adjust element IDs for remaining elements
                             for i in range(deleted_index, len(elements)):
-                                elements[i]['id'] = str(i)
+                                elements[i]['id'] = int(i)
                                 logger.info(f"Adjusted element ID from {i+1} to {i}")
                             
                             # Delete the element from StructuredElement table
@@ -1787,11 +1789,11 @@ class PDFViewer(QWidget):
                             for i in range(deleted_index, len(elements)):
                                 element = elements[i]
                                 StructuredElement.update(
-                                    element_id=str(i)
+                                    element_id=int(i)
                                 ).where(
                                     (StructuredElement.document == document) &
                                     (StructuredElement.page_number == page_num) &
-                                    (StructuredElement.element_id == str(i+1))
+                                    (StructuredElement.element_id == int(i+1))
                                 ).execute()
                 
                 # Remove from UI
@@ -1880,6 +1882,7 @@ class ElementInfoDialog(QDialog):
             if len(category_set) > 1:
                 all_same_category = False
         
+        self.category = 'text'
         if all_same_category:
             self.category = category_set.pop()
             #self.text_elements = self.element_data
@@ -1894,9 +1897,10 @@ class ElementInfoDialog(QDialog):
                             self.figure_element = elem
                         elif elem['category'].startswith('caption'):
                             self.caption_element = elem
-    
+
     def _get_element_info(self, page_num, element_id):
         """Get element info for a given page number and element ID"""
+        logger.info(f"Getting element info for page {type(page_num)} {page_num} and element {type(element_id)} {element_id}")
         for elem in self.element_data:
             if elem['page_number'] == page_num and elem['id'] == element_id:
                 return elem
@@ -2265,16 +2269,16 @@ class StructuredContentView(QWidget):
 
     def _get_element_info(self, page_num, element_id):
         """Get info for the selected box"""
-        #logger.info(f"Getting element info for page {type(page_num)} {page_num}, element {type(element_id)} {element_id}")
+        logger.info(f"Getting element info for page {type(page_num)} {page_num}, element {type(element_id)} {element_id}")
         if not self.main_window or not hasattr(self.main_window, 'document_data'):
             return
         
         page_structures = self.main_window.document_data.get('page_structures', {})
-        page_structure = page_structures.get(str(page_num), {})
+        page_structure = page_structures.get(int(page_num), {})
         page_elements = page_structure.get('structure', {}).get('elements', [])
-        #logger.info(f"page_elements: {page_elements}")
+        logger.info(f"page_elements: {page_elements}")
         for element in page_elements:
-            #logger.info(f"{type(element)} {element.get('id')} {type(element.get('id'))}")
+            logger.info(f"{type(element)} {element.get('id')} {type(element.get('id'))}")
             if int(element.get('id')) == int(element_id):
                 return element
 
@@ -3385,7 +3389,7 @@ class MainWindow(QMainWindow):
                             # Process analysis results
                             page_elements = {}
                             for element in results:
-                                page_num = str(element['page_number'] - 1)  # Convert to 0-based index
+                                page_num = int(element['page_number'] - 1)  # Convert to 0-based index
                                 if page_num not in page_elements:
                                     page_elements[page_num] = []
                                 
@@ -3538,7 +3542,7 @@ class MainWindow(QMainWindow):
                                 elements_to_create.append({
                                     'document': document,
                                     'page_number': int(page_num),
-                                    'element_id': str(element.get('id', '')),
+                                    'element_id': int(element.get('id', '')),
                                     'element_type': element.get('category', 'unknown'),
                                     'coordinates': json.dumps(element.get('coordinates', [])),
                                     'content': json.dumps(element.get('content', {})),
@@ -3628,7 +3632,7 @@ class MainWindow(QMainWindow):
             
             logger.debug(f"Loading {len(self.element_records)} structured elements")
             for element in self.element_records:
-                page_num = str(element.page_number)
+                page_num = int(element.page_number)
                 if page_num not in page_structures:
                     page_structures[page_num] = {'structure': {'elements': []}}
 
@@ -3637,7 +3641,7 @@ class MainWindow(QMainWindow):
                 # Update existing element or append new one
                 elements_list = page_structures[page_num]['structure']['elements']
                 for i, existing in enumerate(elements_list):
-                    if str(existing.get('id')) == str(element.element_id):
+                    if int(existing.get('id')) == int(element.element_id):
                         elements_list[i] = element_data
                         break
                 else:
@@ -3736,7 +3740,7 @@ class MainWindow(QMainWindow):
             
             # Update bounding boxes for current page
             if self.pdf_viewer.show_bounding_boxes:
-                current_page_boxes = self.document_data['page_structures'].get(str(self.current_page), {})
+                current_page_boxes = self.document_data['page_structures'].get(int(self.current_page), {})
                 if current_page_boxes:
                     self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
                 else:
@@ -4580,8 +4584,8 @@ class MainWindow(QMainWindow):
                         for ref in linked_elements:
                             ref_page, ref_id = ref
                             # Find the linked element
-                            for e in page_structures.get(str(ref_page), {}).get('structure', {}).get('elements', []):
-                                if str(e.get('id')) == str(ref_id) and e.get('category', '').lower() == 'caption':
+                            for e in page_structures.get(int(ref_page), {}).get('structure', {}).get('elements', []):
+                                if int(e.get('id')) == int(ref_id) and e.get('category', '').lower() == 'caption':
                                     caption_text = e.get('content', {}).get('text', None)
                                     break
                             if caption_text:
