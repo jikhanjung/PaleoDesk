@@ -1661,6 +1661,286 @@ class PDFViewer(QWidget):
             QMessageBox.warning(self, "Database Error", 
                 f"Error updating database after element deletion: {str(e)}")
 
+    def _extract_caption_text(self):
+        """Extract text from caption image using OCR"""
+        if not self.selected_boxes:
+            return
+            
+        # Get the first selected box
+        page_num, box_id = self.selected_boxes[0]
+        element = self._get_element_info(page_num, box_id)
+        if not element:
+            return
+            
+        # Find caption element - either the selected element itself or a linked caption
+        caption_element = None
+        if element.get('category', '').lower() == 'caption':
+            caption_element = element
+        elif element.get('linked_elements'):
+            for linked_page, linked_id in element['linked_elements']:
+                linked_element = self._get_element_info(linked_page, linked_id)
+                if linked_element and linked_element.get('category', '').lower() == 'caption':
+                    caption_element = linked_element
+                    break
+                    
+        if not caption_element:
+            return
+            
+        # Check if caption already has text
+        if caption_element.get('content', {}).get('text'):
+            QMessageBox.information(self, "Caption Text", 
+                "Caption already has text content.")
+            return
+            
+        try:
+            # Get caption coordinates
+            coords = caption_element.get('coordinates', [])
+            if not coords or len(coords) < 4:
+                return
+                
+            # Get page pixmap
+            if page_num not in self.page_pixmaps:
+                self.load_page(page_num)
+            if page_num not in self.page_pixmaps:
+                return
+                
+            page_pixmap = self.page_pixmaps[page_num]['pixmap']
+            if not page_pixmap:
+                return
+                
+            # Convert coordinates to absolute pixels
+            page_width = self.page_pixmaps[page_num]['width']
+            page_height = self.page_pixmaps[page_num]['height']
+            
+            x1 = int(coords[0]['x'] * page_width)
+            y1 = int(coords[0]['y'] * page_height)
+            x2 = int(coords[2]['x'] * page_width)
+            y2 = int(coords[2]['y'] * page_height)
+            
+            # Extract caption region
+            caption_pixmap = page_pixmap.copy(x1, y1, x2 - x1, y2 - y1)
+            
+            # Save caption image to temporary file
+            import tempfile
+            import os
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_img:
+                caption_pixmap.save(temp_img.name)
+                temp_img_path = temp_img.name
+                
+            # Create temporary PDF
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:
+                temp_pdf_path = temp_pdf.name
+                
+            # Convert image to PDF using PyMuPDF
+            doc = fitz.open()
+            img = fitz.Pixmap(temp_img_path)
+            rect = fitz.Rect(0, 0, img.width, img.height)
+            page = doc.new_page(width=img.width, height=img.height)
+            page.insert_image(rect, pixmap=img)
+            doc.save(temp_pdf_path)
+            doc.close()
+
+            settings = QSettings(COMPANY_NAME, PROGRAM_NAME)
+            base_url = settings.value("service/url", "").rstrip('/')
+            url_ocr = f"{base_url}/ocr"
+            
+            # Send to OCR server
+            with open(temp_pdf_path, 'rb') as f:
+                files = {'file': (os.path.basename(temp_pdf_path), f, 'application/pdf')}
+                response = requests.post(url_ocr, files=files)
+                
+            if response.status_code != 200:
+                raise Exception(f"OCR server returned status code {response.status_code}")
+                
+            # Get OCR result
+            output_pdf_path = temp_pdf_path + "_result.pdf"
+            with open(output_pdf_path, "wb") as f:
+                f.write(response.content)
+                
+            with open(output_pdf_path, "rb") as f:
+                response = requests.post(
+                    base_url,
+                    files={"file": (os.path.basename(output_pdf_path), f, "application/pdf")}
+                )
+                
+            if response.status_code != 200:
+                raise Exception(f"Analysis server returned status code {response.status_code}")
+                
+            layout_result = response.json()
+            logger.info(f"layout_result: {layout_result}")
+            
+            # Extract text from OCR result
+            caption_text = ""
+            for elem in layout_result:
+                if 'text' in elem.keys():
+                    caption_text += elem['text'] + ' '
+                            
+            # Clean up temporary files
+            try:
+                os.unlink(temp_img_path)
+                os.unlink(temp_pdf_path)
+                os.unlink(output_pdf_path)
+            except:
+                pass
+                            
+            if caption_text:
+                # Update caption element with extracted text
+                caption_element['content'] = {'text': caption_text.strip()}
+                
+                # Update database
+                self.save_element(caption_element.get('page', page_num), caption_element.get('id'))
+                
+                # Update UI
+                self.update()
+                
+                QMessageBox.information(self, "Caption Extraction", 
+                    f"Successfully extracted caption text:\n\n{caption_text.strip()}")
+            else:
+                QMessageBox.warning(self, "Caption Extraction", 
+                    "No text could be extracted from the caption image.")
+                    
+        except Exception as e:
+            logger.error(f"Error extracting caption text: {str(e)}")
+            QMessageBox.warning(self, "Caption Extraction Error", 
+                f"Error extracting caption text: {str(e)}")
+
+    def contextMenuEvent(self, event):
+        """Show context menu for boxes"""
+        # Check if we're over a box
+        result = self._check_bounding_box_hover(event.pos())
+        if not result:
+            return
+            
+        page_num, box = result
+        if not box or 'id' not in box:
+            return
+            
+        # Only show menu if the box is selected
+        if (page_num, box['id']) not in self.selected_boxes:
+            return
+
+        box_type = set()
+        for box in self.selected_boxes:
+            box_info = self._get_element_info(box[0], box[1])
+            category = box_info.get('category', 'text').lower() 
+            box_type.add(category)
+
+        menu = QMenu(self)
+
+        # show_info
+        show_info_action = menu.addAction("Show Info")
+        show_info_action.triggered.connect(self._show_info)
+
+        # Check if we should show Extract Caption action
+        should_show_extract = False
+        if len(self.selected_boxes) == 1:  # Only for single selection
+            selected_page, selected_id = self.selected_boxes[0]
+            selected_element = self._get_element_info(selected_page, selected_id)
+            
+            if selected_element:
+                # Check if selected element is a caption without text
+                if selected_element.get('category', '').lower() == 'caption':
+                    if not selected_element.get('content', {}).get('text'):
+                        should_show_extract = True
+                # Or if it's linked to a caption without text
+                elif selected_element.get('linked_elements'):
+                    for linked_page, linked_id in selected_element['linked_elements']:
+                        linked_element = self._get_element_info(linked_page, linked_id)
+                        if (linked_element and 
+                            linked_element.get('category', '').lower() == 'caption' and 
+                            not linked_element.get('content', {}).get('text')):
+                            should_show_extract = True
+                            break
+
+        if should_show_extract:
+            extract_action = menu.addAction("Extract Caption")
+            extract_action.triggered.connect(self._extract_caption_text)
+            menu.addSeparator()
+
+        # Determine all_linked and all_merged for selected boxes
+        all_linked = True
+        all_merged = True
+        any_linked = False
+        any_merged = False
+        for sel in self.selected_boxes:
+            box_info = self._get_element_info(sel[0], sel[1])
+            is_linked = box_info and 'linked_elements' in box_info and box_info['linked_elements'] and len(box_info['linked_elements']) > 0
+            is_merged = box_info and 'merged_elements' in box_info and box_info['merged_elements'] and len(box_info['merged_elements']) > 0
+            if not is_linked:
+                all_linked = False
+            if not is_merged:
+                all_merged = False
+            if is_linked:
+                any_linked = True
+            if is_merged:
+                any_merged = True
+
+        # merge/link actions
+        if len(self.selected_boxes) > 1:
+            if len(box_type) == 1:
+                if not all_merged:
+                    merge_action = menu.addAction("Merge")
+                    merge_action.triggered.connect(lambda: self._merge_selected_boxes())
+            else:
+                if not all_linked:
+                    link_action = menu.addAction("Link")
+                    link_action.triggered.connect(lambda: self._link_selected_boxes())
+
+        # Unlink/Unmerge actions for all selected
+        if len(self.selected_boxes) > 0:
+            if all_linked:
+                unlink_action = menu.addAction("Unlink")
+                unlink_action.triggered.connect(lambda: self._unlink_selected_boxes())
+            if all_merged:
+                unmerge_action = menu.addAction("Unmerge")
+                unmerge_action.triggered.connect(lambda: self._unmerge_selected_boxes())
+
+        menu.addSeparator()
+
+        # Add "Change Block Type" as an enabled menu item without action
+        change_type_action = menu.addAction("Change Block Type")
+        change_type_action.triggered.connect(lambda: None)  # Connect to empty lambda
+        if len(box_type) > 1:
+            change_type_action.setEnabled(False)
+        else:
+            change_type_action.setEnabled(True)
+
+        # Disable type change if any selected element is linked
+        disable_type_change = False
+        for sel in self.selected_boxes:
+            box_info = self._get_element_info(sel[0], sel[1])
+            if box_info and 'linked_elements' in box_info and box_info['linked_elements'] and len(box_info['linked_elements']) > 0:
+                disable_type_change = True
+                break
+        if disable_type_change:
+            change_type_action.setEnabled(False)
+
+        # Add element type actions with indentation
+        for element_type in ELEMENT_TYPES:
+            if element_type == 'figure':
+                # Add a submenu for figure subtypes
+                figure_menu = QMenu("    figure (subtype)", menu)
+                for fig_type in FIGURE_SUBTYPES:
+                    fig_action = figure_menu.addAction(f"        {fig_type}")
+                    fig_action.triggered.connect(lambda checked, t=fig_type: self._change_selected_boxes_type(t))
+                    if disable_type_change:
+                        fig_action.setEnabled(False)
+                menu.addMenu(figure_menu)
+            else:
+                action = menu.addAction(f"    {element_type}")  # 4 spaces for indentation
+                action.triggered.connect(lambda checked, t=element_type: self._change_selected_boxes_type(t))
+                if disable_type_change:
+                    action.setEnabled(False)
+        
+        menu.addSeparator()
+        
+        # Add delete action
+        delete_action = menu.addAction("Delete")
+        delete_action.triggered.connect(self._delete_selected_boxes)
+        
+        # Show menu
+        menu.exec(event.globalPos())
+
 class StructuredContentView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2310,7 +2590,7 @@ class FigureGalleryWidget(QWidget):
         self._scroll_callback = callback
 
     def paintEvent(self, event):
-        logger.info(f"paintEvent, width: {self.width()}, height: {self.height()}")
+        #logger.info(f"paintEvent, width: {self.width()}, height: {self.height()}")
         painter = QPainter(self)
         y = 0
         width = self.width()
