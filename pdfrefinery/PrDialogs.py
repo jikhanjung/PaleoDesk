@@ -8,7 +8,7 @@ import logging
 import fitz
 
 # Get logger
-logger = logging.getLogger('PDFRefinery')
+logger = logging.getLogger('PrDialogs')
 
 
 class PreferencesDialog(QDialog):

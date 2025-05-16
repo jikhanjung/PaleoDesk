@@ -164,8 +164,8 @@ class MainWindow(QMainWindow):
         # Create structured content view with scroll area
         self.content_scroll = QScrollArea()
         self.content_scroll.setWidgetResizable(True)
-        self.structured_view = StructuredContentView(self)
-        self.content_scroll.setWidget(self.structured_view)
+        self.figure_view = FigureView(self)
+        self.content_scroll.setWidget(self.figure_view)
         self.right_splitter.addWidget(self.content_scroll)
         
         # Create dummy widget
@@ -209,17 +209,22 @@ class MainWindow(QMainWindow):
 
         # Add recent files list
         self.load_recent_files()
+        logger.info("Recent files loaded")
 
         # Initialize collection items cache
         self.collection_items_cache = {}
+        logger.info("Collection items cache initialized")
 
         # Connect PDFViewer page change to StructuredContentView scroll
-        self.pdf_viewer.currentPageChanged.connect(self.structured_view.scroll_to_page_element)
+        #self.pdf_viewer.currentPageChanged.connect(self.figure_view.scroll_to_page_element)
 
         # Show the toggle buttons
         self.library_toggle_btn.show()
+        logger.info("Library toggle button shown")
         self.update_library_toggle_button_position()
+        logger.info("Library toggle button position updated")
         self.update_dummy_toggle_button_position()
+        logger.info("Dummy toggle button position updated")
         logger.debug("Initialized toggle buttons")
 
     def prepare_database(self):
@@ -492,7 +497,7 @@ class MainWindow(QMainWindow):
         self.pdf_document = fitz.open(file_path)
         self.current_page = 0
         self.pdf_viewer.set_document(self.pdf_document)
-        self.structured_view.set_document(self.pdf_document)
+        #self.figure_view.set_document(self.pdf_document)
         self.update_navigation()
 
         self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
@@ -509,7 +514,7 @@ class MainWindow(QMainWindow):
         try:
             self.update_page_display()
             # Update structured content view with all page structures
-            self.structured_view.show_figures_from_db(self.document_record)
+            self.figure_view.show_figures_from_db(self.document_record)
             self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
         except Exception as e:
             logger.error(f"Error loading session data: {str(e)}")
@@ -2180,14 +2185,17 @@ class MainWindow(QMainWindow):
                     PrFigure.create(
                         document=self.document_record,
                         figure_number=str(figure_count + 1),
-                        figure_page_number=int(page_num) + 1,
+                        figure_page_number=int(page_num),
+                        figure_element_id=int(element.get('id')),
+                        caption_page_number=int(caption_page_num) if caption_page_num else None,
+                        caption_element_id=int(caption_element.get('id')) if caption_element else None,
                         figure_binary=figure_binary,
                         caption_text=caption_text,
                         caption_binary=caption_binary
                     )
                     figure_count += 1
-            if hasattr(self, 'structured_view'):
-                self.structured_view.show_figures_from_db(self.document_record)
+            if hasattr(self, 'figure_view'):
+                self.figure_view.show_figures_from_db(self.document_record)
 
             QMessageBox.information(self, "Figures Extracted", f"Extracted {figure_count} figures to the database.")
         except Exception as e:
@@ -2242,7 +2250,9 @@ def main():
     try:
         app = QApplication(sys.argv)
         window = MainWindow()
+        print("window created")
         window.show()
+        print("window shown")
         sys.exit(app.exec())
     except Exception as e:
         logger.critical(f"Application error: {str(e)}", exc_info=True)

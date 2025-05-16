@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (QWidget, QToolBar, QListWidget, QVBoxLayout, QLabel, 
                            QListWidgetItem, QMessageBox, QHBoxLayout, QPushButton, QScrollArea, QToolTip,
-                            QDialog, QButtonGroup, QDialogButtonBox, QRadioButton, QMenu, QApplication )
+                            QDialog, QButtonGroup, QDialogButtonBox, QRadioButton, QMenu, QApplication,
+                            QSplitter, QListView, QTableView, QSizePolicy, QFrame )
 from PyQt6.QtCore import Qt, QPoint, QPointF, QEvent, pyqtSignal, QRect, QSize, QRectF, pyqtSignal, QTimer, QEvent, QCoreApplication
-from PyQt6.QtGui import QPixmap, QPainter, QAction, QColor, QPen, QPainterPath, QBrush, QImage, QImageReader
+from PyQt6.QtGui import QPixmap, QPainter, QAction, QColor, QPen, QPainterPath, QBrush, QImage, QImageReader, QStandardItem, QStandardItemModel
 from PDFModels import StructuredElement
 from PDFCommons import *
 import logging
@@ -17,7 +18,7 @@ from peewee_migrate import Router
 import fitz
 from PrDialogs import *
 # Get logger
-logger = logging.getLogger('PDFRefinery')
+logger = logging.getLogger('PrComponents')
 
 class PDFViewer(QWidget):
     # Add signal for wheel events
@@ -942,7 +943,7 @@ class PDFViewer(QWidget):
             
             if current_height <= viewport_center < page_bottom:
                 if self.current_page != i:
-                    logger.info(f"[PDFViewer] Changing current_page from {self.current_page} to {i} (emitting currentPageChanged)")
+                    #logger.info(f"[PDFViewer] Changing current_page from {self.current_page} to {i} (emitting currentPageChanged)")
                     self.current_page = i
                     self.currentPageChanged.emit(self.current_page)
                 break
@@ -2263,3 +2264,176 @@ class StructuredContentView(QWidget):
             list_item.setSizeHint(item_widget.sizeHint())
             self.content_list_widget.addItem(list_item)
             self.content_list_widget.setItemWidget(list_item, item_widget)
+
+class FigureGalleryWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.figures = []  # List of dicts: {'pixmap': ..., 'bounding_boxes': ..., 'caption': ...}
+        self._scroll_callback = None
+        self.setMinimumWidth(10)
+        from PyQt6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+    def update_height(self):
+        width = self.width() if self.width() > 0 else 10
+        total_height = 0
+        for fig in self.figures:
+            pixmap = fig['pixmap']
+            if pixmap.isNull():
+                continue
+            scaled_height = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation).height()
+            total_height += scaled_height + 40
+        self.setFixedHeight(total_height)
+
+    def set_figures(self, figures):
+        self.figures = figures
+        self.update_height()
+        self.update()
+
+    def scroll_to_figure(self, index):
+        # Calculate the y position of the top of the figure at the given index
+        y = 0
+        width = self.width() if self.width() > 0 else 400
+        for i, fig in enumerate(self.figures):
+            pixmap = fig['pixmap']
+            if pixmap.isNull():
+                continue
+            scaled_height = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation).height()
+            if i == index:
+                break
+            y += scaled_height + 40
+        # Use the callback to scroll the parent scroll area
+        if self._scroll_callback:
+            self._scroll_callback(y)
+
+    def set_scroll_callback(self, callback):
+        self._scroll_callback = callback
+
+    def paintEvent(self, event):
+        logger.info(f"paintEvent, width: {self.width()}, height: {self.height()}")
+        painter = QPainter(self)
+        y = 0
+        width = self.width()
+        for fig in self.figures:
+            pixmap = fig['pixmap']
+            if pixmap.isNull():
+                continue
+            scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
+            painter.drawPixmap(0, y, scaled_pixmap)
+            # Draw bounding boxes here if needed (future)
+            # Example: for box in fig.get('bounding_boxes', []): ...
+            # Draw caption below image
+            if fig.get('caption'):
+                painter.setPen(Qt.GlobalColor.black)
+                painter.drawText(0, y + scaled_pixmap.height() + 20, fig['caption'])
+            y += scaled_pixmap.height() + 40  # Add spacing for caption
+
+    def sizeHint(self):
+        width = self.width() if self.width() > 0 else 10
+        total_height = 0
+        for fig in self.figures:
+            pixmap = fig['pixmap']
+            if pixmap.isNull():
+                continue
+            scaled_height = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation).height()
+            total_height += scaled_height + 40
+        return QSize(width, total_height)
+
+    def minimumSizeHint(self):
+        width = self.width() if self.width() > 0 else 10
+        return QSize(width, 0)
+
+    def resizeEvent(self, event):
+        self.update_height()
+        super().resizeEvent(event)
+
+class FigureView(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.model = QStandardItemModel(self)
+        self.model.setColumnCount(4)
+        self.model.setHorizontalHeaderLabels(['Image', 'Number', 'Page', 'Caption'])
+
+        self.splitter = QSplitter(Qt.Orientation.Vertical, self)
+
+        # Top: Gallery in scroll area
+        self.gallery_widget = FigureGalleryWidget()
+        # Create container for gallery_widget
+        gallery_container = QWidget()
+        gallery_layout = QVBoxLayout(gallery_container)
+        gallery_layout.setContentsMargins(0, 0, 0, 0)
+        gallery_layout.setSpacing(0)
+        gallery_layout.addWidget(self.gallery_widget)
+
+        self.gallery_scroll = QScrollArea()
+        self.gallery_scroll.setWidgetResizable(True)
+        self.gallery_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.gallery_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.gallery_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.gallery_scroll.setViewportMargins(0, 0, 0, 0)
+        self.gallery_scroll.setWidget(gallery_container)
+        self.splitter.addWidget(self.gallery_scroll)
+        self.gallery_widget.set_scroll_callback(self._scroll_gallery_to_y)
+
+
+
+        # Bottom: Table
+        self.table_view = QTableView()
+        self.table_view.setModel(self.model)
+        self.table_view.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        self.table_view.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        self.splitter.addWidget(self.table_view)
+        self.table_view.setColumnHidden(0, True)
+
+        # Set splitter stretch factors so both widgets can shrink/grow
+        self.splitter.setStretchFactor(0, 3)
+        self.splitter.setStretchFactor(1, 1)
+
+        # Connect selection change to scroll gallery
+        self.table_view.selectionModel().selectionChanged.connect(self._on_table_selection_changed)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.splitter)
+        self.setLayout(layout)
+
+        # Set initial splitter ratio (3/1)
+        self.splitter.setSizes([3, 1])
+
+    def _scroll_gallery_to_y(self, y):
+        self.gallery_scroll.verticalScrollBar().setValue(y)
+
+    def _on_table_selection_changed(self, selected, deselected):
+        if selected.indexes():
+            row = selected.indexes()[0].row()
+            self.gallery_widget.scroll_to_figure(row)
+
+    def show_figures_from_db(self, document):
+        from PDFModels import PrFigure
+        self.model.removeRows(0, self.model.rowCount())
+        figures = PrFigure.select().where(PrFigure.document == document).order_by(PrFigure.figure_number)
+        gallery_figures = []
+        for fig in figures:
+            items = []
+            # Image as icon for table (not shown)
+            pixmap = QPixmap()
+            if fig.figure_binary:
+                pixmap.loadFromData(fig.figure_binary)
+            item_img = QStandardItem()
+            item_img.setData(pixmap, Qt.ItemDataRole.DecorationRole)
+            item_img.setEditable(False)
+            items.append(item_img)
+            # Number, Page, Caption
+            items.append(QStandardItem(str(fig.figure_number)))
+            items.append(QStandardItem(str(fig.figure_page_number)))
+            items.append(QStandardItem(fig.caption_text or ""))
+            self.model.appendRow(items)
+            # For gallery
+            gallery_figures.append({'pixmap': pixmap, 'caption': fig.caption_text or ""})
+        self.gallery_widget.set_figures(gallery_figures)
+
+class SubfigureView(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        # Create layout
+        layout = QVBoxLayout()

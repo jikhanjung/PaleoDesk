@@ -8,7 +8,7 @@ from PDFCommons import *
 import json
 
 # Initialize logger
-logger = logging.getLogger(PROGRAM_NAME)
+logger = logging.getLogger("PDFModels")
 
 
 # Database setup
@@ -117,6 +117,9 @@ class PrFigure(BaseModel):
     document = ForeignKeyField(PDFDocument, backref='figures')
     figure_number = CharField()
     figure_page_number = IntegerField(null=True)
+    figure_element_id = IntegerField(null=True)
+    caption_page_number = IntegerField(null=True)
+    caption_element_id = IntegerField(null=True)
     part1_prefix = CharField(null=True)
     part1_number = CharField(null=True)
     part2_prefix = CharField(null=True)
