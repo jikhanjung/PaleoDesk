@@ -66,6 +66,7 @@ class StructuredElement(BaseModel):
     element_id = IntegerField()  # ID within the page
     element_type = CharField()  # Type of element (e.g., 'figure', 'table', 'text')
     coordinates = TextField()  # JSON string of coordinates
+    figure_number = IntegerField(null=True)
     content = TextField(null=True)  # Text content or description
     caption = TextField(null=True)  # Associated caption text
     metadata = TextField(null=True)  # JSON string for additional metadata
@@ -108,7 +109,8 @@ class StructuredElement(BaseModel):
             'metadata': json.loads(self.metadata) if self.metadata else {},
             'linked_elements': json.loads(self.linked_elements) if self.linked_elements else [],
             'merged_elements': json.loads(self.merged_elements) if self.merged_elements else [],
-            'page_number': self.page_number
+            'page_number': self.page_number,
+            'figure_number': self.figure_number
         }
         return element_data
 

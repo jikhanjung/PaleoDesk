@@ -697,7 +697,7 @@ class MainWindow(QMainWindow):
         
         # Analyze action
         analyze_action = QAction("Analyze", self)
-        analyze_action.triggered.connect(lambda: self.analyze_pdf(self.current_file_path) if self.current_file_path else None)
+        analyze_action.triggered.connect(lambda: self.analyze_pdf(self.current_file_path, force_analysis=True) if self.current_file_path else None)
         toolbar.addAction(analyze_action)
         
         # Add separator
@@ -717,6 +717,14 @@ class MainWindow(QMainWindow):
         add_element_action.triggered.connect(self.pdf_viewer.start_element_creation)
         toolbar.addAction(add_element_action)
 
+        # Add separator
+        toolbar.addSeparator()
+        
+        # Semantic analysis action
+        semantic_analysis_action = QAction("Semantic Analysis", self)
+        semantic_analysis_action.triggered.connect(self.run_semantic_analysis)
+        toolbar.addAction(semantic_analysis_action)
+        
         # extract figures action
         extract_figures_action = QAction("Extract Figures", self)
         extract_figures_action.triggered.connect(self.extract_figures)
@@ -829,6 +837,7 @@ class MainWindow(QMainWindow):
 
             session = document.sessions.order_by(SessionData.last_accessed.desc()).first()
             
+            # Only check for existing analysis if not forced
             if session and not force_analysis:
                 # Load session data
                 session_data = json.loads(session.session_data)
@@ -986,7 +995,8 @@ class MainWindow(QMainWindow):
                                         'page_height': element['page_height']
                                     },
                                     'id': len(page_elements[str(page_num)]),  # ID starts from 0 for each page
-                                    'page_number': int(page_num)
+                                    'page_number': int(page_num),
+                                    'figure_number': 0
                                 }
                                 page_elements[str(page_num)].append(structured_element)
                             
@@ -2160,6 +2170,9 @@ class MainWindow(QMainWindow):
                     coords = element.get('coordinates', [])
                     if len(coords) < 4:
                         continue
+                    figure_number = element.get('figure_number', None)
+                    #if figure_number is None:
+                    #    continue
                     # Find caption (if linked)
                     caption_text = None
                     caption_pixmap = None
@@ -2184,7 +2197,7 @@ class MainWindow(QMainWindow):
                     # Insert into PrFigure
                     PrFigure.create(
                         document=self.document_record,
-                        figure_number=str(figure_count + 1),
+                        figure_number=figure_number,
                         figure_page_number=int(page_num),
                         figure_element_id=int(element.get('id')),
                         caption_page_number=int(caption_page_num) if caption_page_num else None,
@@ -2244,6 +2257,311 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error getting analysis status icon: {str(e)}")
             return None  # No icon on error
+
+    def _extract_caption_text(self, caption_element, page_num):
+        """Extract text from caption image using OCR"""
+        try:
+            # Check if caption already has text
+            if caption_element.get('content', {}).get('text'):
+                return caption_element['content']['text']
+                
+            # Get caption coordinates
+            coords = caption_element.get('coordinates', [])
+            if not coords or len(coords) < 4:
+                return None
+                
+            # Get page pixmap
+            if not hasattr(self, 'pdf_viewer') or not self.pdf_viewer.page_pixmaps:
+                return None
+                
+            if page_num not in self.pdf_viewer.page_pixmaps:
+                self.pdf_viewer.load_page(page_num)
+            if page_num not in self.pdf_viewer.page_pixmaps:
+                return None
+                
+            page_pixmap = self.pdf_viewer.page_pixmaps[page_num]['pixmap']
+            if not page_pixmap:
+                return None
+                
+            # Convert coordinates to absolute pixels
+            page_width = self.pdf_viewer.page_pixmaps[page_num]['width']
+            page_height = self.pdf_viewer.page_pixmaps[page_num]['height']
+            
+            x1 = int(coords[0]['x'] * page_width)
+            y1 = int(coords[0]['y'] * page_height)
+            x2 = int(coords[2]['x'] * page_width)
+            y2 = int(coords[2]['y'] * page_height)
+            
+            # Extract caption region
+            caption_pixmap = page_pixmap.copy(x1, y1, x2 - x1, y2 - y1)
+            
+            # Save caption image to temporary file
+            import tempfile
+            import os
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_img:
+                caption_pixmap.save(temp_img.name)
+                temp_img_path = temp_img.name
+                
+            # Create temporary PDF
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:
+                temp_pdf_path = temp_pdf.name
+                
+            # Convert image to PDF using PyMuPDF
+            doc = fitz.open()
+            img = fitz.Pixmap(temp_img_path)
+            rect = fitz.Rect(0, 0, img.width, img.height)
+            page = doc.new_page(width=img.width, height=img.height)
+            page.insert_image(rect, pixmap=img)
+            doc.save(temp_pdf_path)
+            doc.close()
+
+            settings = QSettings(COMPANY_NAME, PROGRAM_NAME)
+            base_url = settings.value("service/url", "").rstrip('/')
+            url_ocr = f"{base_url}/ocr"
+            
+            # Send to OCR server
+            with open(temp_pdf_path, 'rb') as f:
+                files = {'file': (os.path.basename(temp_pdf_path), f, 'application/pdf')}
+                response = requests.post(url_ocr, files=files)
+                
+            if response.status_code != 200:
+                raise Exception(f"OCR server returned status code {response.status_code}")
+                
+            # Get OCR result
+            output_pdf_path = temp_pdf_path + "_result.pdf"
+            with open(output_pdf_path, "wb") as f:
+                f.write(response.content)
+                
+            with open(output_pdf_path, "rb") as f:
+                response = requests.post(
+                    base_url,
+                    files={"file": (os.path.basename(output_pdf_path), f, "application/pdf")}
+                )
+                
+            if response.status_code != 200:
+                raise Exception(f"Analysis server returned status code {response.status_code}")
+                
+            layout_result = response.json()
+            
+            # Extract text from OCR result
+            caption_text = ""
+            for elem in layout_result:
+                if 'text' in elem.keys():
+                    caption_text += elem['text'] + ' '
+                            
+            # Clean up temporary files
+            try:
+                os.unlink(temp_img_path)
+                os.unlink(temp_pdf_path)
+                os.unlink(output_pdf_path)
+            except:
+                pass
+                            
+            if caption_text:
+                # Update caption element with extracted text
+                caption_element['content'] = {'text': caption_text.strip()}
+                return caption_text.strip()
+            else:
+                return None
+                    
+        except Exception as e:
+            logger.error(f"Error extracting caption text: {str(e)}")
+            return None
+
+    def run_semantic_analysis(self):
+        """Run semantic analysis on the current document's figures and captions"""
+        if not self.pdf_document or not self.document_record:
+            QMessageBox.warning(self, "No Document", "No PDF document is loaded.")
+            return
+
+        try:
+            # Set wait cursor
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+            self.status_label.showMessage("Running semantic analysis...", 0)
+            QApplication.processEvents()
+
+            # Get all page structures
+            page_structures = self.document_data.get('page_structures', {})
+            if not page_structures:
+                QMessageBox.information(self, "No Analysis Data", 
+                    "No page analysis data found. Please analyze the document first.")
+                return
+
+            # Track statistics
+            total_elements = 0  # Total elements that could be figures
+            linked_figures = 0  # Elements that were linked with captions
+            skipped_elements = 0  # Elements that weren't linked with captions
+            updated_categories = 0
+            sequential_number = 1  # Counter for sequential numbering
+            ocr_captions = 0  # Counter for captions processed with OCR
+
+            # Define figure category prefixes to look for
+            figure_prefixes = ['figure', 'table', 'picture', 'map', 'image', 'chart', 'graph', 'diagram']
+            
+            # Process each page
+            for page_num, page_data in page_structures.items():
+                elements = page_data.get('structure', {}).get('elements', [])
+                
+                # First pass: identify all figure-like elements and captions
+                potential_figures = []
+                captions = []
+                
+                for element in elements:
+                    category = element.get('category', '').lower()
+                    # Look for figure-like elements that match our prefixes
+                    if any(prefix == category for prefix in figure_prefixes):
+                        potential_figures.append(element)
+                        total_elements += 1
+                    # Look for captions
+                    elif category.startswith('caption'):
+                        captions.append(element)
+
+                # Second pass: try to link figures with captions
+                for element in potential_figures:
+                    element_coords = element.get('coordinates', [])
+                    if len(element_coords) < 4:
+                        continue
+
+                    # Get element's bounding box
+                    fig_x1 = min(coord['x'] for coord in element_coords)
+                    fig_y1 = min(coord['y'] for coord in element_coords)
+                    fig_x2 = max(coord['x'] for coord in element_coords)
+                    fig_y2 = max(coord['y'] for coord in element_coords)
+                    
+                    # Look for captions on the same page
+                    best_caption = None
+                    best_score = 0
+                    
+                    for caption in captions:
+                        caption_coords = caption.get('coordinates', [])
+                        if len(caption_coords) < 4:
+                            continue
+                            
+                        # Get caption's bounding box
+                        cap_x1 = min(coord['x'] for coord in caption_coords)
+                        cap_y1 = min(coord['y'] for coord in caption_coords)
+                        cap_x2 = max(coord['x'] for coord in caption_coords)
+                        cap_y2 = max(coord['y'] for coord in caption_coords)
+                        
+                        # Calculate vertical distance (normalized to page height)
+                        page_height = page_data.get('structure', {}).get('metadata', {}).get('page_height', 1.0)
+                        vert_distance = min(abs(cap_y1 - fig_y2), abs(fig_y1 - cap_y2)) / page_height
+                        
+                        # Calculate horizontal overlap
+                        overlap_x = max(0, min(fig_x2, cap_x2) - max(fig_x1, cap_x1))
+                        overlap_ratio = overlap_x / (fig_x2 - fig_x1) if (fig_x2 - fig_x1) > 0 else 0
+                        
+                        # Score the caption based on:
+                        # 1. Vertical proximity (closer is better)
+                        # 2. Horizontal alignment (more overlap is better)
+                        # 3. Caption should typically be below the figure
+                        score = 0
+                        if cap_y1 > fig_y2:  # Caption is below figure
+                            score += 0.5
+                        if vert_distance < 0.1:  # Very close vertically
+                            score += 0.3
+                        elif vert_distance < 0.2:  # Moderately close
+                            score += 0.2
+                        if overlap_ratio > 0.5:  # Good horizontal alignment
+                            score += 0.2
+                            
+                        # Check caption text for figure references
+                        caption_text = caption.get('content', {}).get('text', '')
+                        if not caption_text:
+                            # Try OCR if no text is found
+                            caption_text = self._extract_caption_text(caption, int(page_num))
+                            if caption_text:
+                                ocr_captions += 1
+                                logger.info(f"Extracted caption text using OCR: {caption_text}")
+                                
+                        if caption_text:
+                            caption_text = caption_text.lower()
+                            # Look for references that match the figure's category
+                            if any(prefix in caption_text for prefix in figure_prefixes):
+                                score += 0.1
+                            
+                        if score > best_score:
+                            best_score = score
+                            best_caption = caption
+                    
+                    # If we found a good caption match, process it as a figure
+                    if best_caption and best_score >= 0.5:  # Threshold for considering it a match
+                        # Update element category to include 'figure:' prefix
+                        current_category = element.get('category', '').lower()
+                        if not current_category.startswith('figure:'):
+                            element['category'] = f"figure:{current_category}"
+                            updated_categories += 1
+                            logger.info(f"Updated category from '{current_category}' to 'figure:{current_category}'")
+                        
+                        # Add linked elements to both figure and caption
+                        if 'linked_elements' not in element:
+                            element['linked_elements'] = []
+                        if 'linked_elements' not in best_caption:
+                            best_caption['linked_elements'] = []
+                            
+                        # Add bidirectional links
+                        element['linked_elements'].append([int(page_num), int(best_caption['id'])])
+                        best_caption['linked_elements'].append([int(page_num), int(element['id'])])
+                        
+                        # Update figure number if found in caption
+                        caption_text = best_caption.get('content', {}).get('text', '')
+                        import re
+                        # Look for number after any of our figure prefixes
+                        fig_match = None
+                        for prefix in figure_prefixes:
+                            pattern = f"{prefix}\\s*(\\d+)"
+                            fig_match = re.search(pattern, caption_text, re.IGNORECASE)
+                            if fig_match:
+                                break
+                                
+                        if fig_match:
+                            element['figure_number'] = int(fig_match.group(1))
+                        else:
+                            # If no number found in caption, assign sequential number
+                            element['figure_number'] = sequential_number
+                            sequential_number += 1
+                            logger.info(f"Assigned sequential number {element['figure_number']} to figure")
+                            
+                        linked_figures += 1
+                    else:
+                        # If no caption found, don't process as a figure
+                        skipped_elements += 1
+                        # Remove any existing figure-related attributes
+                        if 'figure_number' in element:
+                            del element['figure_number']
+                        if 'linked_elements' in element:
+                            del element['linked_elements']
+                        # Reset category to base category if it was previously marked as a figure
+                        if element.get('category', '').startswith('figure:'):
+                            element['category'] = element['category'].replace('figure:', '')
+                            logger.info(f"Reset category from '{element['category']}' to base category")
+
+            # Save the updated page structures
+            self.save_session()
+            
+            # Update the display
+            self.update_page_display()
+            
+            # Show results
+            msg = (f"Semantic analysis completed:\n"
+                  f"Total elements analyzed: {total_elements}\n"
+                  f"Elements linked with captions (figures): {linked_figures}\n"
+                  f"Elements without captions (not figures): {skipped_elements}\n"
+                  f"Categories updated to 'figure:': {updated_categories}\n"
+                  f"Sequential numbering used: {sequential_number - 1} figures\n"
+                  f"Captions processed with OCR: {ocr_captions}")
+            
+            QMessageBox.information(self, "Semantic Analysis Complete", msg)
+            
+            # Reset cursor
+            QApplication.restoreOverrideCursor()
+            self.status_label.showMessage("Semantic analysis completed", 3000)
+
+        except Exception as e:
+            logger.error(f"Error running semantic analysis: {str(e)}")
+            QMessageBox.critical(self, "Analysis Error", f"Error running semantic analysis: {str(e)}")
+            QApplication.restoreOverrideCursor()
+            self.status_label.showMessage("Semantic analysis failed", 3000)
 
 
 def main():

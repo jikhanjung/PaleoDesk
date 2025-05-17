@@ -160,6 +160,8 @@ class PDFViewer(QWidget):
             """Set the PDF document and reset state"""
             self.clear_document()
             self.pdf_document = pdf_document
+            self.figure_count = 0
+            self.figure_dict = {}
             self.total_pages = len(self.pdf_document)
             self.load_initial_pages()
             
@@ -867,6 +869,7 @@ class PDFViewer(QWidget):
                 element_id=int(element_id),
                 defaults={
                     'element_type': element.get('category', 'unknown'),
+                    'figure_number': element.get('figure_number', 0),
                     'coordinates': json.dumps(element.get('coordinates', [])),
                     'content': json.dumps(element.get('content', {})),
                     'caption': json.dumps(element.get('caption', {})),
@@ -881,6 +884,7 @@ class PDFViewer(QWidget):
             
             # Update the element if it already existed
             structured_element.element_type = element.get('category', 'unknown')
+            structured_element.figure_number = element.get('figure_number', 0)
             structured_element.coordinates = json.dumps(element.get('coordinates', []))
             structured_element.content = json.dumps(element.get('content', {}))
             structured_element.caption = json.dumps(element.get('caption', {}))

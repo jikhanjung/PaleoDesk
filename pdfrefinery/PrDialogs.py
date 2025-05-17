@@ -1,11 +1,14 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, 
                            QLabel, QLineEdit, QComboBox, QDialogButtonBox, 
-                           QTextEdit, QSizePolicy, QLayout)
+                           QTextEdit, QSizePolicy, QLayout, QMessageBox)
 from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QImage, QPixmap
 from PDFCommons import *
+from PDFModels import *
 import logging
 import fitz
+import json
+import datetime
 
 # Get logger
 logger = logging.getLogger('PrDialogs')
@@ -91,6 +94,7 @@ class ElementInfoDialog(QDialog):
         self.figure_element = None
         self.caption_element = None
         self.text_elements = []
+        self.figure_number_edit = None
         self._handle_element_data()
         #logger.info(f"element_data: {self.element_data}")
         self.init_ui()
@@ -159,6 +163,9 @@ class ElementInfoDialog(QDialog):
                             self.figure_element = elem
                         elif elem['category'].startswith('caption'):
                             self.caption_element = elem
+        logger.info(f"figure_element: {self.figure_element}")
+        logger.info(f"caption_element: {self.caption_element}")
+        logger.info(f"category: {self.category}")
 
     def _get_element_info(self, page_num, element_id):
         """Get element info for a given page number and element ID"""
@@ -181,6 +188,15 @@ class ElementInfoDialog(QDialog):
         form_layout.addRow("Category:", QLabel(self.category.capitalize()))
         for elem in self.element_data:
             form_layout.addRow("ID:", QLabel(f"{elem.get('page_number', '')+1}-{int(elem.get('id', ''))+1}"))
+        
+        # Add figure number field if category is figure
+        if self.category == 'figure' and self.figure_element:
+            self.figure_number_edit = QLineEdit()
+            # Get current figure number from the element data if it exists
+            current_number = self.figure_element.get('figure_number', '')
+            self.figure_number_edit.setText(str(current_number))
+            form_layout.addRow("Figure Number:", self.figure_number_edit)
+        
         layout.addLayout(form_layout)
 
         caption_text_value = None
@@ -223,10 +239,78 @@ class ElementInfoDialog(QDialog):
             text_edit.setPlainText(text)
             text_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             layout.addWidget(text_edit, 1)
-        # Add close button
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        # Add close and save buttons for figure editing
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Close | 
+            QDialogButtonBox.StandardButton.Save
+        )
         button_box.rejected.connect(self.reject)
+        if self.category == 'figure':
+            button_box.accepted.connect(self.save_figure_number)
         button_box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         layout.addWidget(button_box)
         self.setLayout(layout)
-        self.setMinimumSize(600, 400)        
+        self.setMinimumSize(600, 400)
+
+    def save_element(self, element):
+        """Save the element to database and update the page structure"""
+        # Get the element from the page structure
+        if not self.main_window or not hasattr(self.main_window, 'document_data'):
+            return
+
+        document = self.main_window.document_record
+        if not document:
+            logger.error("No document found in database")
+            return
+
+        try:
+            # Create or update the structured element
+            structured_element = StructuredElement.get_or_create(
+                document=document,
+                page_number=element['page_number'],
+                element_id=int(element['id']),
+                defaults={
+                    'element_type': element.get('category', 'unknown'),
+                    'figure_number': element.get('figure_number', 0),
+                    'coordinates': json.dumps(element.get('coordinates', [])),
+                    'content': json.dumps(element.get('content', {})),
+                    'caption': json.dumps(element.get('caption', {})),
+                    'metadata': json.dumps(element.get('metadata', {})),
+                    'created_at': datetime.datetime.now(),
+                    'updated_at': datetime.datetime.now()
+                }
+            )[0]
+
+            old_type = structured_element.element_type
+            new_type = element.get('category', 'unknown')
+            
+            # Update the element if it already existed
+            structured_element.element_type = element.get('category', 'unknown')
+            structured_element.figure_number = element.get('figure_number', 0)
+            structured_element.coordinates = json.dumps(element.get('coordinates', []))
+            structured_element.content = json.dumps(element.get('content', {}))
+            structured_element.caption = json.dumps(element.get('caption', {}))
+            structured_element.metadata = json.dumps(element.get('metadata', {}))
+            structured_element.updated_at = datetime.datetime.now()
+            structured_element.save()
+
+            logger.info(f"Saved row_id {structured_element.id} for element {element['id']} from page {element['page_number']} to database {old_type} -> {new_type}")
+            
+        except Exception as e:
+            logger.error(f"Error saving element to database: {str(e)}")
+            QMessageBox.warning(self, "Save Error", 
+                f"Error saving element to database: {str(e)}")
+
+    def save_figure_number(self):
+        """Save the edited figure number back to the element data"""
+        if self.category == 'figure' and self.figure_element and self.figure_number_edit:
+            try:
+                new_number = self.figure_number_edit.text().strip()
+                if new_number:  # Only update if there's a value
+                    self.figure_element['figure_number'] = new_number
+                    # Save the updated element using our own save_element function
+                    self.save_element(self.figure_element)
+                    logger.info(f"Updated figure number to: {new_number}")
+            except Exception as e:
+                logger.error(f"Error saving figure number: {str(e)}")
+        self.accept()        

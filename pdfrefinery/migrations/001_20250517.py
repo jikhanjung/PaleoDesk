@@ -1,4 +1,4 @@
-"""Peewee migrations -- 001_20250515.py.
+"""Peewee migrations -- 001_20250517.py.
 
 Some examples (model - class or model name)::
 
@@ -71,6 +71,9 @@ def migrate(migrator: Migrator, database: pw.Database, *, fake=False):
         document = pw.ForeignKeyField(column_name='document_id', field='id', model=migrator.orm['pdfdocument'])
         figure_number = pw.CharField(max_length=255)
         figure_page_number = pw.IntegerField(null=True)
+        figure_element_id = pw.IntegerField(null=True)
+        caption_page_number = pw.IntegerField(null=True)
+        caption_element_id = pw.IntegerField(null=True)
         part1_prefix = pw.CharField(max_length=255, null=True)
         part1_number = pw.CharField(max_length=255, null=True)
         part2_prefix = pw.CharField(max_length=255, null=True)
@@ -107,6 +110,7 @@ def migrate(migrator: Migrator, database: pw.Database, *, fake=False):
         element_id = pw.IntegerField()
         element_type = pw.CharField(max_length=255)
         coordinates = pw.TextField()
+        figure_number = pw.IntegerField(null=True)
         content = pw.TextField(null=True)
         caption = pw.TextField(null=True)
         metadata = pw.TextField(null=True)
