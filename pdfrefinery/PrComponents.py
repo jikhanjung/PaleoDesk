@@ -874,6 +874,8 @@ class PDFViewer(QWidget):
                     'content': json.dumps(element.get('content', {})),
                     'caption': json.dumps(element.get('caption', {})),
                     'metadata': json.dumps(element.get('metadata', {})),
+                    'linked_elements': json.dumps(element.get('linked_elements', [])),
+                    'merged_elements': json.dumps(element.get('merged_elements', [])),
                     'created_at': datetime.datetime.now(),
                     'updated_at': datetime.datetime.now()
                 }
@@ -889,6 +891,8 @@ class PDFViewer(QWidget):
             structured_element.content = json.dumps(element.get('content', {}))
             structured_element.caption = json.dumps(element.get('caption', {}))
             structured_element.metadata = json.dumps(element.get('metadata', {}))
+            structured_element.linked_elements = json.dumps(element.get('linked_elements', []))
+            structured_element.merged_elements = json.dumps(element.get('merged_elements', []))
             structured_element.updated_at = datetime.datetime.now()
             structured_element.save()
 

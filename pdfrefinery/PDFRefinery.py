@@ -1116,11 +1116,11 @@ class MainWindow(QMainWindow):
                                     'content': json.dumps(element.get('content', {})),
                                     'caption': json.dumps(element.get('caption', {})),
                                     'metadata': json.dumps(element.get('metadata', {})),
+                                    'linked_elements': json.dumps(element.get('linked_elements', [])),
+                                    'merged_elements': json.dumps(element.get('merged_elements', [])),
                                     'created_at': datetime.datetime.now(),
                                     'updated_at': datetime.datetime.now()
                                 })
-                    # printout elements' page and id, not the whole element for elements_to_create
-                    #logger.info(f"Elements to create: {[{'page': e['page_number'], 'id': e['element_id']} for e in elements_to_create]}")
 
                     if elements_to_create:
                         with db.atomic():
@@ -1157,6 +1157,74 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error saving session: {str(e)}")
             logger.error("Full error details:", exc_info=True)
+
+    def save_element(self, page_num, element_id):
+        """Save a single element to database and update the page structure"""
+        logger.info(f"Saving element {element_id} from page {page_num}")
+        try:
+            if not hasattr(self, 'document_data') or not self.document_record:
+                logger.error("No document data or record found")
+                return
+
+            # Get the element from the page structure
+            page_key = str(page_num)
+            if page_key not in self.document_data['page_structures']:
+                logger.error(f"Page {page_key} not found in page structures")
+                return
+
+            page_structure = self.document_data['page_structures'][page_key]
+            if 'structure' not in page_structure or 'elements' not in page_structure['structure']:
+                logger.error(f"No elements found in page structure for page {page_key}")
+                return
+
+            elements = page_structure['structure']['elements']
+            element = None
+            for e in elements:
+                if int(e.get('id')) == int(element_id):
+                    element = e
+                    break
+
+            if not element:
+                logger.error(f"Element {element_id} not found in page {page_key}")
+                return
+
+            # Create or update the structured element
+            structured_element = StructuredElement.get_or_create(
+                document=self.document_record,
+                page_number=page_num,
+                element_id=int(element_id),
+                defaults={
+                    'element_type': element.get('category', 'unknown'),
+                    'figure_number': element.get('figure_number', 0),
+                    'coordinates': json.dumps(element.get('coordinates', [])),
+                    'content': json.dumps(element.get('content', {})),
+                    'caption': json.dumps(element.get('caption', {})),
+                    'metadata': json.dumps(element.get('metadata', {})),
+                    'created_at': datetime.datetime.now(),
+                    'updated_at': datetime.datetime.now()
+                }
+            )[0]
+
+            old_type = structured_element.element_type
+            new_type = element.get('category', 'unknown')
+            
+            # Update the element if it already existed
+            structured_element.element_type = element.get('category', 'unknown')
+            structured_element.figure_number = element.get('figure_number', 0)
+            structured_element.coordinates = json.dumps(element.get('coordinates', []))
+            structured_element.content = json.dumps(element.get('content', {}))
+            structured_element.caption = json.dumps(element.get('caption', {}))
+            structured_element.metadata = json.dumps(element.get('metadata', {}))
+            structured_element.updated_at = datetime.datetime.now()
+            structured_element.save()
+
+            logger.info(f"Saved element {element_id} from page {page_num} to database ({old_type} -> {new_type})")
+            
+        except Exception as e:
+            logger.error(f"Error saving element to database: {str(e)}")
+            logger.error("Full error details:", exc_info=True)
+            QMessageBox.warning(self, "Save Error", 
+                f"Error saving element to database: {str(e)}")
 
     def load_document_record(self):
         """Load document record from database"""
@@ -2527,14 +2595,16 @@ class MainWindow(QMainWindow):
                         # If no caption found, don't process as a figure
                         skipped_elements += 1
                         # Remove any existing figure-related attributes
-                        if 'figure_number' in element:
-                            del element['figure_number']
                         if 'linked_elements' in element:
-                            del element['linked_elements']
+                            element['linked_elements'] = []
+
                         # Reset category to base category if it was previously marked as a figure
                         if element.get('category', '').startswith('figure:'):
                             element['category'] = element['category'].replace('figure:', '')
                             logger.info(f"Reset category from '{element['category']}' to base category")
+                    # save element information to the database
+                    #self.save_element(int(page_num), element['id'])
+                    
 
             # Save the updated page structures
             self.save_session()
@@ -2568,9 +2638,7 @@ def main():
     try:
         app = QApplication(sys.argv)
         window = MainWindow()
-        print("window created")
         window.show()
-        print("window shown")
         sys.exit(app.exec())
     except Exception as e:
         logger.critical(f"Application error: {str(e)}", exc_info=True)
