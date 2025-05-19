@@ -314,3 +314,67 @@ class ElementInfoDialog(QDialog):
             except Exception as e:
                 logger.error(f"Error saving figure number: {str(e)}")
         self.accept()        
+
+class FigureInfoDialog(QDialog):
+    def __init__(self, prfigure, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Edit Figure {prfigure.figure_number}")
+        self.prfigure = prfigure
+        layout = QVBoxLayout(self)
+
+        # Figure image
+        if prfigure.figure_binary:
+            pixmap = QPixmap()
+            pixmap.loadFromData(prfigure.figure_binary)
+            img_label = QLabel()
+            img_label.setPixmap(pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(img_label)
+
+        # Figure number
+        num_layout = QHBoxLayout()
+        num_label = QLabel("Figure Number:")
+        self.num_edit = QLineEdit(str(prfigure.figure_number))
+        num_layout.addWidget(num_label)
+        num_layout.addWidget(self.num_edit)
+        layout.addLayout(num_layout)
+
+        # Page number (read-only)
+        page_layout = QHBoxLayout()
+        page_label = QLabel("Page Number:")
+        page_val = QLabel(str(prfigure.figure_page_number))
+        page_layout.addWidget(page_label)
+        page_layout.addWidget(page_val)
+        layout.addLayout(page_layout)
+
+        # Caption text
+        cap_label = QLabel("Caption:")
+        layout.addWidget(cap_label)
+        self.cap_edit = QTextEdit()
+        self.cap_edit.setPlainText(prfigure.caption_text or "")
+        layout.addWidget(self.cap_edit)
+
+        # Caption image (optional)
+        if prfigure.caption_binary:
+            cap_pixmap = QPixmap()
+            cap_pixmap.loadFromData(prfigure.caption_binary)
+            cap_img_label = QLabel()
+            cap_img_label.setPixmap(cap_pixmap.scaled(150, 50, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            cap_img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(cap_img_label)
+
+        # OK/Cancel buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def accept(self):
+        # Update prfigure fields
+        try:
+            self.prfigure.figure_number = int(self.num_edit.text())
+        except Exception:
+            pass
+        self.prfigure.caption_text = self.cap_edit.toPlainText()
+        self.prfigure.save()
+        super().accept()        

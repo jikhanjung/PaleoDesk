@@ -1,10 +1,10 @@
 from PyQt6.QtWidgets import (QWidget, QToolBar, QListWidget, QVBoxLayout, QLabel, 
                            QListWidgetItem, QMessageBox, QHBoxLayout, QPushButton, QScrollArea, QToolTip,
                             QDialog, QButtonGroup, QDialogButtonBox, QRadioButton, QMenu, QApplication,
-                            QSplitter, QListView, QTableView, QSizePolicy, QFrame )
-from PyQt6.QtCore import Qt, QPoint, QPointF, QEvent, pyqtSignal, QRect, QSize, QRectF, pyqtSignal, QTimer, QEvent, QCoreApplication
-from PyQt6.QtGui import QPixmap, QPainter, QAction, QColor, QPen, QPainterPath, QBrush, QImage, QImageReader, QStandardItem, QStandardItemModel
-from PDFModels import StructuredElement
+                            QSplitter, QListView, QTableView, QSizePolicy, QFrame, QHeaderView )
+from PyQt6.QtCore import Qt, QPoint, QPointF, QEvent, pyqtSignal, QRect, QSize, QRectF, pyqtSignal, QTimer, QEvent, QCoreApplication, QAbstractTableModel, QModelIndex, QVariant
+from PyQt6.QtGui import QPixmap, QPainter, QAction, QColor, QPen, QPainterPath, QBrush, QImage, QImageReader, QStandardItem, QStandardItemModel, QCursor
+from PDFModels import StructuredElement, PrFigure
 from PDFCommons import *
 import logging
 import json
@@ -17,6 +17,8 @@ from peewee import DoesNotExist, chunked
 from peewee_migrate import Router
 import fitz
 from PrDialogs import *
+import numpy as np
+import cv2
 # Get logger
 logger = logging.getLogger('PrComponents')
 
@@ -1715,6 +1717,8 @@ class PDFViewer(QWidget):
             page_pixmap = self.page_pixmaps[page_num]['pixmap']
             if not page_pixmap:
                 return
+            # wait cursor
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
                 
             # Convert coordinates to absolute pixels
             page_width = self.page_pixmaps[page_num]['width']
@@ -1806,8 +1810,13 @@ class PDFViewer(QWidget):
             else:
                 QMessageBox.warning(self, "Caption Extraction", 
                     "No text could be extracted from the caption image.")
+                
+            # restore cursor
+            QApplication.restoreOverrideCursor()
                     
         except Exception as e:
+            # restore cursor
+            QApplication.restoreOverrideCursor()
             logger.error(f"Error extracting caption text: {str(e)}")
             QMessageBox.warning(self, "Caption Extraction Error", 
                 f"Error extracting caption text: {str(e)}")
@@ -2561,6 +2570,11 @@ class FigureGalleryWidget(QWidget):
         self.setMinimumWidth(10)
         from PyQt6.QtWidgets import QSizePolicy
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.selected_index = None  # Track selected figure index
+
+    def set_selected_index(self, idx):
+        self.selected_index = idx
+        self.update()
 
     def update_height(self):
         width = self.width() if self.width() > 0 else 10
@@ -2602,19 +2616,41 @@ class FigureGalleryWidget(QWidget):
         painter = QPainter(self)
         y = 0
         width = self.width()
-        for fig in self.figures:
+        for i, fig in enumerate(self.figures):
             pixmap = fig['pixmap']
             if pixmap.isNull():
                 continue
             scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
             painter.drawPixmap(0, y, scaled_pixmap)
-            # Draw bounding boxes here if needed (future)
-            # Example: for box in fig.get('bounding_boxes', []): ...
+            # Draw bounding box if selected
+            if i == self.selected_index:
+                pen = QPen(QColor(255, 0, 0), 4)
+                painter.setPen(pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(0, y, scaled_pixmap.width(), scaled_pixmap.height())
+            # Draw detected subfigure boxes (if any)
+            if 'subfig_boxes' in fig:
+                for idx, rect in enumerate(fig['subfig_boxes']):
+                    pen = QPen(QColor(0, 200, 0), 3)
+                    painter.setPen(pen)
+                    # Scale rect to match displayed pixmap size
+                    x_scale = scaled_pixmap.width() / pixmap.width()
+                    y_scale = scaled_pixmap.height() / pixmap.height()
+                    sx = int(rect.x() * x_scale)
+                    sy = int(rect.y() * y_scale)
+                    sw = int(rect.width() * x_scale)
+                    sh = int(rect.height() * y_scale)
+                    # Fill selected subfigure box
+                    if i == self.selected_index and hasattr(self, '_selected_subfig_box') and idx == self._selected_subfig_box:
+                        painter.setBrush(QColor(0, 200, 0, 80))  # semi-transparent green
+                    else:
+                        painter.setBrush(Qt.BrushStyle.NoBrush)
+                    painter.drawRect(sx, y + sy, sw, sh)
             # Draw caption below image
             if fig.get('caption'):
                 painter.setPen(Qt.GlobalColor.black)
                 painter.drawText(0, y + scaled_pixmap.height() + 20, fig['caption'])
-            y += scaled_pixmap.height() + 40  # Add spacing for caption
+            y += scaled_pixmap.height() + 40
 
     def sizeHint(self):
         width = self.width() if self.width() > 0 else 10
@@ -2635,18 +2671,386 @@ class FigureGalleryWidget(QWidget):
         self.update_height()
         super().resizeEvent(event)
 
+    def contextMenuEvent(self, event):
+        y = event.position().y() if hasattr(event, 'position') else event.y()
+        width = self.width()
+        current_y = 0
+        clicked_index = None
+        for i, fig in enumerate(self.figures):
+            pixmap = fig['pixmap']
+            if pixmap.isNull():
+                continue
+            scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
+            if current_y <= y < current_y + scaled_pixmap.height():
+                clicked_index = i
+                break
+            current_y += scaled_pixmap.height() + 40
+        if clicked_index is not None and clicked_index == self.selected_index:
+            menu = QMenu(self)
+            edit_action = menu.addAction("Edit")
+            detect_action = menu.addAction("Detect subfigures")
+            detect_action.triggered.connect(lambda: self.detect_subfigures(clicked_index))
+            menu.exec(event.globalPos())
+
+    def detect_subfigures(self, idx):
+        pixmap = self.figures[idx]['pixmap']
+        result, annotated_pixmap = self.segment_figures_qt(pixmap)
+        # Store bounding boxes in the figure's data
+        boxes = [rect for _, rect in result]
+        self.figures[idx]['subfig_boxes'] = boxes
+        self.update()
+        # Show the annotated image in a dialog
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Detected Subfigures")
+        vbox = QVBoxLayout(dlg)
+        label = QLabel()
+        label.setPixmap(annotated_pixmap)
+        vbox.addWidget(label)
+        dlg.setLayout(vbox)
+        dlg.exec()
+
+    def check_overlap(self, box1, box2):
+        # box = (x, y, w, h)
+        x1, y1, w1, h1 = box1[:4]
+        x2, y2, w2, h2 = box2[:4]
+        if (x1 < x2 + w2 and x1 + w1 > x2 and
+            y1 < y2 + h2 and y1 + h1 > y2):
+            return True
+        return False
+
+    def segment_figures_qt(self, qpixmap):
+        import logging
+        logger = logging.getLogger('PrComponents')
+        img = qpixmap.toImage()
+        width = img.width()
+        height = img.height()
+        ptr = img.constBits()
+        ptr.setsize(height * width * 4)
+        arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
+        img = cv2.cvtColor(arr, cv2.COLOR_RGBA2RGB)
+        original_img = img.copy()
+        scale_factor = max(1, min(width, height) / 4000)
+        proc_width = int(width / scale_factor)
+        proc_height = int(height / scale_factor)
+        proc_img = cv2.resize(img, (proc_width, proc_height))
+        gray = cv2.cvtColor(proc_img, cv2.COLOR_RGB2GRAY)
+        _, black_mask = cv2.threshold(gray, 20, 255, cv2.THRESH_BINARY)
+        proc_img[black_mask == 0] = [255, 255, 255]
+        def process_image(img):
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+            kernel = np.ones((5,5), np.uint8)
+            gray = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+            gray = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel)
+            _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            total_area = img.shape[0] * img.shape[1]
+            min_contour_area = total_area * 0.005
+            max_contour_area = total_area * 0.8
+            bounding_boxes = []
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if min_contour_area < area < max_contour_area:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    bounding_boxes.append((x, y, w, h))
+            return bounding_boxes
+        bounding_boxes = process_image(proc_img)
+        if len(bounding_boxes) < 10 or len(bounding_boxes) > 50:
+            low, high = 0.001, 0.05
+            while high - low > 0.0001:
+                mid = (low + high) / 2
+                min_contour_area = proc_width * proc_height * mid
+                bounding_boxes = process_image(proc_img)
+                if len(bounding_boxes) < 10:
+                    high = mid
+                elif len(bounding_boxes) > 50:
+                    low = mid
+                else:
+                    break
+        bounding_boxes = [(int(x*scale_factor), int(y*scale_factor), 
+                        int(w*scale_factor), int(h*scale_factor)) 
+                        for x, y, w, h in bounding_boxes]
+        valid_boxes = []
+        for box in bounding_boxes:
+            is_valid = True
+            for valid_box in valid_boxes:
+                if self.check_overlap(box, valid_box):
+                    if box[2] * box[3] > valid_box[2] * valid_box[3]:
+                        valid_boxes.remove(valid_box)
+                    else:
+                        is_valid = False
+                    break
+            if is_valid:
+                valid_boxes.append(box)
+        logger.info(f"Detected {len(valid_boxes)} subfigures (bounding boxes)")
+        for i, box in enumerate(valid_boxes):
+            logger.info(f"Box {i+1}: x={box[0]}, y={box[1]}, w={box[2]}, h={box[3]}")
+        if valid_boxes:
+            avg_height = sum(box[3] for box in valid_boxes) / len(valid_boxes)
+            for i, box in enumerate(valid_boxes):
+                box_y = box[1]
+                row = int(box_y / (avg_height * 1.2))
+                valid_boxes[i] = box + (row,)
+            valid_boxes.sort(key=lambda box: (box[4], box[0]))
+        annotated_pixmap = qpixmap.copy()
+        painter = QPainter(annotated_pixmap)
+        painter.setPen(QPen(Qt.GlobalColor.green, 5, Qt.PenStyle.SolidLine))
+        result = []
+        for i, (x, y, w, h, _) in enumerate(valid_boxes, start=1):
+            padding = 10
+            x = max(0, x - padding)
+            y = max(0, y - padding)
+            w = min(original_img.shape[1] - x, w + 2*padding)
+            h = min(original_img.shape[0] - y, h + 2*padding)
+            figure = original_img[y:y+h, x:x+w]
+            height_, width_, channel = figure.shape
+            bytes_per_line = 3 * width_
+            q_img = QImage(figure.tobytes(), width_, height_, bytes_per_line, QImage.Format.Format_RGB888)
+            cropped_pixmap = QPixmap.fromImage(q_img)
+            result.append((cropped_pixmap, QRect(x, y, w, h)))
+            painter.drawRect(x, y, w, h)
+        painter.end()
+        return result, annotated_pixmap
+
+    # --- Basic box editing: click and drag to move a box ---
+    def mousePressEvent(self, event):
+        if self.selected_index is None:
+            return
+        fig = self.figures[self.selected_index]
+        if 'subfig_boxes' not in fig:
+            return
+        width = self.width()
+        pixmap = fig['pixmap']
+        scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
+        x_scale = scaled_pixmap.width() / pixmap.width()
+        y_scale = scaled_pixmap.height() / pixmap.height()
+        y_offset = 0
+        for i in range(self.selected_index):
+            p = self.figures[i]['pixmap']
+            y_offset += p.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation).height() + 40
+        click_x = event.position().x() if hasattr(event, 'position') else event.x()
+        click_y = (event.position().y() if hasattr(event, 'position') else event.y()) - y_offset
+        edge_threshold = 8  # pixels
+        for idx, rect in enumerate(fig['subfig_boxes']):
+            sx = int(rect.x() * x_scale)
+            sy = int(rect.y() * y_scale)
+            sw = int(rect.width() * x_scale)
+            sh = int(rect.height() * y_scale)
+            # Check for edge/corner
+            near_left = abs(click_x - sx) <= edge_threshold
+            near_right = abs(click_x - (sx + sw)) <= edge_threshold
+            near_top = abs(click_y - sy) <= edge_threshold
+            near_bottom = abs(click_y - (sy + sh)) <= edge_threshold
+            inside_x = sx < click_x < sx + sw
+            inside_y = sy < click_y < sy + sh
+            resize_edges = None
+            if (near_left and near_top):
+                resize_edges = 'nw'
+            elif (near_right and near_top):
+                resize_edges = 'ne'
+            elif (near_left and near_bottom):
+                resize_edges = 'sw'
+            elif (near_right and near_bottom):
+                resize_edges = 'se'
+            elif near_left and inside_y:
+                resize_edges = 'w'
+            elif near_right and inside_y:
+                resize_edges = 'e'
+            elif near_top and inside_x:
+                resize_edges = 'n'
+            elif near_bottom and inside_x:
+                resize_edges = 's'
+            if resize_edges:
+                self._resizing_box = idx
+                self._resize_edges = resize_edges
+                self._resize_start = (click_x, click_y)
+                self._resize_rect_orig = QRect(rect)
+                self._selected_subfig_box = idx
+                self.update()
+                break
+            elif sx <= click_x <= sx + sw and sy <= click_y <= sy + sh:
+                self._dragging_box = idx
+                self._drag_offset = (click_x - sx, click_y - sy)
+                self._selected_subfig_box = idx
+                self.update()
+                break
+        else:
+            self._dragging_box = None
+            self._resizing_box = None
+            self._selected_subfig_box = None
+            self.update()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        width = self.width()
+        if self.selected_index is not None:
+            fig = self.figures[self.selected_index]
+            if 'subfig_boxes' in fig and hasattr(self, '_selected_subfig_box') and self._selected_subfig_box is not None:
+                pixmap = fig['pixmap']
+                scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
+                x_scale = scaled_pixmap.width() / pixmap.width()
+                y_scale = scaled_pixmap.height() / pixmap.height()
+                y_offset = 0
+                for i in range(self.selected_index):
+                    p = self.figures[i]['pixmap']
+                    y_offset += p.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation).height() + 40
+                move_x = event.position().x() if hasattr(event, 'position') else event.x()
+                move_y = (event.position().y() if hasattr(event, 'position') else event.y()) - y_offset
+                rect = fig['subfig_boxes'][self._selected_subfig_box]
+                sx = int(rect.x() * x_scale)
+                sy = int(rect.y() * y_scale)
+                sw = int(rect.width() * x_scale)
+                sh = int(rect.height() * y_scale)
+                edge_threshold = 8
+                # Set cursor shape if near edge
+                near_left = abs(move_x - sx) <= edge_threshold
+                near_right = abs(move_x - (sx + sw)) <= edge_threshold
+                near_top = abs(move_y - sy) <= edge_threshold
+                near_bottom = abs(move_y - (sy + sh)) <= edge_threshold
+                inside_x = sx < move_x < sx + sw
+                inside_y = sy < move_y < sy + sh
+                if (near_left and near_top) or (near_right and near_bottom):
+                    self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+                elif (near_right and near_top) or (near_left and near_bottom):
+                    self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+                elif near_left and inside_y or near_right and inside_y:
+                    self.setCursor(Qt.CursorShape.SizeHorCursor)
+                elif near_top and inside_x or near_bottom and inside_x:
+                    self.setCursor(Qt.CursorShape.SizeVerCursor)
+                else:
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+        # Resizing
+        if hasattr(self, '_resizing_box') and self._resizing_box is not None and self.selected_index is not None:
+            fig = self.figures[self.selected_index]
+            if 'subfig_boxes' not in fig:
+                return
+            pixmap = fig['pixmap']
+            scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
+            x_scale = scaled_pixmap.width() / pixmap.width()
+            y_scale = scaled_pixmap.height() / pixmap.height()
+            move_x = event.position().x() if hasattr(event, 'position') else event.x()
+            move_y = (event.position().y() if hasattr(event, 'position') else event.y())
+            start_x, start_y = self._resize_start
+            rect = self._resize_rect_orig
+            new_rect = QRect(rect)
+            dx = int((move_x - start_x) / x_scale)
+            dy = int((move_y - start_y) / y_scale)
+            if 'n' in self._resize_edges:
+                new_rect.setTop(rect.top() + dy)
+            if 's' in self._resize_edges:
+                new_rect.setBottom(rect.bottom() + dy)
+            if 'w' in self._resize_edges:
+                new_rect.setLeft(rect.left() + dx)
+            if 'e' in self._resize_edges:
+                new_rect.setRight(rect.right() + dx)
+            # Prevent inverted or too small
+            min_size = 10
+            if new_rect.width() < min_size:
+                if 'w' in self._resize_edges:
+                    new_rect.setLeft(new_rect.right() - min_size)
+                else:
+                    new_rect.setRight(new_rect.left() + min_size)
+            if new_rect.height() < min_size:
+                if 'n' in self._resize_edges:
+                    new_rect.setTop(new_rect.bottom() - min_size)
+                else:
+                    new_rect.setBottom(new_rect.top() + min_size)
+            fig['subfig_boxes'][self._resizing_box] = new_rect
+            self.update()
+        # Moving
+        elif hasattr(self, '_dragging_box') and self._dragging_box is not None and self.selected_index is not None:
+            fig = self.figures[self.selected_index]
+            if 'subfig_boxes' not in fig:
+                return
+            pixmap = fig['pixmap']
+            scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
+            x_scale = scaled_pixmap.width() / pixmap.width()
+            y_scale = scaled_pixmap.height() / pixmap.height()
+            y_offset = 0
+            for i in range(self.selected_index):
+                p = self.figures[i]['pixmap']
+                y_offset += p.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation).height() + 40
+            move_x = event.position().x() if hasattr(event, 'position') else event.x()
+            move_y = (event.position().y() if hasattr(event, 'position') else event.y()) - y_offset
+            dx, dy = self._drag_offset
+            rect = fig['subfig_boxes'][self._dragging_box]
+            new_x = int((move_x - dx) / x_scale)
+            new_y = int((move_y - dy) / y_scale)
+            fig['subfig_boxes'][self._dragging_box] = QRect(new_x, new_y, rect.width(), rect.height())
+            self.update()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if hasattr(self, '_dragging_box'):
+            self._dragging_box = None
+        if hasattr(self, '_resizing_box'):
+            self._resizing_box = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        super().mouseReleaseEvent(event)
+
+class PrFigureTableModel(QAbstractTableModel):
+    def __init__(self, figures=None, parent=None):
+        super().__init__(parent)
+        self._figures = figures or []
+        self._headers = ['Image', 'Figure #', 'Page', "Prefix1", "#1", "Prefix2", "#2", 'Caption']
+
+    def rowCount(self, parent=QModelIndex()):
+        return len(self._figures)
+
+    def columnCount(self, parent=QModelIndex()):
+        return len(self._headers)
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return QVariant()
+        fig = self._figures[index.row()]
+        col = index.column()
+        if role == Qt.ItemDataRole.DisplayRole:
+            if col == 1:
+                return str(fig.figure_number)
+            elif col == 2:
+                return str(fig.figure_page_number)
+            elif col == 3:
+                return fig.part1_prefix or ''
+            elif col == 4:
+                return fig.part1_number or ''
+            elif col == 5:
+                return fig.part2_prefix or ''
+            elif col == 6:
+                return fig.part2_number or ''
+            elif col == 7:
+                return fig.caption_text or ''
+        if role == Qt.ItemDataRole.DecorationRole and col == 0:
+            if fig.figure_binary:
+                pixmap = QPixmap()
+                pixmap.loadFromData(fig.figure_binary)
+                return pixmap
+        return QVariant()
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
+            return self._headers[section]
+        return QVariant()
+
+    def get_figure(self, row):
+        if 0 <= row < len(self._figures):
+            return self._figures[row]
+        return None
+
+    def set_figures(self, figures):
+        self.beginResetModel()
+        self._figures = figures
+        self.endResetModel()
+
 class FigureView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.model = QStandardItemModel(self)
-        self.model.setColumnCount(4)
-        self.model.setHorizontalHeaderLabels(['Image', 'Number', 'Page', 'Caption'])
+        self.main_window = parent
+        self.model = PrFigureTableModel([])
 
         self.splitter = QSplitter(Qt.Orientation.Vertical, self)
 
         # Top: Gallery in scroll area
         self.gallery_widget = FigureGalleryWidget()
-        # Create container for gallery_widget
         gallery_container = QWidget()
         gallery_layout = QVBoxLayout(gallery_container)
         gallery_layout.setContentsMargins(0, 0, 0, 0)
@@ -2663,8 +3067,6 @@ class FigureView(QWidget):
         self.splitter.addWidget(self.gallery_scroll)
         self.gallery_widget.set_scroll_callback(self._scroll_gallery_to_y)
 
-
-
         # Bottom: Table
         self.table_view = QTableView()
         self.table_view.setModel(self.model)
@@ -2672,20 +3074,40 @@ class FigureView(QWidget):
         self.table_view.setSelectionMode(QTableView.SelectionMode.SingleSelection)
         self.splitter.addWidget(self.table_view)
         self.table_view.setColumnHidden(0, True)
+        self.table_view.setColumnWidth(1, 100)
+        self.table_view.setColumnWidth(2, 50)
+        self.table_view.setColumnWidth(3, 100)
+        self.table_view.setColumnWidth(4, 50)
+        self.table_view.setColumnWidth(5, 100)
+        self.table_view.setColumnWidth(6, 50)
+        self.table_view.setColumnWidth(7, 300)
+        self.table_view.horizontalHeader().setSectionResizeMode(len(self.model._headers) - 1, QHeaderView.ResizeMode.Stretch)
+        
 
-        # Set splitter stretch factors so both widgets can shrink/grow
-        self.splitter.setStretchFactor(0, 3)
-        self.splitter.setStretchFactor(1, 1)
+        #self.splitter.setStretchFactor(0, 3)
+        #self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes([300, 100])
 
-        # Connect selection change to scroll gallery
         self.table_view.selectionModel().selectionChanged.connect(self._on_table_selection_changed)
+        self.table_view.doubleClicked.connect(self._on_table_double_clicked)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.splitter)
         self.setLayout(layout)
 
-        # Set initial splitter ratio (3/1)
-        self.splitter.setSizes([3, 1])
+        self.table_view.setStyleSheet('''
+            QTableView::item:selected, QTableView QTableCornerButton::section:pressed {
+                background: #2196F3;
+                color: white;
+            }
+            QTableView::item:focus {
+                outline: 2px solid #1976D2;
+            }
+            QHeaderView::section:selected {
+                background: #2196F3;
+                color: white;
+            }
+        ''')
 
     def _scroll_gallery_to_y(self, y):
         self.gallery_scroll.verticalScrollBar().setValue(y)
@@ -2694,28 +3116,27 @@ class FigureView(QWidget):
         if selected.indexes():
             row = selected.indexes()[0].row()
             self.gallery_widget.scroll_to_figure(row)
+            self.gallery_widget.set_selected_index(row)
+        else:
+            self.gallery_widget.set_selected_index(None)
+
+    def _on_table_double_clicked(self, index):
+        row = index.row()
+        fig = self.model.get_figure(row)
+        if not fig or not self.main_window or not hasattr(self.main_window, 'document_record'):
+            return
+        dialog = FigureInfoDialog(fig, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.show_figures_from_db(self.main_window.document_record)
 
     def show_figures_from_db(self, document):
-        from PDFModels import PrFigure
-        self.model.removeRows(0, self.model.rowCount())
-        figures = PrFigure.select().where(PrFigure.document == document).order_by(PrFigure.figure_number)
+        figures = list(PrFigure.select().where(PrFigure.document == document).order_by(PrFigure.figure_number))
+        self.model.set_figures(figures)
         gallery_figures = []
         for fig in figures:
-            items = []
-            # Image as icon for table (not shown)
             pixmap = QPixmap()
             if fig.figure_binary:
                 pixmap.loadFromData(fig.figure_binary)
-            item_img = QStandardItem()
-            item_img.setData(pixmap, Qt.ItemDataRole.DecorationRole)
-            item_img.setEditable(False)
-            items.append(item_img)
-            # Number, Page, Caption
-            items.append(QStandardItem(str(fig.figure_number)))
-            items.append(QStandardItem(str(fig.figure_page_number)))
-            items.append(QStandardItem(fig.caption_text or ""))
-            self.model.appendRow(items)
-            # For gallery
             gallery_figures.append({'pixmap': pixmap, 'caption': fig.caption_text or ""})
         self.gallery_widget.set_figures(gallery_figures)
 

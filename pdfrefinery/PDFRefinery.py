@@ -1113,6 +1113,7 @@ class MainWindow(QMainWindow):
                                     'element_id': int(element.get('id', '')),
                                     'element_type': element.get('category', 'unknown'),
                                     'coordinates': json.dumps(element.get('coordinates', [])),
+                                    'figure_number': int(element.get('figure_number', 0)),
                                     'content': json.dumps(element.get('content', {})),
                                     'caption': json.dumps(element.get('caption', {})),
                                     'metadata': json.dumps(element.get('metadata', {})),
@@ -2484,127 +2485,119 @@ class MainWindow(QMainWindow):
                     elif category.startswith('caption'):
                         captions.append(element)
 
-                # Second pass: try to link figures with captions
-                for element in potential_figures:
-                    element_coords = element.get('coordinates', [])
-                    if len(element_coords) < 4:
+                # Build a list of all (figure, caption, score) associations
+                figure_caption_scores = []  # (figure, caption, score, extra_info)
+                for fig in potential_figures:
+                    fig_coords = fig.get('coordinates', [])
+                    if len(fig_coords) < 4:
                         continue
-
-                    # Get element's bounding box
-                    fig_x1 = min(coord['x'] for coord in element_coords)
-                    fig_y1 = min(coord['y'] for coord in element_coords)
-                    fig_x2 = max(coord['x'] for coord in element_coords)
-                    fig_y2 = max(coord['y'] for coord in element_coords)
-                    
-                    # Look for captions on the same page
-                    best_caption = None
-                    best_score = 0
-                    
-                    for caption in captions:
-                        caption_coords = caption.get('coordinates', [])
-                        if len(caption_coords) < 4:
+                    fig_x1 = min(coord['x'] for coord in fig_coords)
+                    fig_y1 = min(coord['y'] for coord in fig_coords)
+                    fig_x2 = max(coord['x'] for coord in fig_coords)
+                    fig_y2 = max(coord['y'] for coord in fig_coords)
+                    for cap in captions:
+                        cap_coords = cap.get('coordinates', [])
+                        if len(cap_coords) < 4:
                             continue
-                            
-                        # Get caption's bounding box
-                        cap_x1 = min(coord['x'] for coord in caption_coords)
-                        cap_y1 = min(coord['y'] for coord in caption_coords)
-                        cap_x2 = max(coord['x'] for coord in caption_coords)
-                        cap_y2 = max(coord['y'] for coord in caption_coords)
-                        
-                        # Calculate vertical distance (normalized to page height)
+                        cap_x1 = min(coord['x'] for coord in cap_coords)
+                        cap_y1 = min(coord['y'] for coord in cap_coords)
+                        cap_x2 = max(coord['x'] for coord in cap_coords)
+                        cap_y2 = max(coord['y'] for coord in cap_coords)
                         page_height = page_data.get('structure', {}).get('metadata', {}).get('page_height', 1.0)
                         vert_distance = min(abs(cap_y1 - fig_y2), abs(fig_y1 - cap_y2)) / page_height
-                        
-                        # Calculate horizontal overlap
                         overlap_x = max(0, min(fig_x2, cap_x2) - max(fig_x1, cap_x1))
                         overlap_ratio = overlap_x / (fig_x2 - fig_x1) if (fig_x2 - fig_x1) > 0 else 0
-                        
-                        # Score the caption based on:
-                        # 1. Vertical proximity (closer is better)
-                        # 2. Horizontal alignment (more overlap is better)
-                        # 3. Caption should typically be below the figure
                         score = 0
-                        if cap_y1 > fig_y2:  # Caption is below figure
+                        if cap_y1 > fig_y2:
                             score += 0.5
-                        if vert_distance < 0.1:  # Very close vertically
+                        if vert_distance < 0.1:
                             score += 0.3
-                        elif vert_distance < 0.2:  # Moderately close
+                        elif vert_distance < 0.2:
                             score += 0.2
-                        if overlap_ratio > 0.5:  # Good horizontal alignment
+                        if overlap_ratio > 0.5:
                             score += 0.2
-                            
-                        # Check caption text for figure references
-                        caption_text = caption.get('content', {}).get('text', '')
+                        caption_text = cap.get('content', {}).get('text', '')
                         if not caption_text:
-                            # Try OCR if no text is found
-                            caption_text = self._extract_caption_text(caption, int(page_num))
+                            caption_text = self._extract_caption_text(cap, int(page_num))
                             if caption_text:
                                 ocr_captions += 1
                                 logger.info(f"Extracted caption text using OCR: {caption_text}")
-                                
                         if caption_text:
                             caption_text = caption_text.lower()
-                            # Look for references that match the figure's category
                             if any(prefix in caption_text for prefix in figure_prefixes):
                                 score += 0.1
-                            
-                        if score > best_score:
-                            best_score = score
-                            best_caption = caption
-                    
-                    # If we found a good caption match, process it as a figure
-                    if best_caption and best_score >= 0.5:  # Threshold for considering it a match
-                        # Update element category to include 'figure:' prefix
-                        current_category = element.get('category', '').lower()
-                        if not current_category.startswith('figure:'):
-                            element['category'] = f"figure:{current_category}"
-                            updated_categories += 1
-                            logger.info(f"Updated category from '{current_category}' to 'figure:{current_category}'")
-                        
-                        # Add linked elements to both figure and caption
-                        if 'linked_elements' not in element:
-                            element['linked_elements'] = []
-                        if 'linked_elements' not in best_caption:
-                            best_caption['linked_elements'] = []
-                            
-                        # Add bidirectional links
-                        element['linked_elements'].append([int(page_num), int(best_caption['id'])])
-                        best_caption['linked_elements'].append([int(page_num), int(element['id'])])
-                        
-                        # Update figure number if found in caption
-                        caption_text = best_caption.get('content', {}).get('text', '')
-                        import re
-                        # Look for number after any of our figure prefixes
-                        fig_match = None
-                        for prefix in figure_prefixes:
-                            pattern = f"{prefix}\\s*(\\d+)"
-                            fig_match = re.search(pattern, caption_text, re.IGNORECASE)
-                            if fig_match:
-                                break
-                                
-                        if fig_match:
-                            element['figure_number'] = int(fig_match.group(1))
-                        else:
-                            # If no number found in caption, assign sequential number
-                            element['figure_number'] = sequential_number
-                            sequential_number += 1
-                            logger.info(f"Assigned sequential number {element['figure_number']} to figure")
-                            
-                        linked_figures += 1
-                    else:
-                        # If no caption found, don't process as a figure
-                        skipped_elements += 1
-                        # Remove any existing figure-related attributes
-                        if 'linked_elements' in element:
-                            element['linked_elements'] = []
+                        figure_caption_scores.append((fig, cap, score, vert_distance))
 
-                        # Reset category to base category if it was previously marked as a figure
-                        if element.get('category', '').startswith('figure:'):
-                            element['category'] = element['category'].replace('figure:', '')
-                            logger.info(f"Reset category from '{element['category']}' to base category")
-                    # save element information to the database
-                    #self.save_element(int(page_num), element['id'])
-                    
+                # Build a mapping from caption id to caption dict
+                caption_id_to_obj = {cap['id']: cap for cap in captions}
+
+                # For each caption, find the best (highest score, then closest) figure
+                caption_to_best = {}
+                for cap in captions:
+                    best = None
+                    for fc in figure_caption_scores:
+                        fig, this_cap, score, vert_distance = fc
+                        if this_cap is not cap:
+                            continue
+                        if best is None or score > best[2] or (score == best[2] and vert_distance < best[3]):
+                            best = fc
+                    if best and best[2] >= 0.5:
+                        caption_to_best[cap['id']] = best[0]  # best figure for this caption
+
+                # For each figure, determine if it is the best for any caption
+                figure_linked = set()
+                for cap_id, fig in caption_to_best.items():
+                    cap = caption_id_to_obj[cap_id]
+                    # Link this figure to this caption
+                    current_category = fig.get('category', '').lower()
+                    if not current_category.startswith('figure:'):
+                        fig['category'] = f"figure:{current_category}"
+                        updated_categories += 1
+                        logger.info(f"Updated category from '{current_category}' to 'figure:{current_category}'")
+                    if 'linked_elements' not in fig:
+                        fig['linked_elements'] = []
+                    if 'linked_elements' not in cap:
+                        cap['linked_elements'] = []
+                    # Add bidirectional links (ensure no duplicates)
+                    fig_link = [int(page_num), int(cap['id'])]
+                    cap_link = [int(page_num), int(fig['id'])]
+                    if fig_link not in fig['linked_elements']:
+                        fig['linked_elements'].append(fig_link)
+                    if cap_link not in fig['linked_elements']:
+                        fig['linked_elements'].append(cap_link)
+                    if fig_link not in cap['linked_elements']:
+                        cap['linked_elements'].append(fig_link)
+                    if cap_link not in cap['linked_elements']:
+                        cap['linked_elements'].append(cap_link)
+                    # Sort the linked_elements lists by (page_num, element_id)
+                    fig['linked_elements'].sort(key=lambda x: (x[0], x[1]))
+                    cap['linked_elements'].sort(key=lambda x: (x[0], x[1]))
+                    # Update figure number if found in caption
+                    caption_text = cap.get('content', {}).get('text', '')
+                    import re
+                    fig_match = None
+                    for prefix in figure_prefixes:
+                        pattern = f"{prefix}\\s*(\\d+)"
+                        fig_match = re.search(pattern, caption_text, re.IGNORECASE)
+                        if fig_match:
+                            break
+                    if fig_match:
+                        fig['figure_number'] = int(fig_match.group(1))
+                    else:
+                        fig['figure_number'] = sequential_number
+                        sequential_number += 1
+                        logger.info(f"Assigned sequential number {fig['figure_number']} to figure")
+                    linked_figures += 1
+                    figure_linked.add(id(fig))
+                # For all other figures, clear links and reset category if needed
+                for fig in potential_figures:
+                    if id(fig) not in figure_linked:
+                        skipped_elements += 1
+                        if 'linked_elements' in fig:
+                            fig['linked_elements'] = []
+                        if fig.get('category', '').startswith('figure:'):
+                            fig['category'] = fig['category'].replace('figure:', '')
+                            logger.info(f"Reset category from '{fig['category']}' to base category")
 
             # Save the updated page structures
             self.save_session()
