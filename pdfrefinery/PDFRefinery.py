@@ -2262,12 +2262,20 @@ class MainWindow(QMainWindow):
 
                     figure_binary = get_pixmap(page_num, coords)
                     caption_binary = get_pixmap(caption_page_num, caption_coords)
+                    default_part1_prefix = 'Figure'
+                    default_part1_number = figure_number
+                    default_part2_prefix = None
+                    default_part2_number = None
 
                     # Insert into PrFigure
-                    PrFigure.create(
+                    subfigure = PrFigure.create(
                         document=self.document_record,
-                        figure_number=figure_number,
+                        figure_number=f"{default_part1_prefix} {default_part1_number}",
                         figure_page_number=int(page_num),
+                        part1_prefix=default_part1_prefix,
+                        part1_number=default_part1_number,
+                        part2_prefix=default_part2_prefix,
+                        part2_number=default_part2_number,
                         figure_element_id=int(element.get('id')),
                         caption_page_number=int(caption_page_num) if caption_page_num else None,
                         caption_element_id=int(caption_element.get('id')) if caption_element else None,
@@ -2275,6 +2283,8 @@ class MainWindow(QMainWindow):
                         caption_text=caption_text,
                         caption_binary=caption_binary
                     )
+                    subfigure.update_figure_number()
+
                     figure_count += 1
             if hasattr(self, 'figure_view'):
                 self.figure_view.show_figures_from_db(self.document_record)

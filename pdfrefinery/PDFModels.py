@@ -134,6 +134,15 @@ class PrFigure(BaseModel):
     created_at = DateTimeField(default=datetime.datetime.now)
     updated_at = DateTimeField(default=datetime.datetime.now)
 
+    def update_figure_number(self):
+        figure_number = f"{self.part1_prefix} {self.part1_number}"
+        if self.part2_prefix and self.part2_number:
+            figure_number += f"{self.part_separator} {self.part2_prefix} {self.part2_number}"
+        elif self.part2_number:
+            figure_number += f"{self.part_separator}{self.part2_number}"
+        self.figure_number = figure_number
+        self.save()
+
 def calculate_file_hash(file_path):
     """Calculate SHA-256 hash of a file"""
     try:

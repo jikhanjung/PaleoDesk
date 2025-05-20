@@ -327,7 +327,7 @@ class FigureInfoDialog(QDialog):
             pixmap = QPixmap()
             pixmap.loadFromData(prfigure.figure_binary)
             img_label = QLabel()
-            img_label.setPixmap(pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            img_label.setPixmap(pixmap.scaled(600, 600, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(img_label)
 
@@ -359,7 +359,7 @@ class FigureInfoDialog(QDialog):
             cap_pixmap = QPixmap()
             cap_pixmap.loadFromData(prfigure.caption_binary)
             cap_img_label = QLabel()
-            cap_img_label.setPixmap(cap_pixmap.scaled(150, 50, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            cap_img_label.setPixmap(cap_pixmap.scaled(450, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             cap_img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(cap_img_label)
 
