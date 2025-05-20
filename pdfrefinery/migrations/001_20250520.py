@@ -1,4 +1,4 @@
-"""Peewee migrations -- 001_20250517.py.
+"""Peewee migrations -- 001_20250520.py.
 
 Some examples (model - class or model name)::
 
@@ -80,6 +80,9 @@ def migrate(migrator: Migrator, database: pw.Database, *, fake=False):
         part2_number = pw.CharField(max_length=255, null=True)
         part_separator = pw.CharField(default='-', max_length=255, null=True)
         figure_binary = pw.BlobField(null=True)
+        figure_width = pw.IntegerField(null=True)
+        figure_height = pw.IntegerField(null=True)
+        subfigure_box = pw.TextField(null=True)
         caption_binary = pw.BlobField(null=True)
         caption_text = pw.TextField(null=True)
         parent = pw.ForeignKeyField(column_name='parent_id', field='id', model='self', null=True, on_delete='CASCADE')

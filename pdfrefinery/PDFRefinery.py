@@ -2217,14 +2217,13 @@ class MainWindow(QMainWindow):
                 x1, x2 = max(0, min(x1, x2)), min(pix.width, max(x1, x2))
                 y1, y2 = max(0, min(y1, y2)), min(pix.height, max(y1, y2))
                 if x2 <= x1 or y2 <= y1:
-                    return None
+                    return None, None, None
                 # Crop the image
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 cropped = img.crop((x1, y1, x2, y2))
-                # Save as PNG to bytes
                 buf = io.BytesIO()
                 cropped.save(buf, format="PNG")
-                return buf.getvalue()
+                return buf.getvalue(), cropped.width, cropped.height
 
             # Remove previous figures for this document
             PrFigure.delete().where(PrFigure.document == self.document_record).execute()
@@ -2260,8 +2259,8 @@ class MainWindow(QMainWindow):
                             if caption_text:
                                 break
 
-                    figure_binary = get_pixmap(page_num, coords)
-                    caption_binary = get_pixmap(caption_page_num, caption_coords)
+                    figure_binary, fig_width, fig_height = get_pixmap(page_num, coords)
+                    caption_binary, _, _ = get_pixmap(caption_page_num, caption_coords)
                     default_part1_prefix = 'Figure'
                     default_part1_number = figure_number
                     default_part2_prefix = None
@@ -2281,7 +2280,9 @@ class MainWindow(QMainWindow):
                         caption_element_id=int(caption_element.get('id')) if caption_element else None,
                         figure_binary=figure_binary,
                         caption_text=caption_text,
-                        caption_binary=caption_binary
+                        caption_binary=caption_binary,
+                        figure_width=fig_width,
+                        figure_height=fig_height
                     )
                     subfigure.update_figure_number()
 
@@ -2373,73 +2374,11 @@ class MainWindow(QMainWindow):
             
             # Extract caption region
             caption_pixmap = page_pixmap.copy(x1, y1, x2 - x1, y2 - y1)
-            
-            # Save caption image to temporary file
-            import tempfile
-            import os
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_img:
-                caption_pixmap.save(temp_img.name)
-                temp_img_path = temp_img.name
-                
-            # Create temporary PDF
-            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:
-                temp_pdf_path = temp_pdf.name
-                
-            # Convert image to PDF using PyMuPDF
-            doc = fitz.open()
-            img = fitz.Pixmap(temp_img_path)
-            rect = fitz.Rect(0, 0, img.width, img.height)
-            page = doc.new_page(width=img.width, height=img.height)
-            page.insert_image(rect, pixmap=img)
-            doc.save(temp_pdf_path)
-            doc.close()
-
-            settings = QSettings(COMPANY_NAME, PROGRAM_NAME)
-            base_url = settings.value("service/url", "").rstrip('/')
-            url_ocr = f"{base_url}/ocr"
-            
-            # Send to OCR server
-            with open(temp_pdf_path, 'rb') as f:
-                files = {'file': (os.path.basename(temp_pdf_path), f, 'application/pdf')}
-                response = requests.post(url_ocr, files=files)
-                
-            if response.status_code != 200:
-                raise Exception(f"OCR server returned status code {response.status_code}")
-                
-            # Get OCR result
-            output_pdf_path = temp_pdf_path + "_result.pdf"
-            with open(output_pdf_path, "wb") as f:
-                f.write(response.content)
-                
-            with open(output_pdf_path, "rb") as f:
-                response = requests.post(
-                    base_url,
-                    files={"file": (os.path.basename(output_pdf_path), f, "application/pdf")}
-                )
-                
-            if response.status_code != 200:
-                raise Exception(f"Analysis server returned status code {response.status_code}")
-                
-            layout_result = response.json()
-            
-            # Extract text from OCR result
-            caption_text = ""
-            for elem in layout_result:
-                if 'text' in elem.keys():
-                    caption_text += elem['text'] + ' '
-                            
-            # Clean up temporary files
-            try:
-                os.unlink(temp_img_path)
-                os.unlink(temp_pdf_path)
-                os.unlink(output_pdf_path)
-            except:
-                pass
-                            
-            if caption_text:
+            text = extract_caption_text(caption_pixmap)
+            if text:
                 # Update caption element with extracted text
-                caption_element['content'] = {'text': caption_text.strip()}
-                return caption_text.strip()
+                caption_element['content'] = {'text': text.strip()}
+                return text.strip()
             else:
                 return None
                     

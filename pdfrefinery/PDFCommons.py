@@ -3,6 +3,11 @@ import sys, os
 import copy
 from PyQt6.QtGui import QColor
 import tempfile
+import requests
+import fitz
+from PyQt6.QtCore import QSettings
+import logging
+import tempfile
 
 COMPANY_NAME = "PaleoBytes"
 PROGRAM_NAME = "PDFRefinery"
@@ -21,6 +26,8 @@ DB_BACKUP_DIRECTORY = os.path.join(DEFAULT_DB_DIRECTORY, "backups/")
 # Database path
 DATABASE_FILENAME = f"{PROGRAM_NAME.lower()}.db"
 DATABASE_PATH = os.path.join(DEFAULT_DB_DIRECTORY, DATABASE_FILENAME)
+
+logger = logging.getLogger('PDFCommons')
 
 # Create necessary directories
 for directory in [DEFAULT_DB_DIRECTORY, DEFAULT_STORAGE_DIRECTORY, DEFAULT_LOG_DIRECTORY, DB_BACKUP_DIRECTORY]:
@@ -63,3 +70,80 @@ ELEMENT_COLORS = {
     'section header': QColor(0, 128, 0, 64), # green with alpha
     'list item': QColor(139, 0, 139, 64)   # magenta with alpha
 }
+
+
+def extract_caption_text(pixmap):
+    """Extract text from caption image using OCR"""
+    try:
+
+        # Extract caption region
+        caption_pixmap = pixmap
+        
+        # Save caption image to temporary file
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_img:
+            caption_pixmap.save(temp_img.name)
+            temp_img_path = temp_img.name
+            
+        # Create temporary PDF
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_pdf:
+            temp_pdf_path = temp_pdf.name
+            
+        # Convert image to PDF using PyMuPDF
+        doc = fitz.open()
+        img = fitz.Pixmap(temp_img_path)
+        rect = fitz.Rect(0, 0, img.width, img.height)
+        page = doc.new_page(width=img.width, height=img.height)
+        page.insert_image(rect, pixmap=img)
+        doc.save(temp_pdf_path)
+        doc.close()
+
+        settings = QSettings(COMPANY_NAME, PROGRAM_NAME)
+        base_url = settings.value("service/url", "").rstrip('/')
+        url_ocr = f"{base_url}/ocr"
+        
+        # Send to OCR server
+        with open(temp_pdf_path, 'rb') as f:
+            files = {'file': (os.path.basename(temp_pdf_path), f, 'application/pdf')}
+            response = requests.post(url_ocr, files=files)
+            
+        if response.status_code != 200:
+            raise Exception(f"OCR server returned status code {response.status_code}")
+            
+        # Get OCR result
+        output_pdf_path = temp_pdf_path + "_result.pdf"
+        with open(output_pdf_path, "wb") as f:
+            f.write(response.content)
+            
+        with open(output_pdf_path, "rb") as f:
+            response = requests.post(
+                base_url,
+                files={"file": (os.path.basename(output_pdf_path), f, "application/pdf")}
+            )
+            
+        if response.status_code != 200:
+            raise Exception(f"Analysis server returned status code {response.status_code}")
+            
+        layout_result = response.json()
+        
+        # Extract text from OCR result
+        caption_text = ""
+        for elem in layout_result:
+            if 'text' in elem.keys():
+                caption_text += elem['text'] + ' '
+                        
+        # Clean up temporary files
+        try:
+            os.unlink(temp_img_path)
+            os.unlink(temp_pdf_path)
+            os.unlink(output_pdf_path)
+        except:
+            pass
+                        
+        if caption_text:
+            return caption_text.strip()
+        else:
+            return None
+                
+    except Exception as e:
+        logger.error(f"Error extracting caption text: {str(e)}")
+        return None
