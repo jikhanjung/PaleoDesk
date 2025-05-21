@@ -3233,8 +3233,8 @@ class FigureGalleryWidget(QWidget):
                     h_frac = round(h / fig_h, 6) if fig_h else 0.0
                     import json
                     bounding_box_json = json.dumps({'x': x_frac, 'y': y_frac, 'w': w_frac, 'h': h_frac})
-                    logger.info(f"Bounding box JSON (fractional): {bounding_box_json}")
-                    logger.info(f"Cropping pixmap at ({x}, {y}, {w}, {h})")
+                    #logger.info(f"Bounding box JSON (fractional): {bounding_box_json}")
+                    #logger.info(f"Cropping pixmap at ({x}, {y}, {w}, {h})")
                     cropped = pixmap.copy(int(x), int(y), int(w), int(h))
                     subfig_width, subfig_height = cropped.width(), cropped.height()
                     if cropped.isNull():
@@ -3269,7 +3269,7 @@ class FigureGalleryWidget(QWidget):
                     figure_binary = buffer.getvalue()
                     # Use numbering scheme for part2_number
                     part2_number = self._get_subfig_label(idx)
-                    logger.info(f"Saving PrFigure.create for subfigure {idx+1}, part2_number: {part2_number}, binary size: {len(figure_binary)}, bounding_box: {bounding_box_json}")
+                    #logger.info(f"Saving PrFigure.create for subfigure {idx+1}, part2_number: {part2_number}, binary size: {len(figure_binary)}, bounding_box: {bounding_box_json}")
                     subfigure = PrFigure.create(
                         document=doc,
                         figure_number=str(self.selected_index+1),
