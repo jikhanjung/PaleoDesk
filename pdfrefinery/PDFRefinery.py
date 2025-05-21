@@ -227,6 +227,9 @@ class MainWindow(QMainWindow):
         logger.info("Dummy toggle button position updated")
         logger.debug("Initialized toggle buttons")
 
+        # In MainWindow.__init__
+        self.mode = None  # 'directory' or 'zotero'
+
     def prepare_database(self):
         try:
 
@@ -417,7 +420,61 @@ class MainWindow(QMainWindow):
         self.update_dummy_toggle_button_position()
 
     def collection_clicked(self, item, column):
-        """Handle click on collection item"""
+        """Handle click on collection item (directory or zotero mode)"""
+        if self.mode == 'directory' and hasattr(item, 'dir_path'):
+            # Directory mode: show PDFs in selected directory (not recursive)
+            self.items_tree.clear()
+            dir_path = item.dir_path
+            try:
+                pdf_files = [f for f in os.listdir(dir_path) if f.lower().endswith('.pdf')]
+                pdf_files.sort()
+                for pdf_file in pdf_files:
+                    icon = None
+                    full_path = os.path.join(dir_path, pdf_file)
+                    norm_path = os.path.normpath(os.path.abspath(full_path))
+                    logger.info(f"Processing file: {full_path}{norm_path}")
+
+                    #check if file exists in database
+                    try:
+                        document = PDFDocument.get(PDFDocument.file_path == norm_path)
+                        if document:
+                            logger.info(f"File already exists in database: {norm_path}")
+                        else:
+                            logger.info(f"File does not exist in database: {norm_path}")
+
+                        # check if session exists in database
+                        try:
+                            if len(document.sessions) > 0:
+                                logger.info(f"Sessions: {document.sessions}")
+                                icon = get_analysis_done_icon()
+                                logger.info(f"Session already exists in database: {norm_path}")
+                            else:
+                                logger.info(f"Session does not exist in database: {norm_path}")
+                        except Exception as e:
+                            logger.error(f"Error checking if session exists in database: {str(e)}")
+                        
+                    except Exception as e:
+                        # if file does not exist in database, create a new document
+                        document = PDFDocument.create(
+                            file_path=norm_path,
+                            zotero_key="",
+                            title="",
+                            page_count=0
+                        )
+                        document.save()
+                        #logger.error(f"Error checking if file exists in database: {str(e)}")
+
+                    pdf_item = QTreeWidgetItem()
+                    pdf_item.setText(0, pdf_file)
+                    pdf_item.file_path = norm_path
+                    if icon:    
+                        pdf_item.setIcon(0, icon)
+
+                    self.items_tree.addTopLevelItem(pdf_item)
+            except Exception as e:
+                logger.error(f"Error listing PDFs in {dir_path}: {str(e)}")
+            return  # Do not run Zotero logic
+        # Zotero or other mode: run original logic
         if hasattr(item, 'collection_id'):
             # Clear the items tree
             self.items_tree.clear()
@@ -522,102 +579,53 @@ class MainWindow(QMainWindow):
             logger.error(f"Error loading session data: {str(e)}")
 
     def load_directory(self):
-        """Load all PDF files from a selected directory and its subdirectories"""
+        """Load all PDF files from a selected directory and its subdirectories (directory mode)"""
         try:
-            # Set wait cursor
+            self.mode = 'directory'  # Set mode to directory
             QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             self.status_label.showMessage("Loading directory...", 0)
             QApplication.processEvents()
-            
             dir_path = QFileDialog.getExistingDirectory(
                 self, "Select Directory", "",
                 QFileDialog.Option.ShowDirsOnly
             )
-            
             if not dir_path:
                 return
-                
             # Clear existing items
             self.collections_tree.clear()
             self.items_tree.clear()
-            
             # Create root collection item
             root_item = QTreeWidgetItem()
             root_item.setText(0, os.path.basename(dir_path))
             root_item.dir_path = dir_path
             self.collections_tree.addTopLevelItem(root_item)
-            
             # Dictionary to store directory items by path
             self.directory_items = {dir_path: root_item}
-            pdf_files = []
-            
             def load_subdirectories(parent_item, current_dir):
                 try:
-                    # Get all items in the directory
                     items = os.listdir(current_dir)
-                    items.sort()  # Sort alphabetically
-                    
-                    # First process directories
+                    items.sort()
                     for item in sorted(items):
                         full_path = os.path.join(current_dir, item)
                         if os.path.isdir(full_path):
-                            # Create directory item
                             dir_item = QTreeWidgetItem(parent_item)
                             dir_item.setText(0, item)
                             dir_item.dir_path = full_path
                             self.directory_items[full_path] = dir_item
-                            
-                            # Recursively load subdirectories
                             load_subdirectories(dir_item, full_path)
-                    
-                    # Then collect PDF files
-                    for item in sorted(items):
-                        full_path = os.path.join(current_dir, item)
-                        if item.lower().endswith('.pdf'):
-                            pdf_files.append(full_path)
-                            
                 except Exception as e:
                     logger.error(f"Error loading subdirectory {current_dir}: {str(e)}")
-            
-            # Start recursive loading
+            # Start recursive loading (folders only)
             load_subdirectories(root_item, dir_path)
-            
-            if not pdf_files:
-                QMessageBox.information(self, "No PDF Files", 
-                                    "No PDF files found in the selected directory or its subdirectories.")
-                return
-                
-            # Sort files by name
-            pdf_files.sort()
-            
-            # Add PDF files to items tree
-            for pdf_file in pdf_files:
-                item = QTreeWidgetItem()
-                item.setText(0, os.path.basename(pdf_file))
-                item.file_path = pdf_file
-                self.items_tree.addTopLevelItem(item)
-            
-            # Load the first PDF file
-            if pdf_files:
-                self.load_pdf_file(pdf_files[0])
-                
-                # Store the list of PDF files
-                self.pdf_files = pdf_files
-                self.current_file_path_index = 0
-                
             # Expand the first level of directories
             for i in range(self.collections_tree.topLevelItemCount()):
                 self.collections_tree.topLevelItem(i).setExpanded(True)
-                
             self.status_label.showMessage(f"Loaded directory: {dir_path}", 3000)
-            logger.info(f"Loaded directory: {dir_path} with {len(pdf_files)} PDF files")
-            
+            logger.info(f"Loaded directory: {dir_path}")
         except Exception as e:
             logger.error(f"Error loading directory: {str(e)}")
             QMessageBox.warning(self, "Error", f"Could not load directory:\n{str(e)}")
-            
         finally:
-            # Restore cursor
             QApplication.restoreOverrideCursor()
             self.ensure_normal_cursor()
 
@@ -1450,6 +1458,7 @@ class MainWindow(QMainWindow):
     def load_zotero_library(self):
         """Load PDFs from Zotero library using collection structure"""
         try:
+            self.mode = 'zotero'  # Set mode to zotero
             # Set wait cursor
             QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
             self.status_label.showMessage("Loading Zotero library...", 0)

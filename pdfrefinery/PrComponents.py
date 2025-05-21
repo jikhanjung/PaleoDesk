@@ -3674,16 +3674,16 @@ class FigureView(QWidget):
         # Filter figures based on show_db_subfigures
         def sort_key(fig):
             # Part 1: try numeric if possible
-            p1 = int(fig.part1_number) if fig.part1_number and fig.part1_number.isdigit() else fig.part1_number
+            p1 = int(fig.part1_number) if fig.part1_number and str(fig.part1_number).isdigit() else fig.part1_number
 
-            # Part 2: sort NULLs last
+            # Part 2: sort NULLs last (use a string that sorts after all letters, e.g., 'ZZZ')
             p2 = fig.part2_number
             if p2 is None:
-                return (p1, float('-inf'))  # sort NULLs last
-            elif p2.isdigit():
-                return (p1, int(p2))       # numeric sort
+                return (p1, '')  # 'ZZZ' will sort after 'A', 'B', etc.
+            elif str(p2).isdigit():
+                return (p1, f"{int(p2):03d}")  # pad numbers for correct string sorting
             else:
-                return (p1, p2)            # string sort (e.g., 'a', 'b')
+                return (p1, str(p2))  # string sort (e.g., 'a', 'b')
 
         if getattr(self, 'show_db_subfigures', True):
             figures = list(PrFigure.select().where(PrFigure.document == document))
