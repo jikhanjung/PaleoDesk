@@ -1283,14 +1283,14 @@ class MainWindow(QMainWindow):
     def load_session_record(self):
         """Load a previously saved session from database"""
         try:
-            logger.info(f"Loading session for {self.current_file_path}")
+            logger.info(f"Loading session for {self.current_file_path} {self.document_record}")
 
             self.session_record = None
             if self.document_record:
                 self.session_record = self.document_record.sessions.order_by(SessionData.created_at.desc()).first()
 
             if not self.session_record:
-                logger.error(f"No session record found for {self.current_file_path}")
+                logger.info(f"No session record found for {self.current_file_path}")
                 return
 
             # Load session data
@@ -2067,7 +2067,9 @@ class MainWindow(QMainWindow):
             def process_pdf_item(item):
                 """Process a single PDF item"""
                 nonlocal analyzed_files, failed_files
-                
+
+
+
                 # Clear existing document data and session information
                 self.document_data = {
                     'page_structures': {},
@@ -2084,12 +2086,24 @@ class MainWindow(QMainWindow):
                 QApplication.processEvents()
 
                 try:
+
+                    zotero_key = None
+                    if hasattr(item, 'file_path') and item.file_path:
+                        # Direct click on a PDF item
+                        if item.file_path.lower().endswith('.pdf'):
+                            if hasattr(item, 'zotero_key'):
+                                zotero_key = item.zotero_key
+                    self.load_pdf_file(item.file_path, zotero_key)
+
                     # Open the PDF file and show first page
                     self.current_file_path = os.path.normpath(os.path.abspath(item.file_path))
                     self.current_file_directory = os.path.dirname(item.file_path)
                     self.pdf_document= fitz.open(item.file_path)
                     self.current_page = 0
                     self.pdf_viewer.set_document(self.pdf_document)
+
+                    #self.document_record = None
+
                     self.update_navigation()
                     QApplication.processEvents()
 
@@ -2112,7 +2126,7 @@ class MainWindow(QMainWindow):
                         item.setForeground(0, Qt.GlobalColor.red)
 
                     # Close the document
-                    self.pdf_document.close()
+                    #self.pdf_document.close()
 
                 except Exception as e:
                     logger.error(f"Error analyzing {item.file_path}: {str(e)}")
