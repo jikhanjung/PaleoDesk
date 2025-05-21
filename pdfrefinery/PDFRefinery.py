@@ -476,8 +476,10 @@ class MainWindow(QMainWindow):
 
     def load_pdf_file(self, file_path, zotero_key=None):
         """Load a PDF file and try to load its analysis from database"""
-        self.current_file_path = file_path
-        self.current_file_directory = os.path.dirname(file_path)
+        # Normalize file path for cross-OS consistency
+        norm_path = os.path.normpath(os.path.abspath(file_path))
+        self.current_file_path = norm_path
+        self.current_file_directory = os.path.dirname(norm_path)
         self.document_data = {
             'page_structures': {},
             'initial_page_structures': {},
@@ -504,8 +506,8 @@ class MainWindow(QMainWindow):
         logger.info(f"Opened PDF file: {self.current_file_path}")
 
         try:
-            self.load_document_record()
-            logger.info(f"Loaded document data for {self.current_file_path}")
+            loaded = self.load_document_record()
+            logger.info(f"Loaded document data for {self.current_file_path} {self.document_record} {loaded}")
             self.load_session_record()
             logger.info(f"Loaded session data for {self.current_file_path}")
         except Exception as e:
@@ -801,6 +803,32 @@ class MainWindow(QMainWindow):
             self, "Open PDF File", "", "PDF Files (*.pdf)"
         )
         if file_path:
+
+            try:
+                norm_path = os.path.normpath(os.path.abspath(file_path))
+                with db:
+                    try:
+                        document = PDFDocument.get(PDFDocument.file_path == norm_path)
+                        if len(document.sessions) > 0:
+                            logger.info(f"Sessions: {document.sessions}")
+                            icon = get_analysis_done_icon()
+                            logger.info(f"Session already exists in database: {norm_path}")
+
+                        logger.debug(f"Document already exists in database: {norm_path}")
+                    except DoesNotExist:
+                        document = PDFDocument.create(
+                            file_path=norm_path,
+                            zotero_key="",
+                            title="",
+                            page_count=0
+                        )
+                        logger.debug(f"Created new document record for {norm_path}")
+            except Exception as e:
+                logger.error(f"Error checking/saving document to database: {str(e)}")
+
+
+            self.load_pdf_file(norm_path)
+            return
             self.current_file_path = file_path
             self.current_file_directory = os.path.dirname(file_path)
             self.document_data = {
@@ -1040,7 +1068,8 @@ class MainWindow(QMainWindow):
                             # Update icon in tree
                             current_item = self.items_tree.currentItem()
                             icon = get_analysis_done_icon()
-                            current_item.setIcon(0, icon)
+                            if current_item:
+                                current_item.setIcon(0, icon)
                             
                             # Show completion message
                             analyzed_pages = len(page_elements)
@@ -1238,8 +1267,10 @@ class MainWindow(QMainWindow):
                 self.document_record = PDFDocument.get(PDFDocument.file_path == self.current_file_path)
 
             logger.info(f"Loaded document record for {self.current_file_path}")
+            return True
         except Exception as e:
             logger.error(f"Error loading document record: {str(e)}")
+            return False
 
     def load_session_record(self):
         """Load a previously saved session from database"""
@@ -2045,7 +2076,7 @@ class MainWindow(QMainWindow):
 
                 try:
                     # Open the PDF file and show first page
-                    self.current_file_path = item.file_path
+                    self.current_file_path = os.path.normpath(os.path.abspath(item.file_path))
                     self.current_file_directory = os.path.dirname(item.file_path)
                     self.pdf_document= fitz.open(item.file_path)
                     self.current_page = 0
@@ -2172,7 +2203,7 @@ class MainWindow(QMainWindow):
             # Restore previous file if any
             if previous_file and previous_doc:
                 try:
-                    self.current_file_path = previous_file
+                    self.current_file_path = os.path.normpath(os.path.abspath(previous_file))
                     self.current_file_directory = os.path.dirname(previous_file)
                     self.pdf_document= previous_doc
                     self.current_page = 0

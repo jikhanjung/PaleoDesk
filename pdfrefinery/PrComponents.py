@@ -2461,7 +2461,7 @@ class StructuredContentView(QWidget):
         from PDFModels import PrFigure
 
         self.content_list_widget.clear()
-        figures = PrFigure.select().where(PrFigure.document == document).order_by(PrFigure.figure_number)
+        figures = PrFigure.select().where(PrFigure.document == document).order_by(PrFigure.part1_prefix, PrFigure.part1_number, PrFigure.part2_prefix, PrFigure.part2_number)
         for fig in figures:
             item_widget = QWidget()
             layout = QVBoxLayout()
@@ -2476,7 +2476,7 @@ class StructuredContentView(QWidget):
                 layout.addWidget(image_label)
 
             # Figure number and page
-            info_label = QLabel(f"Figure {fig.figure_number} (Page {fig.figure_page_number})")
+            info_label = QLabel(f"{fig.part1_prefix}{fig.part1_number}{fig.part2_prefix or ''}{fig.part2_number or ''} (Page {fig.figure_page_number})")
             info_label.setStyleSheet("font-weight: bold;")
             layout.addWidget(info_label)
 
@@ -2526,42 +2526,13 @@ class FigureGalleryWidget(QWidget):
         self._drag_start_pos = None
         self._resizing_box = None  # Ensure always initialized
 
-    def set_selected_index(self, idx):
-        # Only update and notify if the index is actually changing
-        if self.selected_index == idx:
-            return
+    def set_selected_index(self, idx, subfig_idx=None):
+        logger.info(f"[Gallery] set_selected_index: idx={idx}, subfig_idx={subfig_idx}, selected_index={self.selected_index}")
+        self._selected_subfig_box = subfig_idx
         self.selected_index = idx
-        self._selected_subfig_box = None
-        # Retrieve subfigure bounding boxes from DB and update the selected figure
-        if idx is not None and 0 <= idx < len(self.figures):
-            fig = self.figures[idx]
-            # Try to get subfigures from PrFigure
-            try:
-                from PDFModels import PrFigure
-                parent_id = fig.get('id')
-                if parent_id:
-                    subfigs = list(PrFigure.select().where(PrFigure.parent == parent_id))
-                    subfig_boxes = []
-                    for subfig in subfigs:
-                        if hasattr(subfig, 'subfigure_box') and subfig.subfigure_box:
-                            import json
-                            box = json.loads(subfig.subfigure_box)
-                            # box: {'x':..., 'y':..., 'w':..., 'h':...} (fractions)
-                            pixmap = fig['pixmap']
-                            x = int(box['x'] * pixmap.width())
-                            y = int(box['y'] * pixmap.height())
-                            w = int(box['w'] * pixmap.width())
-                            h = int(box['h'] * pixmap.height())
-                            subfig_boxes.append(QRect(x, y, w, h))
-                    if subfig_boxes:
-                        fig['subfig_boxes'] = subfig_boxes
-            except Exception as e:
-                import logging
-                logging.getLogger('PrComponents').error(f"Error retrieving subfigures: {e}")
-        self.update()
-        # Notify parent (FigureView) to sync table selection
+
         if self.selection_changed_callback:
-            self.selection_changed_callback(idx)
+            self.selection_changed_callback(idx, subfig_idx)
 
     def update_height(self):
         width = self.width() if self.width() > 0 else 10
@@ -2577,7 +2548,43 @@ class FigureGalleryWidget(QWidget):
         self.setFixedHeight(total_height)
 
     def set_figures(self, figures):
-        self.figures = figures
+        '''
+        figures is a list of PrFigure objects
+        gallery_figures.append({'id': fig.id, 'pixmap': pixmap, 'caption': fig.caption_text or "", 
+                        'parent_id': fig.parent.id if fig.parent else None, 'subfigure_box': fig.subfigure_box})
+        '''
+        # Build mapping from id to parent figure
+        parents = {}
+        for fig in figures:
+            if fig.get('parent_id') is None:
+                fig['subfig_boxes'] = []  # Initialize
+                parents[fig['id']] = fig
+        # Now, assign subfigures to their parent
+        for fig in figures:
+            if fig.get('parent_id') is not None:
+                parent_id = fig['parent_id']
+                parent = parents.get(parent_id)
+                if parent is not None:
+                    # Convert subfigure_box to QRect
+                    try:
+                        box = fig.get('subfigure_box')
+                        if box:
+                            if isinstance(box, str):
+                                box = json.loads(box)
+                            if isinstance(box, dict):
+                                pixmap = parent.get('pixmap')
+                                if pixmap:
+                                    x = int(box['x'] * pixmap.width())
+                                    y = int(box['y'] * pixmap.height())
+                                    w = int(box['w'] * pixmap.width())
+                                    h = int(box['h'] * pixmap.height())
+                                    rect = QRect(x, y, w, h)
+                                    subfigure = { 'id': fig.get('id'), 'box': rect }
+                                    parent['subfig_boxes'].append(subfigure)
+                    except Exception as e:
+                        logger.error(f"Error converting subfigure_box to QRect for subfigure id={fig.get('id')}: {e}")
+        # Only keep parent figures in self.figures
+        self.figures = list(parents.values())
         self.selected_index = None
         self._selected_subfig_box = None
         self.update_height()
@@ -2603,7 +2610,6 @@ class FigureGalleryWidget(QWidget):
         self._scroll_callback = callback
 
     def paintEvent(self, event):
-        #logger.info(f"paintEvent, width: {self.width()}, height: {self.height()}")
         painter = QPainter(self)
         y = 0
         width = self.width()
@@ -2615,32 +2621,32 @@ class FigureGalleryWidget(QWidget):
                 continue
             scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
             painter.drawPixmap(0, y, scaled_pixmap)
-            # Draw bounding box if selected
             if i == self.selected_index:
                 pen = QPen(QColor(255, 0, 0), 4)
                 painter.setPen(pen)
                 painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.drawRect(0, y, scaled_pixmap.width(), scaled_pixmap.height())
-            # Draw detected subfigure boxes (if any)
             show_subfigs = (i == self.selected_index) or self.show_subfigures
-            if show_subfigs and 'subfig_boxes' in fig:
-                for idx, rect in enumerate(fig['subfig_boxes']):
-                    pen = QPen(QColor(0, 200, 0), 3)
-                    painter.setPen(pen)
-                    # Scale rect to match displayed pixmap size
+            if 'subfig_boxes' in fig:
+                for idx, subfig in enumerate(fig['subfig_boxes']):
+                    rect = subfig['box']
+                    if show_subfigs:
+                        pen = QPen(QColor(0, 200, 0), 3)
+                        painter.setPen(pen)
+                    else:
+                        pen = QPen(QColor(0, 200, 0, 120),2)
+                        painter.setPen(pen)
                     x_scale = scaled_pixmap.width() / pixmap.width()
                     y_scale = scaled_pixmap.height() / pixmap.height()
                     sx = int(rect.x() * x_scale)
                     sy = int(rect.y() * y_scale)
                     sw = int(rect.width() * x_scale)
                     sh = int(rect.height() * y_scale)
-                    # Fill selected subfigure box
                     if i == self.selected_index and hasattr(self, '_selected_subfig_box') and idx == self._selected_subfig_box:
-                        painter.setBrush(QColor(0, 200, 0, 80))  # semi-transparent green
+                        painter.setBrush(QColor(0, 200, 0, 80))
                     else:
                         painter.setBrush(Qt.BrushStyle.NoBrush)
                     painter.drawRect(sx, y + sy, sw, sh)
-                    # Draw index at center using selected numbering scheme
                     center_x = sx + sw // 2
                     center_y = y + sy + sh // 2
                     font = painter.font()
@@ -2651,23 +2657,19 @@ class FigureGalleryWidget(QWidget):
                     painter.setBrush(Qt.BrushStyle.NoBrush)
                     text = self._get_subfig_label(idx)
                     text_rect = painter.boundingRect(QRect(center_x - 20, center_y - 12, 40, 24), Qt.AlignmentFlag.AlignCenter, text)
-                    # Draw white background for contrast
                     painter.setPen(Qt.PenStyle.NoPen)
                     painter.setBrush(QColor(255, 255, 255, 200))
                     painter.drawRect(text_rect)
                     painter.setPen(QColor(0, 0, 0))
                     painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, text)
-            # Draw add-subfigure rectangle if in add_subfigure_mode
             if i == self.selected_index and self.add_subfigure_mode and self._add_subfig_start and self._add_subfig_end:
                 pen = QPen(QColor(0, 0, 255), 2, Qt.PenStyle.DashLine)
                 painter.setPen(pen)
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                # Draw the in-progress rectangle using widget coordinates
                 x1, y1 = self._add_subfig_start.x(), self._add_subfig_start.y()
                 x2, y2 = self._add_subfig_end.x(), self._add_subfig_end.y()
                 rect = QRect(int(min(x1, x2)), int(min(y1, y2)), int(abs(x2 - x1)), int(abs(y2 - y1)))
                 painter.drawRect(rect)
-            # Draw caption below image
             if fig.get('caption'):
                 painter.setPen(Qt.GlobalColor.black)
                 painter.drawText(0, y + scaled_pixmap.height() + 20, fig['caption'])
@@ -2720,7 +2722,9 @@ class FigureGalleryWidget(QWidget):
         result, annotated_pixmap = self.segment_figures_qt(pixmap)
         # Store bounding boxes in the figure's data
         boxes = [rect for _, rect in result]
-        self.figures[idx]['subfig_boxes'] = boxes
+        for box in boxes:
+            subfigure = { 'id': None, 'box': box }
+            self.figures[idx]['subfig_boxes'].append(subfigure)
         self.update()
         # Notify parent that subfigures have changed
         if self.subfigures_changed_callback:
@@ -2830,8 +2834,12 @@ class FigureGalleryWidget(QWidget):
 
     # --- Basic box editing: click and drag to move a box ---
     def mousePressEvent(self, event):
+        import logging
+        logger = logging.getLogger('PrComponents')
+        logger.info(f"[Gallery] mousePressEvent: pos=({event.position().x() if hasattr(event, 'position') else event.x()}, {event.position().y() if hasattr(event, 'position') else event.y()})")
         # Add subfigure mode: start drawing bounding box
         if self.add_subfigure_mode and self.selected_index is not None:
+            logger.info(f"[Gallery] add_subfigure_mode active, selected_index={self.selected_index}")
             self._add_subfig_start = event.position() if hasattr(event, 'position') else QPointF(event.x(), event.y())
             self._add_subfig_end = self._add_subfig_start
             self.update()
@@ -2852,6 +2860,7 @@ class FigureGalleryWidget(QWidget):
                 clicked_index = i
                 break
             current_y += scaled_pixmap.height() + 40
+        logger.info(f"[Gallery] clicked_index={clicked_index}")
         # Calculate y_offset for the selected main figure only (skip subfigures)
         y_offset = 0
         for i, fig in enumerate(self.figures):
@@ -2861,8 +2870,7 @@ class FigureGalleryWidget(QWidget):
                 break
             p = fig['pixmap']
             y_offset += p.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation).height() + 40
-        subfig_selected = False
-        subfig_idx = None
+        # --- PRIORITIZE RESIZING ---
         if clicked_index is not None:
             fig = self.figures[clicked_index]
             if 'subfig_boxes' in fig:
@@ -2873,7 +2881,9 @@ class FigureGalleryWidget(QWidget):
                 click_x = event.position().x() if hasattr(event, 'position') else event.x()
                 click_y = (event.position().y() if hasattr(event, 'position') else event.y()) - y_offset
                 edge_threshold = 8
-                for idx, rect in enumerate(fig['subfig_boxes']):
+                # --- Check for resize zone first (priority) ---
+                for idx, subfig in enumerate(fig['subfig_boxes']):
+                    rect = subfig['box']
                     sx = int(rect.x() * x_scale)
                     sy = int(rect.y() * y_scale)
                     sw = int(rect.width() * x_scale)
@@ -2901,37 +2911,41 @@ class FigureGalleryWidget(QWidget):
                         resize_edges = 'n'
                     elif near_bottom and inside_x:
                         resize_edges = 's'
-                    if sx <= click_x <= sx + sw and sy <= click_y <= sy + sh:
-                        # Set both selection and drag/resize state before triggering table sync
-                        self.set_selected_index(clicked_index)
-                        self._selected_subfig_box = idx
-                        subfig_selected = True
-                        subfig_idx = idx
-                        if resize_edges:
-                            self._resizing_box = idx
-                            self._resize_edges = resize_edges
-                            self._resize_start = (click_x, click_y)
-                            self._resize_rect_orig = QRect(rect)
-                        else:
-                            self._pending_drag_box = idx
-                            self._pending_drag_offset = (click_x - sx, click_y - sy)
-                            self._drag_start_pos = (click_x, click_y)
+                    # If in a resize zone, immediately enter resizing mode (priority)
+                    if resize_edges:
+                        logger.info(f"[Gallery] PRIORITY: Clicked resize zone for subfigure idx={idx} in figure {clicked_index}, resize_edges={resize_edges}")
+                        self.set_selected_index(clicked_index, idx)
+                        self._resizing_box = idx
+                        self._resize_edges = resize_edges
+                        self._resize_start = (click_x, click_y)
+                        self._resize_rect_orig = subfig['box']
                         self.update()
-                        # Notify parent (FigureView) to sync table selection, but do not clear subfig selection
-                        if self.selection_changed_callback:
-                            self.selection_changed_callback(clicked_index, subfig_idx)
+                        return  # Do not fall through to selection logic
+                # --- If not in a resize zone, proceed to normal selection logic ---
+                for idx, subfig in enumerate(fig['subfig_boxes']):
+                    rect = subfig['box']
+                    sx = int(rect.x() * x_scale)
+                    sy = int(rect.y() * y_scale)
+                    sw = int(rect.width() * x_scale)
+                    sh = int(rect.height() * y_scale)
+                    if sx <= click_x <= sx + sw and sy <= click_y <= sy + sh:
+                        logger.info(f"[Gallery] Clicked subfigure idx={idx} in figure {clicked_index}, resize_edges=None")
+                        self.set_selected_index(clicked_index, idx)
+                        self._pending_drag_box = idx
+                        self._pending_drag_offset = (click_x - sx, click_y - sy)
+                        self._drag_start_pos = (click_x, click_y)
+                        self.update()
                         return  # Do not clear selection/drag state after this
         # If not clicking a subfigure, select main figure and clear subfig selection/drag state
         if clicked_index is not None:
-            self.set_selected_index(clicked_index)
+            logger.info(f"[Gallery] set_selected_index({clicked_index}) called (main figure click)")
+            self.set_selected_index(clicked_index, None)
             self._selected_subfig_box = None
             self._pending_drag_box = None
             self._dragging_box = None
             self._resizing_box = None
             self._drag_start_pos = None
             self.update()
-            if self.selection_changed_callback:
-                self.selection_changed_callback(clicked_index, None)
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -2940,12 +2954,10 @@ class FigureGalleryWidget(QWidget):
             self.update()
             return
         width = self.width()
-        # --- Cursor feedback only for selected subfigure and only if mouse is over it and over the selected subfig box ---
         cursor_set = False
         if self.selected_index is not None:
             fig = self.figures[self.selected_index] 
             if 'subfig_boxes' in fig and hasattr(self, '_selected_subfig_box') and self._selected_subfig_box is not None:
-                # Calculate y offset for the selected main figure only (skip subfigures)
                 y_offset = 0
                 for i, f in enumerate(self.figures):
                     if f.get('parent_id'):
@@ -2958,14 +2970,14 @@ class FigureGalleryWidget(QWidget):
                 scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
                 fig_height = scaled_pixmap.height()
                 mouse_y = event.position().y() if hasattr(event, 'position') else event.y()
-                # Only proceed if mouse is within the selected figure's area
                 if y_offset <= mouse_y < y_offset + fig_height:
                     move_x = event.position().x() if hasattr(event, 'position') else event.x()
                     move_y = mouse_y - y_offset
                     x_scale = scaled_pixmap.width() / pixmap.width()
                     y_scale = scaled_pixmap.height() / pixmap.height()
                     edge_threshold = 8
-                    rect = fig['subfig_boxes'][self._selected_subfig_box]
+                    subfig = fig['subfig_boxes'][self._selected_subfig_box]
+                    rect = subfig['box']
                     sx = int(rect.x() * x_scale)
                     sy = int(rect.y() * y_scale)
                     sw = int(rect.width() * x_scale)
@@ -2990,7 +3002,6 @@ class FigureGalleryWidget(QWidget):
                         cursor_set = True
         if not cursor_set:
             self.setCursor(Qt.CursorShape.ArrowCursor)
-        # --- Robust drag detection: only start drag if mouse moved enough with button held ---
         if self._pending_drag_box is not None and event.buttons() & Qt.MouseButton.LeftButton:
             move_x = event.position().x() if hasattr(event, 'position') else event.x()
             move_y = event.position().y() if hasattr(event, 'position') else event.y()
@@ -3002,12 +3013,10 @@ class FigureGalleryWidget(QWidget):
                 self._pending_drag_box = None
                 self._pending_drag_offset = None
                 self._drag_start_pos = None
-        # Existing resizing and dragging logic
         if hasattr(self, '_resizing_box') and self._resizing_box is not None and self.selected_index is not None:
             fig = self.figures[self.selected_index]
             if 'subfig_boxes' not in fig:
                 return
-            # Calculate y_offset for the selected main figure only (skip subfigures)
             y_offset = 0
             for i, f in enumerate(self.figures):
                 if f.get('parent_id'):
@@ -3018,18 +3027,16 @@ class FigureGalleryWidget(QWidget):
                 y_offset += p.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation).height() + 40
             pixmap = fig['pixmap']
             scaled_pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
-            # Use correct scale: widget -> pixmap
             x_scale = pixmap.width() / scaled_pixmap.width()
             y_scale = pixmap.height() / scaled_pixmap.height()
             move_x = event.position().x() if hasattr(event, 'position') else event.x()
             move_y = (event.position().y() if hasattr(event, 'position') else event.y()) - y_offset
             start_x, start_y = self._resize_start
-            start_y = start_y - y_offset  # Also subtract y_offset from start_y
+            start_y = start_y - y_offset
             rect = self._resize_rect_orig
             new_rect = QRect(rect)
             dx = int((move_x - start_x) * x_scale)
             dy = int((move_y - start_y) * y_scale)
-            # Mouse position in pixmap coordinates, relative to figure
             move_x_pixmap = int(move_x * x_scale)
             move_y_pixmap = int(move_y * y_scale)
             if 'n' in self._resize_edges:
@@ -3040,7 +3047,6 @@ class FigureGalleryWidget(QWidget):
                 new_rect.setLeft(move_x_pixmap)
             if 'e' in self._resize_edges:
                 new_rect.setRight(move_x_pixmap)
-            # Prevent inverted or too small
             min_size = 10
             if new_rect.width() < min_size:
                 if 'w' in self._resize_edges:
@@ -3052,14 +3058,12 @@ class FigureGalleryWidget(QWidget):
                     new_rect.setTop(new_rect.bottom() - min_size)
                 else:
                     new_rect.setBottom(new_rect.top() + min_size)
-            fig['subfig_boxes'][self._resizing_box] = new_rect
+            fig['subfig_boxes'][self._resizing_box]['box'] = new_rect
             self.update()
-        # Moving
         elif self._dragging_box is not None and self.selected_index is not None:
             fig = self.figures[self.selected_index]
             if 'subfig_boxes' not in fig:
                 return
-            # Calculate y_offset for the selected main figure only (skip subfigures)
             y_offset = 0
             for i, f in enumerate(self.figures):
                 if f.get('parent_id'):
@@ -3075,10 +3079,10 @@ class FigureGalleryWidget(QWidget):
             move_x = event.position().x() if hasattr(event, 'position') else event.x()
             move_y = (event.position().y() if hasattr(event, 'position') else event.y()) - y_offset
             dx, dy = self._drag_offset
-            rect = fig['subfig_boxes'][self._dragging_box]
+            rect = fig['subfig_boxes'][self._dragging_box]['box']
             new_x = int((move_x - dx) / x_scale)
             new_y = int((move_y - dy) / y_scale)
-            fig['subfig_boxes'][self._dragging_box] = QRect(new_x, new_y, rect.width(), rect.height())
+            fig['subfig_boxes'][self._dragging_box]['box'] = QRect(new_x, new_y, rect.width(), rect.height())
             self.update()
         super().mouseMoveEvent(event)
 
@@ -3121,7 +3125,7 @@ class FigureGalleryWidget(QWidget):
                 rect = QRect(px, py, pw, ph)
                 if 'subfig_boxes' not in fig:
                     fig['subfig_boxes'] = []
-                fig['subfig_boxes'].append(rect)
+                fig['subfig_boxes'].append({'id': None, 'box': rect})
                 self._selected_subfig_box = len(fig['subfig_boxes']) - 1
                 if self.subfigures_changed_callback:
                     self.subfigures_changed_callback()
@@ -3134,7 +3138,6 @@ class FigureGalleryWidget(QWidget):
         dragging = self._dragging_box is not None
         resizing = self._resizing_box is not None
         if self.selected_index is not None and not dragging and not resizing:
-            # Calculate y_offset for the selected main figure only (skip subfigures)
             width = self.width()
             y_offset = 0
             for i, fig in enumerate(self.figures):
@@ -3153,7 +3156,8 @@ class FigureGalleryWidget(QWidget):
                 release_x = event.position().x() if hasattr(event, 'position') else event.x()
                 release_y = (event.position().y() if hasattr(event, 'position') else event.y()) - y_offset
                 found = False
-                for idx, rect in enumerate(fig['subfig_boxes']):
+                for idx, subfig in enumerate(fig['subfig_boxes']):
+                    rect = subfig['box']
                     sx = int(rect.x() * x_scale)
                     sy = int(rect.y() * y_scale)
                     sw = int(rect.width() * x_scale)
@@ -3215,9 +3219,10 @@ class FigureGalleryWidget(QWidget):
             PrFigure.delete().where((PrFigure.document == doc) & (PrFigure.parent == parent_fig)).execute()
             logger.info("Saving each subfigure...")
             saved_count = 0
-            for idx, rect in enumerate(fig['subfig_boxes']):
-                logger.info(f"Processing subfigure {idx+1}: rect={rect}")
+            for idx, subfig in enumerate(fig['subfig_boxes']):
+                logger.info(f"Processing subfigure {idx+1}: subfig={subfig}")
                 try:
+                    rect = subfig['box']
                     pixmap = fig['pixmap']
                     x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
                     # Store bounding box as fractions of parent figure size
@@ -3359,27 +3364,23 @@ class FigureGalleryWidget(QWidget):
             y_offset += p.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation).height() + 40
         click_x = event.position().x() if hasattr(event, 'position') else event.x()
         click_y = (event.position().y() if hasattr(event, 'position') else event.y()) - y_offset
-        for idx, rect in enumerate(fig['subfig_boxes']):
+        for idx, subfig in enumerate(fig['subfig_boxes']):
+            rect = subfig['box']
             sx = int(rect.x() * x_scale)
             sy = int(rect.y() * y_scale)
             sw = int(rect.width() * x_scale)
             sh = int(rect.height() * y_scale)
             if sx <= click_x <= sx + sw and sy <= click_y <= sy + sh:
-                # Double-clicked this subfigure box
                 current_label = self._get_subfig_label(idx)
-                # Reset any dragging/resizing state before dialog
                 if hasattr(self, '_dragging_box'):
                     self._dragging_box = None
                 if hasattr(self, '_resizing_box'):
                     self._resizing_box = None
                 self.setCursor(Qt.CursorShape.ArrowCursor)
-                # Ask user for new label
                 new_label, ok = QInputDialog.getText(self, "Change Subfigure Index", f"Enter new index for this subfigure (current: {current_label}):", text=current_label)
                 if ok and new_label and new_label != current_label:
-                    # Map label to new index
                     new_idx = self._label_to_index(new_label)
                     if new_idx is not None and 0 <= new_idx < len(fig['subfig_boxes']):
-                        # Move the box to the new index, shifting others
                         box = fig['subfig_boxes'].pop(idx)
                         fig['subfig_boxes'].insert(new_idx, box)
                         self._selected_subfig_box = new_idx
@@ -3494,6 +3495,7 @@ class FigureView(QWidget):
         self.splitter = QSplitter(Qt.Orientation.Vertical, self)
         # Top: Gallery in scroll area
         self.gallery_widget = FigureGalleryWidget(self.main_window)
+        self.gallery_widget.set_scroll_callback(self._scroll_gallery_to_y)
         self.gallery_widget.selection_changed_callback = self._on_gallery_selection_changed
         self.gallery_widget.subfigures_changed_callback = self._on_subfigures_changed  # New callback
         gallery_container = QWidget()
@@ -3598,27 +3600,23 @@ class FigureView(QWidget):
         self.gallery_scroll.verticalScrollBar().setValue(y)
 
     def _on_table_selection_changed(self, selected, deselected):
+        if getattr(self, '_syncing_selection', False):
+            return
         self._syncing_selection = True
         try:
             if selected.indexes():
                 row = selected.indexes()[0].row()
-                # Get the model figure
                 fig = self.model.get_figure(row)
-                # Check if this is a subfigure (has parent)
                 is_subfigure = hasattr(fig, 'parent') and fig.parent is not None
-                # Find the parent figure index in gallery
                 parent_idx = None
                 subfig_idx = None
                 if is_subfigure:
-                    # Find parent figure in gallery
                     parent_id = fig.parent.id if hasattr(fig.parent, 'id') else fig.parent
                     for i, gfig in enumerate(self.gallery_widget.figures):
                         if gfig.get('id') == parent_id:
                             parent_idx = i
                             break
-                    # Find subfigure index among parent's subfig_boxes
                     if parent_idx is not None and 'subfig_boxes' in self.gallery_widget.figures[parent_idx]:
-                        # Try to match by bounding box (using bounding_box_json)
                         import json
                         try:
                             box = json.loads(fig.subfigure_box) if hasattr(fig, 'subfigure_box') and fig.subfigure_box else None
@@ -3628,41 +3626,34 @@ class FigureView(QWidget):
                                 y = int(box['y'] * pixmap.height())
                                 w = int(box['w'] * pixmap.width())
                                 h = int(box['h'] * pixmap.height())
-                                for idx, rect in enumerate(self.gallery_widget.figures[parent_idx]['subfig_boxes']):
+                                for idx, subfig in enumerate(self.gallery_widget.figures[parent_idx]['subfig_boxes']):
+                                    rect = subfig['box']
                                     if (rect.x(), rect.y(), rect.width(), rect.height()) == (x, y, w, h):
                                         subfig_idx = idx
                                         break
                         except Exception:
                             pass
-                    else:
-                        # Not a subfigure, just select the figure
-                        for i, gfig in enumerate(self.gallery_widget.figures):
-                            if gfig.get('id') == fig.id:
-                                parent_idx = i
-                                break
-                    # Scroll and select in gallery
                     if parent_idx is not None:
-                        self.gallery_widget.scroll_to_figure(parent_idx)
-                        if self.gallery_widget.selected_index != parent_idx:
-                            self.gallery_widget.set_selected_index(parent_idx)
-                        if is_subfigure and subfig_idx is not None:
-                            self.gallery_widget._selected_subfig_box = subfig_idx
-                        else:
-                            self.gallery_widget._selected_subfig_box = None
+                        self.gallery_widget.set_selected_index(parent_idx, subfig_idx)
                         self.gallery_widget.update()
-                    # Enable/disable Save Subfigures button based on subfig_boxes
                     fig_gal = self.gallery_widget.figures[parent_idx] if parent_idx is not None and 0 <= parent_idx < len(self.gallery_widget.figures) else None
                     if fig_gal and 'subfig_boxes' in fig_gal and fig_gal['subfig_boxes']:
                         self.save_subfigures_btn.setEnabled(True)
                     else:
                         self.save_subfigures_btn.setEnabled(False)
                 else:
-                    # Avoid recursion: only clear if not already None
-                    if self.gallery_widget.selected_index is not None:
-                        self.gallery_widget.set_selected_index(None)
+                    main_idx = None
+                    for i, gfig in enumerate(self.gallery_widget.figures):
+                        if gfig.get('id') == fig.id:
+                            main_idx = i
+                            break
+                    if main_idx is not None:
+                        if self.gallery_widget.selected_index != main_idx or self.gallery_widget._selected_subfig_box is not None:
+                            self.gallery_widget.set_selected_index(main_idx, None)
+                            self.gallery_widget.scroll_to_figure(main_idx)
+                            self.gallery_widget.update()
                     self.save_subfigures_btn.setEnabled(False)
             else:
-                # Avoid recursion: only clear if not already None
                 if self.gallery_widget.selected_index is not None:
                     self.gallery_widget.set_selected_index(None)
                 self.save_subfigures_btn.setEnabled(False)
@@ -3681,10 +3672,24 @@ class FigureView(QWidget):
     def show_figures_from_db(self, document):
         from PDFModels import PrFigure
         # Filter figures based on show_db_subfigures
+        def sort_key(fig):
+            # Part 1: try numeric if possible
+            p1 = int(fig.part1_number) if fig.part1_number and fig.part1_number.isdigit() else fig.part1_number
+
+            # Part 2: sort NULLs last
+            p2 = fig.part2_number
+            if p2 is None:
+                return (p1, float('-inf'))  # sort NULLs last
+            elif p2.isdigit():
+                return (p1, int(p2))       # numeric sort
+            else:
+                return (p1, p2)            # string sort (e.g., 'a', 'b')
+
         if getattr(self, 'show_db_subfigures', True):
-            figures = list(PrFigure.select().where(PrFigure.document == document).order_by(PrFigure.figure_number, PrFigure.part2_number))
+            figures = list(PrFigure.select().where(PrFigure.document == document))
         else:
-            figures = list(PrFigure.select().where((PrFigure.document == document) & (PrFigure.parent.is_null()) ).order_by(PrFigure.figure_number))
+            figures = list(PrFigure.select().where((PrFigure.document == document) & (PrFigure.parent.is_null()) ))
+        figures = sorted(figures, key=sort_key)
         self.model.set_figures(figures)
         # --- Detect subfigure numbering scheme from part2_number ---
         part2_numbers = [getattr(f, 'part2_number', None) for f in figures if getattr(f, 'part2_number', None)]
@@ -3713,62 +3718,49 @@ class FigureView(QWidget):
         self.gallery_widget.set_figures(gallery_figures)
 
     def _on_gallery_selection_changed(self, idx, subfig_idx=None):
-        # Sync TableView selection to match gallery selection, including subfigure
-        if getattr(self, '_syncing_selection', False) and subfig_idx is not None:
-            # Only update Save Subfigures button state
+        if getattr(self, '_syncing_selection', False):
+            return
+        self._syncing_selection = True
+        try:
+            sel_model = self.table_view.selectionModel()
+            target_id = None
+            if idx is not None and 0 <= idx < len(self.gallery_widget.figures):
+                fig = self.gallery_widget.figures[idx]
+                if subfig_idx is not None and 'subfig_boxes' in fig and 0 <= subfig_idx < len(fig['subfig_boxes']):
+                    subfig = fig['subfig_boxes'][subfig_idx]
+                    target_id = subfig.get('id')
+                else:
+                    target_id = fig.get('id')
+            row_to_select = None
+            for row in range(self.model.rowCount()):
+                model_fig = self.model.get_figure(row)
+                if hasattr(model_fig, 'id') and model_fig.id == target_id:
+                    row_to_select = row
+                    break
+            if row_to_select is not None:
+                if sel_model:
+                    index = self.model.index(row_to_select, 0)
+                    if not sel_model.isSelected(index):
+                        sel_model.clearSelection()
+                        from PyQt6.QtCore import QItemSelectionModel
+                        sel_model.select(index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+                        self.table_view.scrollTo(index)
+                fig = self.gallery_widget.figures[idx] if idx is not None and 0 <= idx < len(self.gallery_widget.figures) else None
+                if fig and 'subfig_boxes' in fig and fig['subfig_boxes']:
+                    self.save_subfigures_btn.setEnabled(True)
+                else:
+                    self.save_subfigures_btn.setEnabled(False)
+            else:
+                if sel_model and sel_model.hasSelection():
+                    sel_model.clearSelection()
             fig = self.gallery_widget.figures[idx] if idx is not None and 0 <= idx < len(self.gallery_widget.figures) else None
             if fig and 'subfig_boxes' in fig and fig['subfig_boxes']:
                 self.save_subfigures_btn.setEnabled(True)
             else:
                 self.save_subfigures_btn.setEnabled(False)
-            return
-        sel_model = self.table_view.selectionModel()
-        if idx is not None:
-            if sel_model:
-                index = self.model.index(idx, 0)
-                # Avoid recursion: only select if not already selected
-                if not sel_model.isSelected(index):
-                    sel_model.clearSelection()
-                    from PyQt6.QtCore import QItemSelectionModel
-                    sel_model.select(index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
-                    self.table_view.scrollTo(index)
-            # Enable/disable Save Subfigures button based on subfig_boxes
-            fig = self.gallery_widget.figures[idx] if 0 <= idx < len(self.gallery_widget.figures) else None
-            if fig and 'subfig_boxes' in fig and fig['subfig_boxes']:
-                self.save_subfigures_btn.setEnabled(True)
-            else:
-                self.save_subfigures_btn.setEnabled(False)
-            # If a subfigure is selected, try to select it in the table view
-            if subfig_idx is not None:
-                # Find the row in the table model that matches this subfigure
-                for row in range(self.model.rowCount()):
-                    fig_row = self.model.get_figure(row)
-                    is_subfigure = hasattr(fig_row, 'parent') and fig_row.parent is not None
-                    if is_subfigure and hasattr(fig_row, 'subfigure_box') and fig_row.parent.id == fig['id']:
-                        # Try to match by bounding box
-                        import json
-                        try:
-                            box = json.loads(fig_row.subfigure_box) if fig_row.subfigure_box else None
-                            if box:
-                                pixmap = fig['pixmap']
-                                x = int(box['x'] * pixmap.width())
-                                y = int(box['y'] * pixmap.height())
-                                w = int(box['w'] * pixmap.width())
-                                h = int(box['h'] * pixmap.height())
-                                rect = fig['subfig_boxes'][subfig_idx]
-                                if (rect.x(), rect.y(), rect.width(), rect.height()) == (x, y, w, h):
-                                    subfig_index = self.model.index(row, 0)
-                                    sel_model.select(subfig_index, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows)
-                                    self.table_view.scrollTo(subfig_index)
-                                    break
-                        except Exception:
-                            pass
-        else:
-            if sel_model:
-                # Avoid recursion: only clear if something is selected
-                if sel_model.hasSelection():
-                    sel_model.clearSelection()
-            self.save_subfigures_btn.setEnabled(False)
+        finally:
+            self._syncing_selection = False
+
     def _on_subfigures_changed(self):
         # Called when subfigures are detected/changed
         idx = self.gallery_widget.selected_index
