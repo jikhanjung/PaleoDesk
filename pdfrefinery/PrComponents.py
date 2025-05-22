@@ -2668,6 +2668,10 @@ class FigureGalleryWidget(QWidget):
                 rect = QRect(int(min(x1, x2)), int(min(y1, y2)), int(abs(x2 - x1)), int(abs(y2 - y1)))
                 painter.drawRect(rect)
             if fig.get('caption'):
+                font = painter.font()
+                font.setBold(False)
+                font.setPointSize(10)
+                painter.setFont(font)
                 painter.setPen(Qt.GlobalColor.black)
                 painter.drawText(0, y + scaled_pixmap.height() + 20, fig['caption'])
             y += scaled_pixmap.height() + 40
