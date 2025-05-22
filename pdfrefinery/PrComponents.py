@@ -19,6 +19,8 @@ import fitz
 from PrDialogs import *
 import numpy as np
 import cv2
+import io
+from PIL import Image as PILImage
 # Get logger
 logger = logging.getLogger('PrComponents')
 
@@ -2456,10 +2458,6 @@ class StructuredContentView(QWidget):
 
     def show_figures_from_db(self, document):
         """Display all figures from PrFigure for the given document."""
-        from PyQt6.QtGui import QPixmap
-        import io
-        from PDFModels import PrFigure
-
         self.content_list_widget.clear()
         figures = PrFigure.select().where(PrFigure.document == document).order_by(PrFigure.part1_prefix, PrFigure.part1_number, PrFigure.part2_prefix, PrFigure.part2_number)
         for fig in figures:
@@ -2507,7 +2505,6 @@ class FigureGalleryWidget(QWidget):
         self.figures = []  # List of dicts: {'pixmap': ..., 'bounding_boxes': ..., 'caption': ...}
         self._scroll_callback = None
         self.setMinimumWidth(10)
-        from PyQt6.QtWidgets import QSizePolicy
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.selected_index = None  # Track selected figure index
         self.setMouseTracking(True)  # Enable mouse tracking for hover events
@@ -2527,7 +2524,7 @@ class FigureGalleryWidget(QWidget):
         self._resizing_box = None  # Ensure always initialized
 
     def set_selected_index(self, idx, subfig_idx=None):
-        logger.info(f"[Gallery] set_selected_index: idx={idx}, subfig_idx={subfig_idx}, selected_index={self.selected_index}")
+        #logger.info(f"[Gallery] set_selected_index: idx={idx}, subfig_idx={subfig_idx}, selected_index={self.selected_index}")
         self._selected_subfig_box = subfig_idx
         self.selected_index = idx
 
@@ -2740,8 +2737,6 @@ class FigureGalleryWidget(QWidget):
         return False
 
     def segment_figures_qt(self, qpixmap):
-        import logging
-        logger = logging.getLogger('PrComponents')
         img = qpixmap.toImage()
         width = img.width()
         height = img.height()
@@ -2834,12 +2829,10 @@ class FigureGalleryWidget(QWidget):
 
     # --- Basic box editing: click and drag to move a box ---
     def mousePressEvent(self, event):
-        import logging
-        logger = logging.getLogger('PrComponents')
-        logger.info(f"[Gallery] mousePressEvent: pos=({event.position().x() if hasattr(event, 'position') else event.x()}, {event.position().y() if hasattr(event, 'position') else event.y()})")
+        #logger.info(f"[Gallery] mousePressEvent: pos=({event.position().x() if hasattr(event, 'position') else event.x()}, {event.position().y() if hasattr(event, 'position') else event.y()})")
         # Add subfigure mode: start drawing bounding box
         if self.add_subfigure_mode and self.selected_index is not None:
-            logger.info(f"[Gallery] add_subfigure_mode active, selected_index={self.selected_index}")
+            #logger.info(f"[Gallery] add_subfigure_mode active, selected_index={self.selected_index}")
             self._add_subfig_start = event.position() if hasattr(event, 'position') else QPointF(event.x(), event.y())
             self._add_subfig_end = self._add_subfig_start
             self.update()
@@ -2929,7 +2922,7 @@ class FigureGalleryWidget(QWidget):
                     sw = int(rect.width() * x_scale)
                     sh = int(rect.height() * y_scale)
                     if sx <= click_x <= sx + sw and sy <= click_y <= sy + sh:
-                        logger.info(f"[Gallery] Clicked subfigure idx={idx} in figure {clicked_index}, resize_edges=None")
+                        #logger.info(f"[Gallery] Clicked subfigure idx={idx} in figure {clicked_index}, resize_edges=None")
                         self.set_selected_index(clicked_index, idx)
                         self._pending_drag_box = idx
                         self._pending_drag_offset = (click_x - sx, click_y - sy)
@@ -2938,7 +2931,7 @@ class FigureGalleryWidget(QWidget):
                         return  # Do not clear selection/drag state after this
         # If not clicking a subfigure, select main figure and clear subfig selection/drag state
         if clicked_index is not None:
-            logger.info(f"[Gallery] set_selected_index({clicked_index}) called (main figure click)")
+            #logger.info(f"[Gallery] set_selected_index({clicked_index}) called (main figure click)")
             self.set_selected_index(clicked_index, None)
             self._selected_subfig_box = None
             self._pending_drag_box = None
@@ -3179,11 +3172,6 @@ class FigureGalleryWidget(QWidget):
 
     def save_subfigures(self):
         """Save subfigures of the selected figure to the PrFigure table, using the selected numbering scheme."""
-        from PDFModels import PrFigure, PDFDocument
-        from PyQt6.QtWidgets import QMessageBox
-        import datetime
-        import logging
-        logger = logging.getLogger('PrComponents')
         try:
             logger.info("Starting save_subfigures")
             if self.main_window and hasattr(self.main_window, 'document_record'):
@@ -3205,7 +3193,6 @@ class FigureGalleryWidget(QWidget):
                 return
             logger.info(f"Number of subfig_boxes: {len(fig['subfig_boxes'])}")
             # Remove previous subfigures for this parent
-            from peewee import fn
             logger.info("Querying for parent figure in PrFigure table...")
             parent_fig = PrFigure.select().where(PrFigure.id == fig['id']).first()
             if not parent_fig:
@@ -3231,7 +3218,6 @@ class FigureGalleryWidget(QWidget):
                     y_frac = round(y / fig_h, 6) if fig_h else 0.0
                     w_frac = round(w / fig_w, 6) if fig_w else 0.0
                     h_frac = round(h / fig_h, 6) if fig_h else 0.0
-                    import json
                     bounding_box_json = json.dumps({'x': x_frac, 'y': y_frac, 'w': w_frac, 'h': h_frac})
                     #logger.info(f"Bounding box JSON (fractional): {bounding_box_json}")
                     #logger.info(f"Cropping pixmap at ({x}, {y}, {w}, {h})")
@@ -3252,9 +3238,6 @@ class FigureGalleryWidget(QWidget):
                     bits.setsize(expected_len)
                     ba = bits.asstring(expected_len)
                     logger.debug(f"Buffer length: {len(ba)}, expected: {expected_len}")
-                    from PyQt6.QtGui import QImage
-                    import io
-                    from PIL import Image as PILImage
                     buffer = io.BytesIO()
                     try:
                         pil_img = PILImage.frombytes("RGBA", (cropped.width(), cropped.height()), ba)
@@ -3305,7 +3288,6 @@ class FigureGalleryWidget(QWidget):
             QMessageBox.critical(self, "Save Error", f"Error saving subfigures: {str(e)}")
 
     def add_save_subfigures_button(self, layout):
-        from PyQt6.QtWidgets import QPushButton
         btn = QPushButton("Save Subfigures")
         btn.clicked.connect(self.save_subfigures)
         layout.addWidget(btn)
@@ -3617,7 +3599,6 @@ class FigureView(QWidget):
                             parent_idx = i
                             break
                     if parent_idx is not None and 'subfig_boxes' in self.gallery_widget.figures[parent_idx]:
-                        import json
                         try:
                             box = json.loads(fig.subfigure_box) if hasattr(fig, 'subfigure_box') and fig.subfigure_box else None
                             if box:
@@ -3670,7 +3651,6 @@ class FigureView(QWidget):
             self.show_figures_from_db(self.main_window.document_record)
 
     def show_figures_from_db(self, document):
-        from PDFModels import PrFigure
         # Filter figures based on show_db_subfigures
         def sort_key(fig):
             # Part 1: try numeric if possible
@@ -3742,7 +3722,6 @@ class FigureView(QWidget):
                     index = self.model.index(row_to_select, 0)
                     if not sel_model.isSelected(index):
                         sel_model.clearSelection()
-                        from PyQt6.QtCore import QItemSelectionModel
                         sel_model.select(index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
                         self.table_view.scrollTo(index)
                 fig = self.gallery_widget.figures[idx] if idx is not None and 0 <= idx < len(self.gallery_widget.figures) else None
