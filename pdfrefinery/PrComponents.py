@@ -31,6 +31,7 @@ class PDFViewer(QWidget):
     
     def __init__(self, main_window=None):
         super().__init__()
+        self.fit_to_width_mode = True
         self.main_window = main_window
         self.dpr = self.devicePixelRatioF()
         self.pixmap = None
@@ -114,19 +115,78 @@ class PDFViewer(QWidget):
         # Create zoom out button
         self.zoom_out_btn = QPushButton("-")
         self.zoom_out_btn.setFixedSize(30, 30)
-        self.zoom_out_btn.clicked.connect(lambda: self.set_zoom(self.zoom / 1.1))
+        self.zoom_out_btn.clicked.connect(self._zoom_out)
         zoom_layout.addWidget(self.zoom_out_btn)
         
         # Create zoom in button
         self.zoom_in_btn = QPushButton("+")
         self.zoom_in_btn.setFixedSize(30, 30)
-        self.zoom_in_btn.clicked.connect(lambda: self.set_zoom(self.zoom * 1.1))
+        self.zoom_in_btn.clicked.connect(self._zoom_in)
         zoom_layout.addWidget(self.zoom_in_btn)
         
+        # Add fit width button
+        self.fit_width_btn = QPushButton("Fit Width")
+        self.fit_width_btn.setFixedSize(70, 30)
+        self.fit_width_btn.clicked.connect(self.fit_to_width)
+        zoom_layout.addWidget(self.fit_width_btn)
+        
         # Position the zoom widget
-        self.zoom_widget.setFixedSize(80, 40)
-        self.zoom_widget.move(self.width() - 90, 10)  # Position in top-right corner
+        self.zoom_widget.setFixedSize(150, 40)
+        self.zoom_widget.move(10, 10)  # Position in top-right corner
 
+    def _zoom_in(self):
+        self.fit_to_width_mode = False
+        self.set_zoom(self.zoom * 1.1)
+        self.adjust_pdf_viewer_width()
+
+    def _zoom_out(self):
+        self.fit_to_width_mode = False
+        self.set_zoom(self.zoom / 1.1)
+        self.adjust_pdf_viewer_width()
+
+    def adjust_pdf_viewer_width(self):
+        """Set the widget width to match the maximum zoomed page width"""
+        if not self.page_pixmaps:
+            return
+        max_scaled_width = 0
+        for page_data in self.page_pixmaps.values():
+            width = page_data['width']
+            scaled_width = int(width * self.zoom)
+            if scaled_width > max_scaled_width:
+                max_scaled_width = scaled_width
+        # Optionally, ensure it's at least as wide as the viewport
+        parent = self.parent()
+        if parent and hasattr(parent, 'viewport'):
+            viewport_width = parent.viewport().width()
+            max_scaled_width = max(max_scaled_width, viewport_width)
+        self.setFixedWidth(max_scaled_width)
+
+    def fit_to_width(self):
+        self.fit_to_width_mode = True
+        self._set_zoom_to_fit_width()
+        self.update()
+
+    def _set_zoom_to_fit_width(self):
+        # Use current page for fit-to-width
+        scroll_area = self.main_window.pdf_scroll if self.main_window and hasattr(self.main_window, 'pdf_scroll') else None
+        if self.current_page in self.page_pixmaps and scroll_area:
+            page_width = self.page_pixmaps[self.current_page]['width']
+            viewport_width = scroll_area.viewport().width()
+            if page_width > 0:
+                self.zoom = viewport_width / page_width
+                self.adjust_pdf_viewer_width()
+
+    def set_zoom(self, new_zoom):
+        """Set the zoom level"""
+        if 0.1 <= new_zoom <= 5.0:  # Limit zoom range
+            self.zoom = new_zoom
+            # Clear page cache when zoom changes
+            self.page_pixmaps.clear()
+            self.loaded_pages.clear()
+            # Reload current page with new zoom
+            self.update_current_page()
+            self.update()
+        
     def clear_document(self):
         """Clear the current PDF document and reset state"""
         if self.pdf_document:
@@ -231,7 +291,7 @@ class PDFViewer(QWidget):
         viewport_top = scroll_value
         viewport_bottom = scroll_value + viewport_height
         
-        logger.debug(f"[paintEvent] Viewport: top={viewport_top}, bottom={viewport_bottom}, current_page={self.current_page}")
+        logger.info(f"[paintEvent] Viewport: top={viewport_top}, bottom={viewport_bottom}, current_page={self.current_page}")
         
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -245,8 +305,7 @@ class PDFViewer(QWidget):
         for page_num in sorted(self.page_pixmaps.keys()):
             width = self.page_pixmaps[page_num]['width']
             height = self.page_pixmaps[page_num]['height']
-            scale = self.width() / width
-            scaled_height = int(height * scale)
+            scaled_height = int(height * self.zoom)
             total_height += scaled_height
             
         # Set widget size to match total height
@@ -261,8 +320,8 @@ class PDFViewer(QWidget):
             if page_num not in pages_to_paint:
                 width = self.page_pixmaps[page_num]['width']
                 height = self.page_pixmaps[page_num]['height']
-                scale = self.width() / width
-                scaled_height = int(height * scale)
+                scaled_width = int(width * self.zoom)
+                scaled_height = int(height * self.zoom)
                 current_y += scaled_height
                 continue
             # Ensure the page is loaded
@@ -273,19 +332,19 @@ class PDFViewer(QWidget):
             pixmap = self.page_pixmaps[page_num]['pixmap']
             width = self.page_pixmaps[page_num]['width']
             height = self.page_pixmaps[page_num]['height']
-            scale = self.width() / width
-            scaled_height = int(height * scale)
+            scaled_width = int(width * self.zoom)
+            scaled_height = int(height * self.zoom)
             page_top = current_y
-            target_rect = QRect(0, int(current_y), self.width(), scaled_height)
+            target_rect = QRect(0, int(current_y), scaled_width, scaled_height)
             painter.drawPixmap(target_rect, pixmap)
             if self.show_bounding_boxes and self.bounding_boxes:
                 page_boxes = self.bounding_boxes.get(page_num, [])
                 for element in page_boxes:
                     if 'coordinates' in element and len(element['coordinates']) == 4:
                         coords = element['coordinates']
-                        x1 = int(coords[0]['x'] * self.width())
+                        x1 = int(coords[0]['x'] * scaled_width)
                         y1 = int(coords[0]['y'] * scaled_height + current_y)
-                        x2 = int(coords[2]['x'] * self.width())
+                        x2 = int(coords[2]['x'] * scaled_width)
                         y2 = int(coords[2]['y'] * scaled_height + current_y)
                         center_x = (x1 + x2) // 2
                         center_y = (y1 + y2) // 2
@@ -311,9 +370,9 @@ class PDFViewer(QWidget):
                         if element.get('linked_elements'):
                             color = QColor(128,0,0,196)
                         if len(coords) == 4:
-                            x1 = int(coords[0]['x'] * self.width())
+                            x1 = int(coords[0]['x'] * scaled_width)
                             y1 = int(coords[0]['y'] * scaled_height + current_y)
-                            x2 = int(coords[2]['x'] * self.width())
+                            x2 = int(coords[2]['x'] * scaled_width)
                             y2 = int(coords[2]['y'] * scaled_height + current_y)
                             category = element.get('category', 'text').lower() 
                             category_text = category+ " " + str(int(page_num)+1) + "-" + str(int(element.get('id', ''))+1)
@@ -442,11 +501,11 @@ class PDFViewer(QWidget):
                     # Find the page's y offset and scale
                     width = self.page_pixmaps[page_num]['width']
                     height = self.page_pixmaps[page_num]['height']
-                    scale = self.width() / width
-                    scaled_height = int(height * scale)
+                    scaled_width = int(width * self.zoom)
+                    scaled_height = int(height * self.zoom)
                     y_offset = page_y_offsets.get(page_num, 0)
                     for c in coords:
-                        x = int(c['x'] * self.width())
+                        x = int(c['x'] * scaled_width)
                         y = int(c['y'] * scaled_height + y_offset)
                         linked_groups[group_key].add((x, y))
         # Draw convex hulls with internal padding
@@ -467,6 +526,14 @@ class PDFViewer(QWidget):
                 painter.setPen(hull_pen)
                 painter.setBrush(hull_brush)
                 painter.drawPolygon(*padded_hull)
+
+        # --- Floating zoom widget positioning ---
+        if hasattr(self, 'zoom_widget'):
+            scroll_area = self.main_window.pdf_scroll
+            if scroll_area:
+                x = 10
+                y = 10 + scroll_area.verticalScrollBar().value()
+                self.zoom_widget.move(x, y)
 
     def set_bounding_boxes(self, boxes):
         """Set bounding boxes for all pages"""
@@ -527,17 +594,6 @@ class PDFViewer(QWidget):
         self.show_bounding_boxes = show
         self.update()
 
-    def set_zoom(self, new_zoom):
-        """Set the zoom level"""
-        if 0.1 <= new_zoom <= 5.0:  # Limit zoom range
-            self.zoom = new_zoom
-            # Clear page cache when zoom changes
-            self.page_pixmaps.clear()
-            self.loaded_pages.clear()
-            # Reload current page with new zoom
-            self.update_current_page()
-            self.update()
-        
     def mousePressEvent(self, event):
         """Handle mouse press events"""
         if self.creating_element and event.button() == Qt.MouseButton.LeftButton:
@@ -602,6 +658,7 @@ class PDFViewer(QWidget):
             self.update()  # Update to show selection changes
 
     def mouseMoveEvent(self, event):
+        logger.info(f"[mouseMoveEvent] event: {event.pos()} {self.current_page}")
         """Handle mouse move events"""
         if self.creating_element and self.element_start_pos is not None:
             self.element_current_pos = event.pos()
@@ -947,11 +1004,10 @@ class PDFViewer(QWidget):
             # Calculate scaled height considering zoom rate
             width = page_data['width']
             height = page_data['height']
-            scale = self.width() / width
-            scaled_height = int(height * scale)
+            scaled_height = int(height * self.zoom)
             
             page_bottom = current_height + scaled_height
-            logger.debug(f"[update_current_page] Page {i} range: {current_height} to {page_bottom}, scale={scale}, zoom={self.zoom}")
+            logger.debug(f"[update_current_page] Page {i} range: {current_height} to {page_bottom}, scale={self.zoom}, zoom={self.zoom}")
             
             if current_height <= viewport_center < page_bottom:
                 if self.current_page != i:
@@ -968,9 +1024,13 @@ class PDFViewer(QWidget):
         """Handle widget resize"""
         super().resizeEvent(event)
         logger.debug("[PDFViewer::resizeEvent] Widget resize event triggered")
-        # Reposition zoom widget
+        # --- Floating zoom widget positioning ---
         if hasattr(self, 'zoom_widget'):
-            self.zoom_widget.move(self.width() - 90, 10)
+            scroll_area = self.main_window.pdf_scroll if self.main_window and hasattr(self.main_window, 'pdf_scroll') else None
+            if scroll_area:
+                x = 10
+                y = 10 + scroll_area.verticalScrollBar().value()
+                self.zoom_widget.move(x, y)
             
         # If we have pages, update their display without reloading
         if self.page_pixmaps:
@@ -978,24 +1038,42 @@ class PDFViewer(QWidget):
             # Update current page display
             self.update_current_page()
             self.update()
+        if self.fit_to_width_mode:
+            self._set_zoom_to_fit_width()
     
     def sizeHint(self):
         """Return the size hint for the widget"""
-        if not self.bounding_boxes:
+        if not self.page_pixmaps:
             return super().sizeHint()
-            
-        # Calculate total height based on loaded pages
-        total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
-        return QSize(self.width(), total_height)
+        # Calculate the maximum scaled width and total scaled height
+        max_scaled_width = 0
+        total_height = 0
+        for page_data in self.page_pixmaps.values():
+            width = page_data['width']
+            height = page_data['height']
+            scaled_width = int(width * self.zoom)
+            scaled_height = int(height * self.zoom)
+            if scaled_width > max_scaled_width:
+                max_scaled_width = scaled_width
+            total_height += scaled_height
+        return QSize(max_scaled_width, total_height)
         
     def minimumSizeHint(self):
         """Return the minimum size hint for the widget"""
-        if not self.bounding_boxes:
+        if not self.page_pixmaps:
             return super().minimumSizeHint()
-            
-        # Calculate total height based on loaded pages
-        total_height = sum(page_data['height'] for page_data in self.page_pixmaps.values())
-        return QSize(self.width(), total_height)
+        # Calculate the maximum scaled width and total scaled height
+        max_scaled_width = 0
+        total_height = 0
+        for page_data in self.page_pixmaps.values():
+            width = page_data['width']
+            height = page_data['height']
+            scaled_width = int(width * self.zoom)
+            scaled_height = int(height * self.zoom)
+            if scaled_width > max_scaled_width:
+                max_scaled_width = scaled_width
+            total_height += scaled_height
+        return QSize(max_scaled_width, total_height)
     
     def scroll_to_page(self, page_num):
         """Scroll to make the specified page visible"""
