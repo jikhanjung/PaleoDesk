@@ -482,6 +482,8 @@ class MainWindow(QMainWindow):
             # Clear the PDF viewer
             self.pdf_viewer.clear_document()
             self.pdf_viewer.update()
+
+            self.figure_view.clear_figures()
             
             # Clear current document data
             self.document_data = {
@@ -556,7 +558,6 @@ class MainWindow(QMainWindow):
         self.pdf_document = fitz.open(file_path)
         self.current_page = 0
         self.pdf_viewer.set_document(self.pdf_document)
-        #self.figure_view.set_document(self.pdf_document)
         self.update_navigation()
 
         self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)

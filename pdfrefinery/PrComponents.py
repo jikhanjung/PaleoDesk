@@ -3582,6 +3582,16 @@ class FigureView(QWidget):
             }
         ''')
 
+    def clear_figures(self):
+        self.model.set_figures([])
+        self.gallery_widget.set_figures([])
+        self.gallery_widget.selected_index = None
+        self.gallery_widget.update()
+        self.save_subfigures_btn.setEnabled(False)
+        self.table_view.clearSelection()
+        self.table_view.update()
+        
+
     def _scroll_gallery_to_y(self, y):
         self.gallery_scroll.verticalScrollBar().setValue(y)
 
