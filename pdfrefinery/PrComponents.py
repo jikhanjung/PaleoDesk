@@ -209,9 +209,6 @@ class PDFViewer(QWidget):
         """Set the zoom level"""
         if 0.1 <= new_zoom <= 5.0:  # Limit zoom range
             self.zoom = new_zoom
-            # Clear page cache when zoom changes
-            self.page_pixmaps.clear()
-            self.loaded_pages.clear()
             # Reload current page with new zoom
             self.update_current_page()
             self.update()
