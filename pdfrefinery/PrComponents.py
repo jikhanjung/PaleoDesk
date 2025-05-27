@@ -45,6 +45,7 @@ class PDFViewer(QWidget):
         self.initial_load_pages = 3  # Number of pages to load initially
 
         self.loaded_pages = set()  # Track which pages are loaded
+        self.original_pixmaps = {}
         self.page_pixmaps = {}  # Cache for page pixmaps
         self.bounding_boxes = {}
         self.scaled_pixmaps = {}
@@ -76,6 +77,7 @@ class PDFViewer(QWidget):
         
         # Create zoom buttons
         self.create_zoom_buttons()
+        self._update_zoom_label()
         
         # Set minimum size
         self.setMinimumSize(400, 600)
@@ -110,7 +112,7 @@ class PDFViewer(QWidget):
         # Create layout for buttons
         zoom_layout = QHBoxLayout(self.zoom_widget)
         zoom_layout.setContentsMargins(5, 5, 5, 5)
-        zoom_layout.setSpacing(5)
+        zoom_layout.setSpacing(8)  # Slightly larger gap between all items
         
         # Create zoom out button
         self.zoom_out_btn = QPushButton("-")
@@ -124,14 +126,33 @@ class PDFViewer(QWidget):
         self.zoom_in_btn.clicked.connect(self._zoom_in)
         zoom_layout.addWidget(self.zoom_in_btn)
         
+        # Add extra spacing before 100% button
+        zoom_layout.addSpacing(4)
+        # Add 100% button
+        self.zoom_reset_btn = QPushButton("1:1")
+        self.zoom_reset_btn.setFixedSize(35, 30)
+        self.zoom_reset_btn.clicked.connect(self._reset_zoom)
+        zoom_layout.addWidget(self.zoom_reset_btn)
+        
+        # Add extra spacing before Fit Width button
+        zoom_layout.addSpacing(4)
         # Add fit width button
-        self.fit_width_btn = QPushButton("Fit Width")
-        self.fit_width_btn.setFixedSize(70, 30)
+        self.fit_width_btn = QPushButton("Fit")
+        self.fit_width_btn.setFixedSize(40, 30)
         self.fit_width_btn.clicked.connect(self.fit_to_width)
         zoom_layout.addWidget(self.fit_width_btn)
         
+        # Add extra spacing before zoom label
+        zoom_layout.addSpacing(4)
+        # Add zoom factor label
+        self.zoom_label = QLabel(self)
+        self.zoom_label.setFixedWidth(50)
+        self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        zoom_layout.addWidget(self.zoom_label)
+        self._update_zoom_label()
+        
         # Position the zoom widget
-        self.zoom_widget.setFixedSize(150, 40)
+        self.zoom_widget.setFixedSize(220, 40)
         self.zoom_widget.move(10, 10)  # Position in top-right corner
 
     def _zoom_in(self):
@@ -142,6 +163,12 @@ class PDFViewer(QWidget):
     def _zoom_out(self):
         self.fit_to_width_mode = False
         self.set_zoom(self.zoom / 1.1)
+        self.adjust_pdf_viewer_width()
+
+    def _reset_zoom(self):
+        """Reset zoom to 100%"""
+        self.fit_to_width_mode = False
+        self.set_zoom(1.0)
         self.adjust_pdf_viewer_width()
 
     def adjust_pdf_viewer_width(self):
@@ -162,8 +189,10 @@ class PDFViewer(QWidget):
         self.setFixedWidth(max_scaled_width)
 
     def fit_to_width(self):
+        logger.info(f"Fitting to width from {self.zoom}")
         self.fit_to_width_mode = True
         self._set_zoom_to_fit_width()
+        self._update_zoom_label()
         self.update()
 
     def _set_zoom_to_fit_width(self):
@@ -186,6 +215,7 @@ class PDFViewer(QWidget):
             # Reload current page with new zoom
             self.update_current_page()
             self.update()
+            self._update_zoom_label()
         
     def clear_document(self):
         """Clear the current PDF document and reset state"""
@@ -231,6 +261,7 @@ class PDFViewer(QWidget):
             
             # Update the display
             self.update_current_page()
+            self.fit_to_width()
             self.update()
             logger.info(f"Set PDF with {self.total_pages} pages")
             return True
@@ -274,7 +305,7 @@ class PDFViewer(QWidget):
             self.current_page = page_num
             #self.display_all_pages()
             self.scroll_to_page(page_num)
-            logger.debug(f"Set current page to {page_num + 1}")
+            logger.debug(f"Set current page to {page_num}")
             self.currentPageChanged.emit(self.current_page)
 
     def paintEvent(self, event):
@@ -725,7 +756,10 @@ class PDFViewer(QWidget):
             self.update()
         else:
             # Check if mouse is over a bounding box
-            self._check_bounding_box_hover(event.pos())
+            box_info = self._check_bounding_box_hover(event.pos())
+            if box_info:
+                page_num, box = box_info
+                logger.info(f"Mouse over bounding box: {box['id']} on page {page_num}")
 
     def mouseReleaseEvent(self, event):
         #logger.info(f"Mouse release event: {event}, {event.button()}")
@@ -1100,7 +1134,7 @@ class PDFViewer(QWidget):
             logger.info(f"[PDFViewer] set_current_page: {page_num}")
             self.current_page = page_num
             self.scroll_to_page(page_num)
-            logger.debug(f"Set current page to {page_num + 1}")
+            logger.debug(f"Set current page to {page_num}")
             self.currentPageChanged.emit(self.current_page)
 
     def load_next_pages(self):
@@ -1146,9 +1180,7 @@ class PDFViewer(QWidget):
         try:
             page = self.pdf_document[page_num]
             # Use a higher zoom factor for better quality
-            display_zoom = self.zoom
-            render_zoom = display_zoom * 2  # Double the zoom for rendering
-            matrix = fitz.Matrix(render_zoom, render_zoom)
+            matrix = fitz.Matrix(2,2)
             #logger.info(f"Page {page_num + 1} - render_zoom: {render_zoom}, display_zoom: {display_zoom}")
             pix = page.get_pixmap(matrix=matrix)
             #logger.info(f"Page {page_num + 1} - pixmap size: {pix.width}, {pix.height}")
@@ -1161,7 +1193,7 @@ class PDFViewer(QWidget):
             pixmap = QPixmap.fromImage(img)
             
             # Scale the pixmap to the display size
-            display_width = int(self.width() * display_zoom)  # Convert to integer
+            display_width = self.width()
             # Calculate height maintaining aspect ratio
             aspect_ratio = pixmap.height() / pixmap.width()
             display_height = int(display_width * aspect_ratio)
@@ -1173,6 +1205,11 @@ class PDFViewer(QWidget):
             #logger.debug(f"Pixmap size: {pixmap.size()}, display size: {display_width}, {display_height}")
             
             # Store page data
+            self.original_pixmaps[page_num] = {
+                'pixmap': pixmap,
+                'width': pixmap.width(),
+                'height': pixmap.height()
+            }
             self.page_pixmaps[page_num] = {
                 'pixmap': pixmap,
                 'width': pixmap.width(),
@@ -1976,6 +2013,11 @@ class PDFViewer(QWidget):
         
         # Show menu
         menu.exec(event.globalPos())
+
+    def _update_zoom_label(self):
+        """Update the zoom factor label"""
+        percent = int(self.zoom * 100)
+        self.zoom_label.setText(f"{percent}%")
 
 class StructuredContentView(QWidget):
     def __init__(self, parent=None):
