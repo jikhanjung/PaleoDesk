@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QToolBar, QListWidget, QVBoxLayout, QLabel, 
                            QListWidgetItem, QMessageBox, QHBoxLayout, QPushButton, QScrollArea, QToolTip,
                             QDialog, QButtonGroup, QDialogButtonBox, QRadioButton, QMenu, QApplication,
-                            QSplitter, QListView, QTableView, QSizePolicy, QFrame, QHeaderView, QVBoxLayout, QPushButton, QComboBox, QInputDialog )
+                            QSplitter, QListView, QTableView, QSizePolicy, QFrame, QHeaderView, QVBoxLayout, QPushButton, QComboBox, QInputDialog, QSlider )
 from PyQt6.QtCore import Qt, QPoint, QPointF, QEvent, pyqtSignal, QRect, QSize, QRectF, pyqtSignal, QTimer, QEvent, QCoreApplication, QAbstractTableModel, QModelIndex, QVariant, QItemSelectionModel
 from PyQt6.QtGui import QPixmap, QPainter, QAction, QColor, QPen, QPainterPath, QBrush, QImage, QImageReader, QStandardItem, QStandardItemModel, QCursor
 from PDFModels import StructuredElement, PrFigure
@@ -108,52 +108,107 @@ class PDFViewer(QWidget):
                 background-color: #f0f0f0;
             }
         """)
+        zoom_layout = QVBoxLayout(self.zoom_widget)
+        
         
         # Create layout for buttons
-        zoom_layout = QHBoxLayout(self.zoom_widget)
-        zoom_layout.setContentsMargins(5, 5, 5, 5)
-        zoom_layout.setSpacing(8)  # Slightly larger gap between all items
+        zoom_widget1 = QWidget()
+        zoom_layout1 = QHBoxLayout(zoom_widget1)
+        zoom_layout1.setContentsMargins(5, 5, 5, 5)
+        zoom_layout1.setSpacing(8)  # Slightly larger gap between all items
         
         # Create zoom out button
         self.zoom_out_btn = QPushButton("-")
         self.zoom_out_btn.setFixedSize(30, 30)
         self.zoom_out_btn.clicked.connect(self._zoom_out)
-        zoom_layout.addWidget(self.zoom_out_btn)
+        zoom_layout1.addWidget(self.zoom_out_btn)
         
         # Create zoom in button
         self.zoom_in_btn = QPushButton("+")
         self.zoom_in_btn.setFixedSize(30, 30)
         self.zoom_in_btn.clicked.connect(self._zoom_in)
-        zoom_layout.addWidget(self.zoom_in_btn)
+        zoom_layout1.addWidget(self.zoom_in_btn)
         
         # Add extra spacing before 100% button
-        zoom_layout.addSpacing(4)
+        zoom_layout1.addSpacing(4)
         # Add 100% button
         self.zoom_reset_btn = QPushButton("1:1")
         self.zoom_reset_btn.setFixedSize(35, 30)
         self.zoom_reset_btn.clicked.connect(self._reset_zoom)
-        zoom_layout.addWidget(self.zoom_reset_btn)
+        zoom_layout1.addWidget(self.zoom_reset_btn)
         
         # Add extra spacing before Fit Width button
-        zoom_layout.addSpacing(4)
+        zoom_layout1.addSpacing(4)
         # Add fit width button
         self.fit_width_btn = QPushButton("Fit")
         self.fit_width_btn.setFixedSize(40, 30)
         self.fit_width_btn.clicked.connect(self.fit_to_width)
-        zoom_layout.addWidget(self.fit_width_btn)
+        zoom_layout1.addWidget(self.fit_width_btn)
         
         # Add extra spacing before zoom label
-        zoom_layout.addSpacing(4)
+        zoom_layout1.addSpacing(4)
         # Add zoom factor label
         self.zoom_label = QLabel(self)
         self.zoom_label.setFixedWidth(50)
         self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        zoom_layout.addWidget(self.zoom_label)
+        zoom_layout1.addWidget(self.zoom_label)
         self._update_zoom_label()
-        
+
+        zoom_widget2 = QWidget()
+        zoom_layout2 = QHBoxLayout(zoom_widget2)
+        zoom_layout2.setContentsMargins(5, 5, 5, 5)
+        zoom_layout2.setSpacing(8)  # Slightly larger gap between all items
+
+        # Add slider for zoom control
+        self.zoom_slider_x = QSlider(Qt.Orientation.Horizontal)
+        self.zoom_slider_x.setMinimum(-10)
+        self.zoom_slider_x.setMaximum(10)
+        self.zoom_slider_x.setValue(0)
+        self.zoom_slider_x.setFixedWidth(100)
+        self.zoom_slider_x.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.zoom_slider_x.setTickInterval(2)
+
+        # Add slider for zoom control
+        self.zoom_slider_y = QSlider(Qt.Orientation.Horizontal)
+        self.zoom_slider_y.setMinimum(-10)
+        self.zoom_slider_y.setMaximum(10)
+        self.zoom_slider_y.setValue(0)
+        self.zoom_slider_y.setFixedWidth(100)
+        self.zoom_slider_y.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.zoom_slider_y.setTickInterval(2)
+
+        zoom_layout2.addWidget(self.zoom_slider_x)
+        zoom_layout2.addWidget(self.zoom_slider_y)
+        self.zoom_slider_x.valueChanged.connect(self._slider_zoom_x_changed)
+        self.zoom_slider_y.valueChanged.connect(self._slider_zoom_y_changed)
+        self._slider_updating = False  # Prevent recursion
+
+        # Add Apply Zoom Correction button
+        self.slider_zoom_apply = QPushButton("Apply")
+        self.slider_zoom_apply.setFixedWidth(50)
+        zoom_layout2.addWidget(self.slider_zoom_apply)
+        self.slider_zoom_apply.clicked.connect(self._apply_slider_zoom)
+
+        zoom_layout.addWidget(zoom_widget1)
+        zoom_layout.addWidget(zoom_widget2)
+
         # Position the zoom widget
-        self.zoom_widget.setFixedSize(220, 40)
+        self.zoom_widget.setFixedSize(280, 100)
         self.zoom_widget.move(10, 10)  # Position in top-right corner
+
+    def _slider_zoom_x_changed(self, value):
+        if self._slider_updating:
+            return
+        # Map slider value to scale factor (center=0: 1.0, +10: 1.2, -10: 0.8)
+        self.bounding_box_scale_x = 1.0 + (value / 100.0)
+        self.update()  # Trigger repaint
+    
+    def _slider_zoom_y_changed(self, value):
+        if self._slider_updating:
+            return
+        # Map slider value to scale factor (center=0: 1.0, +10: 1.2, -10: 0.8)
+        self.bounding_box_scale_y = 1.0 + (value / 100.0)
+        self.update()  # Trigger repaint
 
     def _zoom_in(self):
         self.fit_to_width_mode = False
@@ -206,10 +261,18 @@ class PDFViewer(QWidget):
                 self.adjust_pdf_viewer_width()
 
     def set_zoom(self, new_zoom):
-        """Set the zoom level"""
-        if 0.1 <= new_zoom <= 5.0:  # Limit zoom range
+        # Overridden to sync slider
+        if 0.1 <= new_zoom <= 5.0:
             self.zoom = new_zoom
-            # Reload current page with new zoom
+            # Sync slider position
+            import math
+            self._slider_updating = True
+            try:
+                slider_val = int(round(math.log(new_zoom, 1.1)))
+                slider_val = max(-10, min(10, slider_val))
+                self.zoom_slider_x.setValue(slider_val)
+            finally:
+                self._slider_updating = False
             self.update_current_page()
             self.update()
             self._update_zoom_label()
@@ -319,7 +382,7 @@ class PDFViewer(QWidget):
         viewport_top = scroll_value
         viewport_bottom = scroll_value + viewport_height
         
-        logger.info(f"[paintEvent] Viewport: top={viewport_top}, bottom={viewport_bottom}, current_page={self.current_page}")
+        #logger.info(f"[paintEvent] Viewport: top={viewport_top}, bottom={viewport_bottom}, current_page={self.current_page}")
         
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -365,17 +428,46 @@ class PDFViewer(QWidget):
             page_top = current_y
             target_rect = QRect(0, int(current_y), scaled_width, scaled_height)
             painter.drawPixmap(target_rect, pixmap)
+
+            # Draw page border
+            '''
+            color = QColor(128,128,128,128)
+            pen = QPen(color, 2, Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(0, int(current_y), scaled_width, scaled_height)
+            '''
+
             if self.show_bounding_boxes and self.bounding_boxes:
                 page_boxes = self.bounding_boxes.get(page_num, [])
                 for element in page_boxes:
                     if 'coordinates' in element and len(element['coordinates']) == 4:
                         coords = element['coordinates']
-                        x1 = int(coords[0]['x'] * scaled_width)
-                        y1 = int(coords[0]['y'] * scaled_height + current_y)
-                        x2 = int(coords[2]['x'] * scaled_width)
-                        y2 = int(coords[2]['y'] * scaled_height + current_y)
-                        center_x = (x1 + x2) // 2
-                        center_y = (y1 + y2) // 2
+                        # --- Bounding box scaling logic ---
+                        page_cx = scaled_width / 2
+                        page_cy = (scaled_height / 2) + current_y
+                        scale_x = getattr(self, 'bounding_box_scale_x', 1.0)
+                        scale_y = getattr(self, 'bounding_box_scale_y', 1.0)
+                        #logger.info(f"Bounding box scale: {scale_x}, {scale_y}")
+                        # Compute scaled points
+                        points = []
+                        for i in range(4):
+                            px = coords[i]['x'] * scaled_width
+                            py = coords[i]['y'] * scaled_height + current_y
+                            sx = page_cx + (px - page_cx) * scale_x
+                            sy = page_cy + (py - page_cy) * scale_y
+                            points.append((sx, sy))
+                        # Use scaled points for drawing
+                        x1, y1 = points[0]
+                        x2, y2 = points[2]
+                        # For drawing the rectangle, get min/max
+                        min_x = min(p[0] for p in points)
+                        min_y = min(p[1] for p in points)
+                        max_x = max(p[0] for p in points)
+                        max_y = max(p[1] for p in points)
+                        # The rest of the code (color, label, etc.) remains the same, but use min_x, min_y, max_x, max_y
+                        center_x = (min_x + max_x) // 2
+                        center_y = (min_y + max_y) // 2
                         box_id = element.get('id')
                         element_centers[(page_num, box_id)] = (center_x, center_y)
                         category = element.get('category', 'text').lower() 
@@ -398,10 +490,14 @@ class PDFViewer(QWidget):
                         if element.get('linked_elements'):
                             color = QColor(128,0,0,196)
                         if len(coords) == 4:
-                            x1 = int(coords[0]['x'] * scaled_width)
-                            y1 = int(coords[0]['y'] * scaled_height + current_y)
-                            x2 = int(coords[2]['x'] * scaled_width)
-                            y2 = int(coords[2]['y'] * scaled_height + current_y)
+                            #x1 = int(coords[0]['x'] * scaled_width)
+                            #y1 = int(coords[0]['y'] * scaled_height + current_y)
+                            #x2 = int(coords[2]['x'] * scaled_width)
+                            #y2 = int(coords[2]['y'] * scaled_height + current_y)
+                            x1 = round(x1)
+                            x2 = round(x2)
+                            y1 = round(y1)
+                            y2 = round(y2)
                             category = element.get('category', 'text').lower() 
                             category_text = category+ " " + str(int(page_num)+1) + "-" + str(int(element.get('id', ''))+1)
                             
@@ -686,7 +782,7 @@ class PDFViewer(QWidget):
             self.update()  # Update to show selection changes
 
     def mouseMoveEvent(self, event):
-        logger.info(f"[mouseMoveEvent] event: {event.pos()} {self.current_page}")
+        #logger.info(f"[mouseMoveEvent] event: {event.pos()} {self.current_page}")
         """Handle mouse move events"""
         if self.creating_element and self.element_start_pos is not None:
             self.element_current_pos = event.pos()
@@ -756,7 +852,7 @@ class PDFViewer(QWidget):
             box_info = self._check_bounding_box_hover(event.pos())
             if box_info:
                 page_num, box = box_info
-                logger.info(f"Mouse over bounding box: {box['id']} on page {page_num}")
+                #logger.info(f"Mouse over bounding box: {box['id']} on page {page_num}")
 
     def mouseReleaseEvent(self, event):
         #logger.info(f"Mouse release event: {event}, {event.button()}")
@@ -946,7 +1042,7 @@ class PDFViewer(QWidget):
         page_key = str(page_num)
         page_structure = self.main_window.document_data['page_structures'][page_key]
         element = page_structure['structure']['elements'][int(element_id)]
-        #logger.info(f"Saving element {element} from page {page_num}")
+        logger.info(f"Saving element {element} from page {page_num}")
 
         document = self.main_window.document_record
         if not document:
@@ -2016,7 +2112,37 @@ class PDFViewer(QWidget):
         percent = int(self.zoom * 100)
         self.zoom_label.setText(f"{percent}%")
 
-class StructuredContentView(QWidget):
+    def _apply_slider_zoom(self):
+        """Apply the current bounding_box_scale to all bounding boxes and reset slider and scale."""
+        scale_x = getattr(self, 'bounding_box_scale_x', 1.0)
+        scale_y = getattr(self, 'bounding_box_scale_y', 1.0)
+        logger.info(f"scale: {scale_x}, {scale_y}")
+        if abs(scale_x - 1.0) < 1e-6 and abs(scale_y - 1.0) < 1e-6:
+            return  # No correction needed
+        # Apply scaling to all bounding boxes from page center (0.5, 0.5)
+        cx, cy = 0.5, 0.5
+        for page_num, page_boxes in self.bounding_boxes.items():
+            for element in page_boxes:
+                if 'coordinates' in element and len(element['coordinates']) == 4:
+                    coords = element['coordinates']
+                    logger.info(f"before: {element['coordinates']}")
+                    for pt in coords:
+                        pt['x'] = cx + (pt['x'] - cx) * scale_x
+                        pt['y'] = cy + (pt['y'] - cy) * scale_y
+                    element['coordinates'] = coords
+                    logger.info(f"after: {element['coordinates']}")
+                # save elements
+                self.save_element(page_num, element['id'])
+        # Reset scale and slider
+        self.bounding_box_scale_x = 1.0
+        self.bounding_box_scale_y = 1.0
+        self._slider_updating = True
+        self.zoom_slider_x.setValue(0)
+        self.zoom_slider_y.setValue(0)
+        self._slider_updating = False
+        self.update()
+
+class StructuredContentView(QWidget):   
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_doc = None  # Store current PDF document
