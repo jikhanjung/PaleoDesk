@@ -2144,7 +2144,7 @@ class PDFViewer(QWidget):
 
     def handle_pdf_scroll_width_change(self):
         """Handle when the pdf_scroll width changes (e.g., on resize). Triggers a repaint."""
-        logger.info(f"pdf_scroll width changed: {self.main_window.pdf_scroll.viewport().width()}")
+        #logger.info(f"pdf_scroll width changed: {self.main_window.pdf_scroll.viewport().width()}")
         # check if fit to width
         if self.fit_to_width_mode:
             # set self.width to pdf_scroll's client width
