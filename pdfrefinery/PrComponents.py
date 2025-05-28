@@ -2142,6 +2142,19 @@ class PDFViewer(QWidget):
         self._slider_updating = False
         self.update()
 
+    def handle_pdf_scroll_width_change(self):
+        """Handle when the pdf_scroll width changes (e.g., on resize). Triggers a repaint."""
+        logger.info(f"pdf_scroll width changed: {self.main_window.pdf_scroll.viewport().width()}")
+        # check if fit to width
+        if self.fit_to_width_mode:
+            # set self.width to pdf_scroll's client width
+            width = self.main_window.pdf_scroll.viewport().width()
+            # set document width to self.width by setting zoom factor.
+            if self.pdf_document is not None:
+                if self.page_pixmaps.get(0, None) is not None:
+                    self.zoom = width / self.page_pixmaps[0]['width']
+                    self.update()
+
 class StructuredContentView(QWidget):   
     def __init__(self, parent=None):
         super().__init__(parent)

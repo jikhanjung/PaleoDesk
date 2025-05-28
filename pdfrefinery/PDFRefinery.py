@@ -86,6 +86,12 @@ def setup_icons():
     
     return QIcon(icon_path)
 
+# Custom QScrollArea that emits a signal when its width changes
+class PDFScrollArea(QScrollArea):
+    widthChanged = pyqtSignal(int)
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.widthChanged.emit(self.viewport().width())
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -139,7 +145,7 @@ class MainWindow(QMainWindow):
         main_splitter.addWidget(self.right_splitter)
         
         # Create PDF viewer with scroll area
-        self.pdf_scroll = QScrollArea()
+        self.pdf_scroll = PDFScrollArea()
         self.pdf_scroll.setWidgetResizable(True)
         self.pdf_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.pdf_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -229,6 +235,9 @@ class MainWindow(QMainWindow):
 
         # In MainWindow.__init__
         self.mode = None  # 'directory' or 'zotero'
+
+        # Connect scroll area width change to PDFViewer
+        self.pdf_scroll.widthChanged.connect(self.pdf_viewer.handle_pdf_scroll_width_change)
 
     def prepare_database(self):
         try:
