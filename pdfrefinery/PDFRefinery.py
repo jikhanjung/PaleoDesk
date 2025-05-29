@@ -46,7 +46,7 @@ def setup_logging():
     level_name = settings.value("logging/level", "INFO")
     level = getattr(logging, level_name, logging.INFO)
     
-    # Configure logging with UTF-8 encoding
+    # Configure logging with UTF-8 encoding 
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

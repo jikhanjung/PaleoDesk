@@ -154,62 +154,60 @@ class PDFViewer(QWidget):
         zoom_layout1.addWidget(self.zoom_label)
         self._update_zoom_label()
 
-        zoom_widget2 = QWidget()
-        zoom_layout2 = QHBoxLayout(zoom_widget2)
-        zoom_layout2.setContentsMargins(5, 5, 5, 5)
-        zoom_layout2.setSpacing(8)  # Slightly larger gap between all items
+        # Add 100% button
+        self.show_correction_btn = QPushButton("v")
+        self.show_correction_btn.setFixedSize(35, 30)
+        self.show_correction_btn.clicked.connect(self._show_hide_correction)
+        zoom_layout1.addWidget(self.show_correction_btn)
+
+
+        self.correction_widget = QWidget()
+        self.correction_layout = QHBoxLayout(self.correction_widget)
+        self.correction_layout.setContentsMargins(5, 5, 5, 5)
+        self.correction_layout.setSpacing(8)  # Slightly larger gap between all items
 
         # Add slider for zoom control
-        self.zoom_slider_x = QSlider(Qt.Orientation.Horizontal)
-        self.zoom_slider_x.setMinimum(-10)
-        self.zoom_slider_x.setMaximum(10)
-        self.zoom_slider_x.setValue(0)
-        self.zoom_slider_x.setFixedWidth(100)
-        self.zoom_slider_x.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.zoom_slider_x.setTickInterval(2)
+        self.bbox_correction_slider = QSlider(Qt.Orientation.Horizontal)
+        self.bbox_correction_slider.setMinimum(-10)
+        self.bbox_correction_slider.setMaximum(10)
+        self.bbox_correction_slider.setValue(0)
+        self.bbox_correction_slider.setFixedWidth(100)
+        self.bbox_correction_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.bbox_correction_slider.setTickInterval(2)
 
-        # Add slider for zoom control
-        self.zoom_slider_y = QSlider(Qt.Orientation.Horizontal)
-        self.zoom_slider_y.setMinimum(-10)
-        self.zoom_slider_y.setMaximum(10)
-        self.zoom_slider_y.setValue(0)
-        self.zoom_slider_y.setFixedWidth(100)
-        self.zoom_slider_y.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.zoom_slider_y.setTickInterval(2)
-
-        zoom_layout2.addWidget(self.zoom_slider_x)
-        zoom_layout2.addWidget(self.zoom_slider_y)
-        self.zoom_slider_x.valueChanged.connect(self._slider_zoom_x_changed)
-        self.zoom_slider_y.valueChanged.connect(self._slider_zoom_y_changed)
+        self.correction_layout.addWidget(self.bbox_correction_slider)
+        self.bbox_correction_slider.valueChanged.connect(self._slider_bbox_correction_changed)
         self._slider_updating = False  # Prevent recursion
 
         # Add Apply Zoom Correction button
-        self.slider_zoom_apply = QPushButton("Apply")
-        self.slider_zoom_apply.setFixedWidth(50)
-        zoom_layout2.addWidget(self.slider_zoom_apply)
-        self.slider_zoom_apply.clicked.connect(self._apply_slider_zoom)
+        self.slider_bbox_correction_apply = QPushButton("Apply")
+        self.slider_bbox_correction_apply.setFixedWidth(50)
+        self.correction_layout.addWidget(self.slider_bbox_correction_apply)
+        self.slider_bbox_correction_apply.clicked.connect(self._apply_slider_bbox_correction)
 
         zoom_layout.addWidget(zoom_widget1)
-        zoom_layout.addWidget(zoom_widget2)
+        zoom_layout.addWidget(self.correction_widget)
 
         # Position the zoom widget
         self.zoom_widget.setFixedSize(280, 100)
         self.zoom_widget.move(10, 10)  # Position in top-right corner
 
-    def _slider_zoom_x_changed(self, value):
+    def _show_hide_correction(self):
+        """Show the bounding box correction widget"""
+        if self.correction_widget.isVisible():
+            self.correction_widget.hide()
+            self.zoom_widget.setFixedSize(280, 55)
+        else:
+            self.correction_widget.show()
+            self.zoom_widget.setFixedSize(280, 100)
+
+    def _slider_bbox_correction_changed(self, value):
         if self._slider_updating:
             return
         # Map slider value to scale factor (center=0: 1.0, +10: 1.2, -10: 0.8)
-        self.bounding_box_scale_x = 1.0 + (value / 100.0)
+        self.bounding_box_scale = 1.0 + (value / 100.0)
         self.update()  # Trigger repaint
     
-    def _slider_zoom_y_changed(self, value):
-        if self._slider_updating:
-            return
-        # Map slider value to scale factor (center=0: 1.0, +10: 1.2, -10: 0.8)
-        self.bounding_box_scale_y = 1.0 + (value / 100.0)
-        self.update()  # Trigger repaint
-
     def _zoom_in(self):
         self.fit_to_width_mode = False
         self.set_zoom(self.zoom * 1.1)
@@ -264,15 +262,6 @@ class PDFViewer(QWidget):
         # Overridden to sync slider
         if 0.1 <= new_zoom <= 5.0:
             self.zoom = new_zoom
-            # Sync slider position
-            import math
-            self._slider_updating = True
-            try:
-                slider_val = int(round(math.log(new_zoom, 1.1)))
-                slider_val = max(-10, min(10, slider_val))
-                self.zoom_slider_x.setValue(slider_val)
-            finally:
-                self._slider_updating = False
             self.update_current_page()
             self.update()
             self._update_zoom_label()
@@ -315,6 +304,7 @@ class PDFViewer(QWidget):
             self.clear_document()
             self.pdf_document = pdf_document
             self.figure_count = 0
+            self.bbox_correction_slider.setValue(0)
             self.figure_dict = {}
             self.total_pages = len(self.pdf_document)
             self.load_initial_pages()
@@ -446,8 +436,8 @@ class PDFViewer(QWidget):
                         # --- Bounding box scaling logic ---
                         page_cx = scaled_width / 2
                         page_cy = (scaled_height / 2) + current_y
-                        scale_x = getattr(self, 'bounding_box_scale_x', 1.0)
-                        scale_y = getattr(self, 'bounding_box_scale_y', 1.0)
+                        scale_x = getattr(self, 'bounding_box_scale', 1.0)
+                        scale_y = getattr(self, 'bounding_box_scale', 1.0)
                         #logger.info(f"Bounding box scale: {scale_x}, {scale_y}")
                         # Compute scaled points
                         points = []
@@ -2112,10 +2102,10 @@ class PDFViewer(QWidget):
         percent = int(self.zoom * 100)
         self.zoom_label.setText(f"{percent}%")
 
-    def _apply_slider_zoom(self):
+    def _apply_slider_bbox_correction(self):
         """Apply the current bounding_box_scale to all bounding boxes and reset slider and scale."""
-        scale_x = getattr(self, 'bounding_box_scale_x', 1.0)
-        scale_y = getattr(self, 'bounding_box_scale_y', 1.0)
+        scale_x = getattr(self, 'bounding_box_scale', 1.0)
+        scale_y = getattr(self, 'bounding_box_scale', 1.0)
         logger.info(f"scale: {scale_x}, {scale_y}")
         if abs(scale_x - 1.0) < 1e-6 and abs(scale_y - 1.0) < 1e-6:
             return  # No correction needed
@@ -2134,11 +2124,10 @@ class PDFViewer(QWidget):
                 # save elements
                 self.save_element(page_num, element['id'])
         # Reset scale and slider
-        self.bounding_box_scale_x = 1.0
-        self.bounding_box_scale_y = 1.0
+        self.bounding_box_scale = 1.0
+        #self.bounding_box_scale_y = 1.0
         self._slider_updating = True
-        self.zoom_slider_x.setValue(0)
-        self.zoom_slider_y.setValue(0)
+        self.bbox_correction_slider.setValue(0)
         self._slider_updating = False
         self.update()
 
