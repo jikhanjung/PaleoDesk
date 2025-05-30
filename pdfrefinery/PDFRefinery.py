@@ -1425,14 +1425,6 @@ class MainWindow(QMainWindow):
             self.prev_button.setEnabled(self.current_page > 0)
             self.next_button.setEnabled(self.current_page < len(self.pdf_document) - 1)
             
-            # Update bounding boxes for current page
-            if self.pdf_viewer.show_bounding_boxes:
-                current_page_boxes = self.document_data['page_structures'].get(str(self.current_page), {})
-                if current_page_boxes:
-                    self.pdf_viewer.set_bounding_boxes(current_page_boxes.get('structure', {}).get('elements', []))
-                else:
-                    self.pdf_viewer.set_bounding_boxes([])
-
     def go_to_page(self):
         if not self.pdf_document:
             return
