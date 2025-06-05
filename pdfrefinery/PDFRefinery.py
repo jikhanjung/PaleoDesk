@@ -43,8 +43,8 @@ def setup_logging():
     
     # Get logging level from settings
     settings = QSettings(COMPANY_NAME, PROGRAM_NAME)
-    level_name = settings.value("logging/level", "INFO")
-    level = getattr(logging, level_name, logging.INFO)
+    level_name = settings.value("logging/level", "DEBUG")
+    level = getattr(logging, level_name, logging.DEBUG)
     
     # Configure logging with UTF-8 encoding 
     logging.basicConfig(
@@ -544,6 +544,7 @@ class MainWindow(QMainWindow):
 
     def load_pdf_file(self, file_path, zotero_key=None):
         """Load a PDF file and try to load its analysis from database"""
+        import fitz
         # Normalize file path for cross-OS consistency
         norm_path = os.path.normpath(os.path.abspath(file_path))
         self.current_file_path = norm_path
@@ -563,30 +564,42 @@ class MainWindow(QMainWindow):
                 zotero_key = potential_key
                 logger.debug(f"Extracted Zotero key from path: {zotero_key}")
         self.current_zotero_key = zotero_key
-        
-        self.pdf_document = fitz.open(file_path)
-        self.current_page = 0
-        self.pdf_viewer.set_document(self.pdf_document)
-        self.update_navigation()
-
-        self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
-        logger.info(f"Opened PDF file: {self.current_file_path}")
-
         try:
-            loaded = self.load_document_record()
-            logger.info(f"Loaded document data for {self.current_file_path} {self.document_record} {loaded}")
-            self.load_session_record()
-            logger.info(f"Loaded session data for {self.current_file_path}")
-        except Exception as e:
-            logger.error(f"Error loading document record: {str(e)}")
+            self.pdf_document = fitz.open(file_path)
+            self.current_page = 0
+            self.pdf_viewer.set_document(self.pdf_document)
+            self.update_navigation()
 
-        try:
-            self.update_page_display()
-            # Update structured content view with all page structures
-            self.figure_view.show_figures_from_db(self.document_record)
-            self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
+            self.status_label.showMessage(f"Opened: {os.path.basename(file_path)}", 3000)
+            logger.info(f"Opened PDF file: {self.current_file_path}")
+
+            try:
+                loaded = self.load_document_record()
+                logger.info(f"Loaded document data for {self.current_file_path} {self.document_record} {loaded}")
+                self.load_session_record()
+                logger.info(f"Loaded session data for {self.current_file_path}")
+            except Exception as e:
+                logger.error(f"Error loading document record: {str(e)}")
+
+            try:
+                self.update_page_display()
+                # Update structured content view with all page structures
+                self.figure_view.show_figures_from_db(self.document_record)
+                self.status_label.showMessage(f"Loaded session data for {os.path.basename(file_path)}", 3000)
+            except Exception as e:
+                logger.error(f"Error loading session data: {str(e)}")
+        except fitz.FileDataError as e:
+            logger.error(f"Failed to open PDF file: {file_path} - {str(e)}")
+            self.pdf_document = None
+            self.pdf_viewer = None
+            if hasattr(self, 'status_label'):
+                self.status_label.showMessage(f"Failed to open PDF: {os.path.basename(file_path)}", 3000)
         except Exception as e:
-            logger.error(f"Error loading session data: {str(e)}")
+            logger.error(f"Unexpected error opening PDF file: {file_path} - {str(e)}")
+            self.pdf_document = None
+            self.pdf_viewer = None
+            if hasattr(self, 'status_label'):
+                self.status_label.showMessage(f"Failed to open PDF: {os.path.basename(file_path)}", 3000)
 
     def load_directory(self):
         """Load all PDF files from a selected directory and its subdirectories (directory mode)"""
@@ -881,8 +894,9 @@ class MainWindow(QMainWindow):
             document = self.document_record
             logger.info(f"document {document}")
 
-            session = document.sessions.order_by(SessionData.last_accessed.desc()).first()
-            
+            logger.info(f"document.sessions {document.sessions}")
+            session = SessionData.select().where(SessionData.document == document).order_by(SessionData.last_accessed.desc()).first()
+            logger.info(f"session {session}")
             # Only check for existing analysis if not forced
             if session and not force_analysis:
                 # Load session data
@@ -1003,6 +1017,8 @@ class MainWindow(QMainWindow):
                         
                         if response.status_code == 200:
                             results = response.json()
+
+                            logger.info(f"results {results}")
                             
                             if not isinstance(results, list):
                                 raise ValueError("Expected JSON array response")
@@ -1045,7 +1061,7 @@ class MainWindow(QMainWindow):
                                     'figure_number': 0
                                 }
                                 page_elements[str(page_num)].append(structured_element)
-                            
+                            logger.info(f"page_elements {page_elements}")
                             # Store the analysis results
                             for page_num, elements in page_elements.items():
                                 self.document_data['page_structures'][str(page_num)] = {
@@ -1073,9 +1089,10 @@ class MainWindow(QMainWindow):
                             
                             # Update the display
                             self.update_page_display()
-                            
+                            logger.info(f"updated page display")
                             # Auto-save session after analysis
                             self.save_session()
+                            logger.info(f"saved session")
                             
                             # Update document in database with analysis timestamp
                             logger.info(f"Updating document {document} in database with analysis timestamp")
@@ -1127,11 +1144,14 @@ class MainWindow(QMainWindow):
 
     def save_session(self):
         """Save current session data to database"""
+        logger.info(f"inside saving session 1")
         try:
+            logger.info(f"inside saving session 2")
             if not hasattr(self, 'current_file_path') or not self.current_file_path:
                 logger.debug("No current file to save session for")
                 return
 
+            logger.info(f"document_record {self.document_record}")
             document = self.document_record
 
             with db:

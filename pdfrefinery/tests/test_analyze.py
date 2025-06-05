@@ -1,27 +1,57 @@
+import sys
+import unittest
+from unittest.mock import patch
 import os
-import json
+import logging
+import fitz  # PyMuPDF
+import tempfile
+from peewee import SqliteDatabase
 
-os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from PyQt6.QtWidgets import QApplication, QStyle, QIcon
+# Static import for PDFModels
+from PDFModels import *
+
+# Setup in-memory DB and bind before importing models
+test_db = SqliteDatabase(':memory:')
+
+# Set each model's _meta.database to test_db
+PDFDocument._meta.database = test_db
+PageAnalysis._meta.database = test_db
+SessionData._meta.database = test_db
+StructuredElement._meta.database = test_db
+PrFigure._meta.database = test_db
+
+test_db.bind([
+    PDFDocument,
+    PageAnalysis,
+    SessionData,
+    StructuredElement,
+    PrFigure,
+], bind_refs=False, bind_backrefs=False)
+test_db.create_tables([
+    PDFDocument,
+    PageAnalysis,
+    SessionData,
+    StructuredElement,
+    PrFigure,
+], safe=False)
+
+# Print the schema of sessiondata table for debugging
+print("SessionData table columns in test DB:")
+for row in test_db.execute_sql("PRAGMA table_info(sessiondata);"):
+    print(row)
+
+from PyQt6.QtWidgets import QApplication, QStyle
 from PyQt6.QtCore import QSettings
-
-import pytest
-
-from pdfrefinery import PDFModels
+from PyQt6.QtGui import QIcon
+# Now import MainWindow (after models are bound)
 from pdfrefinery.PDFRefinery import MainWindow
 
-# utility to init temp db
-def init_db(path):
-    PDFModels.db.init(path)
-    PDFModels.db.connect()
-    PDFModels.db.create_tables([
-        PDFModels.PDFDocument,
-        PDFModels.PageAnalysis,
-        PDFModels.SessionData,
-        PDFModels.StructuredElement,
-        PDFModels.PrFigure,
-    ])
+# Set all loggers to DEBUG for testing
+logging.basicConfig(level=logging.DEBUG)
+for name in logging.root.manager.loggerDict:
+    logging.getLogger(name).setLevel(logging.DEBUG)
 
 class DummyPage:
     def get_text(self):
@@ -47,59 +77,49 @@ class DummyItemsTree:
     def currentItem(self):
         return self._item
 
-def test_analyze_populates_structured_elements(tmp_path, monkeypatch):
-    app = QApplication.instance() or QApplication([])
-    db_path = tmp_path / 'db.sqlite'
-    init_db(db_path)
+class TestAnalyzePDF(unittest.TestCase):
+    def setUp(self):
+        self.app = QApplication.instance() or QApplication([])
+        # Set the real service URL
+        settings = QSettings('PaleoBytes', 'PDFRefinery')
+        settings.setValue('service/url', 'http://localhost:8051')
 
-    # patch service url
-    settings = QSettings('PaleoBytes', 'PDFRefinery')
-    settings.setValue('service/url', 'http://dummy')
+    def test_analyze_real_pdf(self):
+        # Create a real PDF with text in a temporary file
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf:
+            pdf_path = tmp_pdf.name
 
-    # patch icon function
-    monkeypatch.setattr('pdfrefinery.PDFRefinery.get_analysis_done_icon', lambda: QIcon())
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 72), "Hello, PDFRefinery!", fontsize=20)
+        doc.save(pdf_path)
+        doc.close()
 
-    # mock requests.post
-    results = [{
-        'page_number': 1,
-        'type': 'text',
-        'text': 'hello',
-        'left': 0,
-        'top': 0,
-        'width': 100,
-        'height': 10,
-        'page_width': 100,
-        'page_height': 200
-    }]
+        # Create DB record
+        db_doc = PDFDocument.create(file_path=pdf_path, title='Sample', page_count=1)
 
-    def fake_post(url, files=None, *a, **k):
-        class Resp:
-            status_code = 200
-            def json(self_self):
-                return results
-            content = b''
-        return Resp()
+        # Create a real MainWindow instance
+        main_window = MainWindow()
+        main_window.document_record = db_doc
+        main_window.pdf_document = fitz.open(pdf_path)
+        main_window.document_data = {'page_structures': {}, 'initial_page_structures': {}, 'metadata': {}}
+        main_window.pdf_viewer = type('V', (), {'current_page': 0})()
+        main_window.status_label = DummyStatus()
+        main_window.items_tree = DummyItemsTree()
+        main_window.current_page = 0
+        main_window.current_zotero_key = None
+        main_window.current_file_path = pdf_path
+        main_window.update_page_display = lambda: None
+        main_window.ensure_normal_cursor = lambda: None
 
-    monkeypatch.setattr('pdfrefinery.PDFRefinery.requests.post', fake_post)
+        result = MainWindow.analyze_pdf(main_window, pdf_path, force_analysis=True)
+        self.assertTrue(result)
+        # There should be at least one StructuredElement (for the text)
+        self.assertGreater(StructuredElement.select().count(), 0)
 
-    pdf_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'Schwimmer 2012 page1.pdf')
+        # Clean up
+        main_window.pdf_document.close()
+        os.remove(pdf_path)
 
-    doc = PDFModels.PDFDocument.create(file_path=pdf_path, title='Sample', page_count=1)
-
-    dummy = type('Dummy', (), {})()
-    dummy.document_record = doc
-    dummy.pdf_document = DummyDoc()
-    dummy.document_data = {'page_structures': {}, 'initial_page_structures': {}, 'metadata': {}}
-    dummy.pdf_viewer = type('V', (), {'current_page': 0})()
-    dummy.status_label = DummyStatus()
-    dummy.items_tree = DummyItemsTree()
-    dummy.current_page = 0
-    dummy.current_zotero_key = None
-    dummy.update_page_display = lambda: None
-    dummy.save_session = lambda: None
-    dummy.ensure_normal_cursor = lambda: None
-
-    result = MainWindow.analyze_pdf(dummy, pdf_path, force_analysis=True)
-    assert result is True
-    assert PDFModels.StructuredElement.select().count() == len(results)
-    PDFModels.db.close()
+if __name__ == "__main__":
+    unittest.main()
