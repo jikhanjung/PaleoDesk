@@ -11,12 +11,13 @@ class PDFProcessor(QThread):
     statusUpdate = pyqtSignal(str)  # 상태 메시지
     finished = pyqtSignal(bool, str)  # 성공 여부, 메시지
     
-    def __init__(self, input_file, output_file, top_crop=0, bottom_crop=0):
+    def __init__(self, input_file, output_file, top_crop_percent=0, bottom_crop_percent=0, page_gap_percent=5):
         super().__init__()
         self.input_file = input_file
         self.output_file = output_file
-        self.top_crop = top_crop
-        self.bottom_crop = bottom_crop
+        self.top_crop_percent = top_crop_percent
+        self.bottom_crop_percent = bottom_crop_percent
+        self.page_gap_percent = page_gap_percent
         
     def run(self):
         """PDF 처리 실행"""
@@ -43,13 +44,17 @@ class PDFProcessor(QThread):
                 page1 = pdf_document[i]
                 rect1 = page1.rect
                 
-                # 크롭 적용
-                if self.top_crop > 0 or self.bottom_crop > 0:
+                # 크롭 적용 (퍼센티지를 픽셀로 변환)
+                if self.top_crop_percent > 0 or self.bottom_crop_percent > 0:
+                    page_height = rect1.height
+                    top_crop_pixels = (self.top_crop_percent / 100.0) * page_height
+                    bottom_crop_pixels = (self.bottom_crop_percent / 100.0) * page_height
+                    
                     crop_rect1 = fitz.Rect(
                         rect1.x0,
-                        rect1.y0 + self.top_crop,
+                        rect1.y0 + top_crop_pixels,
                         rect1.x1,
-                        rect1.y1 - self.bottom_crop
+                        rect1.y1 - bottom_crop_pixels
                     )
                     page1.set_cropbox(crop_rect1)
                     rect1 = crop_rect1
@@ -59,13 +64,17 @@ class PDFProcessor(QThread):
                     page2 = pdf_document[i + 1]
                     rect2 = page2.rect
                     
-                    # 크롭 적용
-                    if self.top_crop > 0 or self.bottom_crop > 0:
+                    # 크롭 적용 (퍼센티지를 픽셀로 변환)
+                    if self.top_crop_percent > 0 or self.bottom_crop_percent > 0:
+                        page_height = rect2.height
+                        top_crop_pixels = (self.top_crop_percent / 100.0) * page_height
+                        bottom_crop_pixels = (self.bottom_crop_percent / 100.0) * page_height
+                        
                         crop_rect2 = fitz.Rect(
                             rect2.x0,
-                            rect2.y0 + self.top_crop,
+                            rect2.y0 + top_crop_pixels,
                             rect2.x1,
-                            rect2.y1 - self.bottom_crop
+                            rect2.y1 - bottom_crop_pixels
                         )
                         page2.set_cropbox(crop_rect2)
                         rect2 = crop_rect2
@@ -74,7 +83,9 @@ class PDFProcessor(QThread):
                     rect2 = rect1  # 빈 페이지를 위한 크기
                 
                 # 새 페이지 크기 계산 (두 페이지를 나란히)
-                new_width = rect1.width + (rect2.width if page2 else rect1.width) + 20  # 20pt 간격
+                # 페이지 간격을 첫 번째 페이지 폭의 퍼센티지로 계산
+                gap_pixels = (self.page_gap_percent / 100.0) * rect1.width
+                new_width = rect1.width + (rect2.width if page2 else rect1.width) + gap_pixels
                 new_height = max(rect1.height, rect2.height if page2 else rect1.height)
                 
                 # 새 페이지 생성
@@ -90,7 +101,7 @@ class PDFProcessor(QThread):
                 # 두 번째 페이지 그리기 (있는 경우)
                 if page2:
                     new_page.show_pdf_page(
-                        fitz.Rect(rect1.width + 20, 0, rect1.width + 20 + rect2.width, rect2.height),
+                        fitz.Rect(rect1.width + gap_pixels, 0, rect1.width + gap_pixels + rect2.width, rect2.height),
                         pdf_document,
                         i + 1
                     )

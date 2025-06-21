@@ -8,7 +8,6 @@ from PyQt6.QtCore import Qt, QDir, QSize, QSettings
 from PyQt6.QtGui import QAction, QIcon, QFont
 
 from pdf_viewer import PDFViewer
-from crop_dialog import CropDialog
 from pdf_processor import PDFProcessor, PDFMerger
 
 
@@ -19,6 +18,7 @@ class PDFMergerWindow(QMainWindow):
         self.selected_pdf = None
         self.top_crop = 0
         self.bottom_crop = 0
+        self.page_gap = 5  # 기본값 5%
         self.settings = QSettings('PaleoDesk', 'PDFMerger')
         self.loadSettings()
         self.initUI()
@@ -153,12 +153,46 @@ class PDFMergerWindow(QMainWindow):
         
     def createViewerPanel(self):
         """PDF 뷰어 패널 생성"""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setSpacing(10)
+        
         # PDF 뷰어 위젯 생성
         self.pdf_viewer = PDFViewer()
         self.pdf_viewer.pageChanged.connect(self.onPageChanged)
         self.pdf_viewer.cropChanged.connect(self.onCropChanged)
+        self.pdf_viewer.gapChanged.connect(self.onGapChanged)
+        layout.addWidget(self.pdf_viewer)
         
-        return self.pdf_viewer
+        # 병합 실행 버튼
+        self.merge_button = QPushButton('🔄 PDF 병합 실행')
+        self.merge_button.setMinimumHeight(60)
+        self.merge_button.setEnabled(False)
+        self.merge_button.clicked.connect(self.processPDF)
+        self.merge_button.setStyleSheet("""
+            QPushButton {
+                font-size: 16px;
+                font-weight: bold;
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 15px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:pressed {
+                background-color: #1e7e34;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
+                color: #adb5bd;
+            }
+        """)
+        layout.addWidget(self.merge_button)
+        
+        return panel
         
     def createMenuBar(self):
         """메뉴바 생성"""
@@ -206,11 +240,6 @@ class PDFMergerWindow(QMainWindow):
         self.process_action.triggered.connect(self.processPDF)
         toolbar.addAction(self.process_action)
         
-        # 설정 액션
-        settings_action = QAction('⚙️\n설정', self)
-        settings_action.setStatusTip('크롭 여백 등을 설정합니다')
-        settings_action.triggered.connect(self.showCropSettings)
-        toolbar.addAction(settings_action)
         
     def selectDirectory(self):
         """디렉토리 선택 다이얼로그"""
@@ -266,12 +295,16 @@ class PDFMergerWindow(QMainWindow):
         # PDF 로드
         if self.pdf_viewer.loadPDF(filepath):
             self.selected_pdf = filepath
-            # 크롭 값 적용
+            # 크롭 값 및 간격 적용
             self.pdf_viewer.setCropValues(self.top_crop, self.bottom_crop)
+            self.pdf_viewer.gap_slider.setValue(self.page_gap)
+            self.pdf_viewer.page_gap = self.page_gap
+            self.pdf_viewer.gap_label.setText(f'{self.page_gap}%')
             self.statusBar().showMessage(f'파일 로드됨: {filename}')
             
-            # PDF 처리 버튼 활성화
+            # PDF 처리 버튼들 활성화
             self.process_action.setEnabled(True)
+            self.merge_button.setEnabled(True)
         else:
             QMessageBox.warning(self, '오류', f'PDF 파일을 열 수 없습니다:\n{filename}')
             
@@ -290,9 +323,6 @@ class PDFMergerWindow(QMainWindow):
 <tr><td><b>→, PageDown</b></td><td>다음 페이지</td></tr>
 <tr><td><b>Home</b></td><td>첫 페이지</td></tr>
 <tr><td><b>End</b></td><td>마지막 페이지</td></tr>
-<tr><td><b>+, =</b></td><td>확대 (10%)</td></tr>
-<tr><td><b>-</b></td><td>축소 (10%)</td></tr>
-<tr><td><b>0</b></td><td>100% 크기</td></tr>
 <tr><td><b>F</b></td><td>화면 맞춤</td></tr>
 <tr><td><b>Ctrl+O</b></td><td>폴더 열기</td></tr>
 <tr><td><b>Ctrl+Q</b></td><td>종료</td></tr>
@@ -304,16 +334,13 @@ class PDFMergerWindow(QMainWindow):
         """크롭 값 변경 이벤트 처리"""
         self.top_crop = top
         self.bottom_crop = bottom
+        self.saveSettings()  # 크롭 값 변경 시 자동 저장
         
-    def showCropSettings(self):
-        """크롭 설정 다이얼로그 표시"""
-        dialog = CropDialog(self, self.top_crop, self.bottom_crop)
-        dialog.cropChanged.connect(self.pdf_viewer.setCropValues)
+    def onGapChanged(self, gap):
+        """페이지 간격 변경 이벤트 처리"""
+        self.page_gap = gap
+        self.saveSettings()  # 간격 값 변경 시 자동 저장
         
-        if dialog.exec() == CropDialog.DialogCode.Accepted:
-            self.top_crop, self.bottom_crop = dialog.getCropValues()
-            self.pdf_viewer.setCropValues(self.top_crop, self.bottom_crop)
-            self.saveSettings()
             
     def processPDF(self):
         """PDF 병합 처리"""
@@ -333,8 +360,9 @@ class PDFMergerWindow(QMainWindow):
         self.processor = PDFProcessor(
             self.selected_pdf, 
             output_file, 
-            self.top_crop, 
-            self.bottom_crop
+            top_crop_percent=self.top_crop, 
+            bottom_crop_percent=self.bottom_crop,
+            page_gap_percent=self.page_gap
         )
         
         # 시그널 연결
@@ -358,6 +386,7 @@ class PDFMergerWindow(QMainWindow):
         self.current_directory = self.settings.value('last_directory', '')
         self.top_crop = int(self.settings.value('top_crop', 0))
         self.bottom_crop = int(self.settings.value('bottom_crop', 0))
+        self.page_gap = int(self.settings.value('page_gap', 5))
         
         # 윈도우 크기 및 위치
         geometry = self.settings.value('geometry')
@@ -369,6 +398,7 @@ class PDFMergerWindow(QMainWindow):
         self.settings.setValue('last_directory', self.current_directory)
         self.settings.setValue('top_crop', self.top_crop)
         self.settings.setValue('bottom_crop', self.bottom_crop)
+        self.settings.setValue('page_gap', self.page_gap)
         self.settings.setValue('geometry', self.saveGeometry())
         
     def closeEvent(self, event):
